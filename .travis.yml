@@ -2,13 +2,13 @@ language: java
 sudo: true
 jdk:
   - openjdk8
-  - openjdk9
-  - openjdk10
-  - openjdk11
+  # - openjdk9
+  # - openjdk10
+  # - openjdk11
   - oraclejdk8
-  - oraclejdk9
-  - oraclejdk10
-  - oraclejdk11
+  # - oraclejdk9
+  # - oraclejdk10
+  # - oraclejdk11
 branches:
 cache:
   directories:
@@ -17,7 +17,7 @@ env:
 addons:
 before_install:
   - sudo apt-get update
-  - sudo apt-get install -y gnome-session gnome-keyring libsecret-1-0
+  - sudo apt-get install -y dbus dbus-java-bin gnome-session gnome-keyring libsecret-1-0
 install:
 script:
 after_success:
