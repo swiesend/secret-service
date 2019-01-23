@@ -17,7 +17,8 @@ env:
 addons:
 before_install:
   - sudo apt-get update
-  - sudo apt-get install -y dbus dbus-java-bin dbus-x11 gnome-session gnome-keyring libsecret-1-0
+  # - sudo apt-get install -y dbus dbus-java-bin dbus-x11
+  - sudo apt-get install -y gnome-session gnome-keyring libsecret-1-0
 install:
 script:
 after_success:
