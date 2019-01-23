@@ -21,6 +21,7 @@ before_install:
   - sudo apt-get install -y gnome-session gnome-keyring libsecret-1-0
 install:
 script:
+- mvn clean test verify -Pcoverage
 after_success:
 before_deploy:
 deploy:
