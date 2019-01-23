@@ -17,17 +17,7 @@ import java.util.List;
 public class SignalHandler implements DBusSigHandler {
 
     private Logger log = LoggerFactory.getLogger(getClass());
-
     private DBusSignal[] handled = new DBusSignal[100];
-
-    public DBusSignal[] getHandled() {
-        return handled;
-    }
-
-    public int getCount() {
-        return count;
-    }
-
     private int count = 0;
 
     public SignalHandler(DBusConnection connection, List<Class> signals) {
@@ -83,4 +73,13 @@ public class SignalHandler implements DBusSigHandler {
             log.warn("handled unknown signal: " + s.getClass().toString() + " {" + s.toString() + "}");
         }
     }
+
+    public DBusSignal[] getHandled() {
+        return handled;
+    }
+
+    public int getCount() {
+        return count;
+    }
+
 }

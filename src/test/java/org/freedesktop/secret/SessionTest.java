@@ -8,8 +8,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 
 public class SessionTest {
@@ -31,7 +30,7 @@ public class SessionTest {
 
     @Test
     public void close() {
-        context.session.close();
+        assertDoesNotThrow(() -> context.session.close());
     }
 
     @Test

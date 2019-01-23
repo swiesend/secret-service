@@ -23,14 +23,14 @@ public class CollectionTest {
     private Context context;
 
     @BeforeEach
-    void beforeEach(TestInfo info) {
+    public void beforeEach(TestInfo info) {
         log.info(info.getDisplayName());
         context = new Context(log);
         context.ensureItem();
     }
 
     @AfterEach
-    void AfterEach() {
+    public void afterEach() {
         context.after();
     }
 

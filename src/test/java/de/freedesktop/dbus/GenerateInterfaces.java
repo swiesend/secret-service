@@ -18,18 +18,18 @@ public class GenerateInterfaces {
     private DBusConnection connection = null;
 
     @BeforeEach
-    public void setUp() throws Exception {
+    public void beforeEach() throws Exception {
         connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
     }
 
     @AfterEach
-    public void tearDown() throws Exception {
+    public void afterEach() throws Exception {
         connection.disconnect();
     }
 
     @Test
     @Disabled
-    public void introspect_interface() {
+    public void introspectInterface() {
         try {
             Message m = new MethodCall(
                     "org.freedesktop.secrets",
@@ -45,7 +45,7 @@ public class GenerateInterfaces {
 
     @Test
     @Disabled
-    public void generate_interface() {
+    public void generateInterface() {
         try {
             String input = getClass().getResource(
                     "/org.freedesktop.DBus.Properties.xml").getFile();

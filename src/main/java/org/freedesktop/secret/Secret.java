@@ -8,7 +8,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -31,7 +30,6 @@ public final class Secret extends Struct {
     //  see: https://standards.freedesktop.org/secret-service/ch14.html
     public static final String TEXT_PLAIN_CHARSET_UTF_8 = "text/plain; charset=utf-8";
     public static final String TEXT_PLAIN = "text/plain";
-    private static final String UTF_8 = "utf-8";
     private static final String CHARSET = "charset=";
 
     public Secret(ObjectPath session, byte[] value) {
@@ -101,8 +99,6 @@ public final class Secret extends Struct {
 
     private void parseContentType(String contentType) {
         String pattern = "[\\s\\\"\\;\\,]";
-        Pattern p = Pattern.compile(pattern);
-
         List<String> split = Arrays.asList(contentType.split(pattern));
         List<String> filtered = split.stream().
                 filter(s -> !(s.isEmpty() || s.length() == 1)).

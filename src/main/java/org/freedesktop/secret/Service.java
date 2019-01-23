@@ -29,10 +29,11 @@ public class Service extends org.freedesktop.secret.interfaces.Service {
      *
      * @param algorithm The algorithm the caller wishes to use.
      * @param input     Input arguments for the algorithm.
-     * @return Pair<output       ,               result>
-     * output      Output of the session algorithm negotiation.
-     * <p>
-     * result      The object path of the session, if session was created.
+     * @return Pair&lt;output, result&gt;<br>
+     * <br>
+     * output &mdash; Output of the session algorithm negotiation.<br>
+     * <br>
+     * result &mdash; The object path of the session, if session was created.<br>
      */
     @Override
     public Pair<Variant<byte[]>, ObjectPath> openSession(String algorithm, Variant input) {

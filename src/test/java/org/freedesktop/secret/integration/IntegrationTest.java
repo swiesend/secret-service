@@ -5,8 +5,6 @@ import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.*;
 import org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,14 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class IntegrationTest {
 
     private Logger log = LoggerFactory.getLogger(getClass());
-
-    @BeforeEach
-    public void setUp() {
-    }
-
-    @AfterEach
-    public void tearDown() {
-    }
 
     @Test
     public void testWithTransportEncryption() throws
