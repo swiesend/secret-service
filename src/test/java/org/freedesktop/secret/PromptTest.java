@@ -1,6 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.secret.errors.NoSuchObject;
 import org.freedesktop.secret.interfaces.Prompt;
 import org.freedesktop.secret.test.Context;
 import org.junit.jupiter.api.*;
@@ -32,7 +33,7 @@ public class PromptTest {
 
     @Test
     @Disabled
-    public void prompt() throws InterruptedException {
+    public void prompt() throws InterruptedException, NoSuchObject {
 
         ObjectPath defaultCollection = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         ArrayList<ObjectPath> cs = new ArrayList();
@@ -54,7 +55,7 @@ public class PromptTest {
 
     @Test
     @Disabled
-    public void dismissPrompt() throws InterruptedException {
+    public void dismissPrompt() throws InterruptedException, NoSuchObject {
         ArrayList<ObjectPath> cs = new ArrayList();
         cs.add(context.collection.getPath());
         context.service.lock(cs);

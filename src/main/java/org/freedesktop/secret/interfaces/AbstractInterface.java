@@ -11,5 +11,5 @@ abstract public class AbstractInterface extends Messaging {
                              String serviceName, String objectPath, String interfaceName) {
         super(connection, signals, serviceName, objectPath, interfaceName);
     }
-    
+
 }

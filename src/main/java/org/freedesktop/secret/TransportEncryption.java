@@ -24,7 +24,7 @@ public class TransportEncryption {
 
     Logger log = LoggerFactory.getLogger(getClass());
 
-    private Service service = null;
+    private Service service;
 
     private DHParameterSpec dhParameters = null;
     private KeyPair keypair = null;
@@ -41,14 +41,8 @@ public class TransportEncryption {
     private int HEX = 16;
 
 
-    public TransportEncryption() {
-        // open connection to DBus
-        DBusConnection connection = null;
-        try {
-            connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
-        } catch (DBusException e) {
-            log.error(e.toString(), e.getCause());
-        }
+    public TransportEncryption() throws DBusException {
+        DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
         this.service = new Service(connection);
     }
 
@@ -106,7 +100,6 @@ public class TransportEncryption {
     }
 
     public void generateSessionKey() throws NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
-
         if (yb == null) {
             throw new IllegalStateException("Missing peer public key. Call openSession() first.");
         }

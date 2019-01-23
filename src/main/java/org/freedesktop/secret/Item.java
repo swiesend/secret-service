@@ -3,8 +3,6 @@ package org.freedesktop.secret;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,8 +11,6 @@ import java.util.Map;
 
 public class Item extends org.freedesktop.secret.interfaces.Item {
 
-    private final Logger log = LoggerFactory.getLogger(getClass());
-    private Service service;
     private String collection;
     private String item_id;
 
@@ -23,7 +19,6 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
                 Static.Service.SECRETS,
                 Static.ObjectPaths.item(collection_name, item_id),
                 Static.Interfaces.ITEM);
-        this.service = service;
         this.collection = collection_name;
         this.item_id = item_id;
     }
@@ -33,16 +28,9 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
                 Static.Service.SECRETS,
                 item.getPath(),
                 Static.Interfaces.ITEM);
-        String collection_name = null;
-        String item_id = null;
-        try {
-            List<String> list = Arrays.asList(objectPath.split("/"));
-            item_id = list.get(list.size() - 1);
-            collection_name = list.get(list.size() - 2);
-        } catch (Exception e) {
-            log.error(e.getMessage(), e.getCause());
-        }
-        this.service = service;
+        List<String> list = Arrays.asList(objectPath.split("/"));
+        String item_id = list.get(list.size() - 1);
+        String collection_name = list.get(list.size() - 2);
         this.collection = collection_name;
         this.item_id = item_id;
     }

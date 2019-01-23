@@ -4,8 +4,6 @@ import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.types.Variant;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,7 +12,6 @@ import java.util.Map;
 
 public class Service extends org.freedesktop.secret.interfaces.Service {
 
-    private Logger log = LoggerFactory.getLogger(getClass());
     private Session session = null;
 
     public static final List<Class> signals = Arrays.asList(

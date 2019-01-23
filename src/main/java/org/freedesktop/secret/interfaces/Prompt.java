@@ -8,6 +8,7 @@ import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Static;
+import org.freedesktop.secret.errors.NoSuchObject;
 import org.freedesktop.secret.handlers.Messaging;
 
 import java.util.List;
@@ -32,9 +33,9 @@ public abstract class Prompt extends Messaging implements DBusInterface {
 
     abstract public void prompt(String window_id);
 
-    abstract public void prompt(ObjectPath prompt);
+    abstract public void prompt(ObjectPath prompt) throws NoSuchObject;
 
-    abstract public void await(ObjectPath prompt) throws InterruptedException;
+    abstract public void await(ObjectPath prompt) throws InterruptedException, NoSuchObject;
 
     abstract public void dismiss();
 

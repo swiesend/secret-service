@@ -3,6 +3,7 @@ package org.freedesktop.secret;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
+import org.freedesktop.secret.errors.NoSuchObject;
 import org.freedesktop.secret.test.Context;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
@@ -81,7 +82,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void createCollection() throws InterruptedException {
+    public void createCollection() throws InterruptedException, NoSuchObject {
         context.ensureCollection();
 
         ObjectPath deletePrompt = context.collection.delete();
@@ -132,7 +133,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void unlockCollectionsOrItems() throws InterruptedException {
+    public void unlockCollectionsOrItems() throws InterruptedException, NoSuchObject {
 
         Pair<List<ObjectPath>, ObjectPath> response;
         List<ObjectPath> locked, unlocked;
@@ -195,7 +196,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void lockCommonCollections() throws InterruptedException {
+    public void lockCommonCollections() throws InterruptedException, NoSuchObject {
 
         // lock common collections:
         //   * alias/default == collection/login

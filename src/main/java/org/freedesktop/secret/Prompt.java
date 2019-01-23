@@ -2,16 +2,11 @@ package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.secret.errors.NoSuchObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
 
 public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
-
-    private Logger log = LoggerFactory.getLogger(getClass());
-    private Service service;
 
     public static final List<Class> signals = Arrays.asList(Completed.class);
 
@@ -20,7 +15,6 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
                 Static.Service.SECRETS,
                 "/",
                 Static.Interfaces.PROMT);
-        this.service = service;
     }
 
     @Override
@@ -29,7 +23,7 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
         send("Prompt", "s", window_id);
     }
 
-    public void prompt(ObjectPath prompt) {
+    public void prompt(ObjectPath prompt) throws NoSuchObject {
         objectPath = prompt.getPath();
 
         if (objectPath.startsWith("/org/freedesktop/secrets/prompt/p") ||
@@ -39,15 +33,11 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
 
             send("Prompt", "s", window_id);
         } else {
-            try {
-                throw new NoSuchObject(objectPath);
-            } catch (NoSuchObject e) {
-                log.error(e.getMessage(), e.getCause());
-            }
+            throw new NoSuchObject(objectPath);
         }
     }
 
-    public void await(ObjectPath path) throws InterruptedException {
+    public void await(ObjectPath path) throws InterruptedException, NoSuchObject {
         int init = sh.getCount();
         int await = init;
         prompt(path);
