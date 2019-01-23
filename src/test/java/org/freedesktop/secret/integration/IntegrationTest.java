@@ -1,4 +1,4 @@
-package org.freedesktop.Secret.integration;
+package org.freedesktop.secret.integration;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.exceptions.DBusException;
