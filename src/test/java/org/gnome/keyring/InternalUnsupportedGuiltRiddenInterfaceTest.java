@@ -1,13 +1,13 @@
 package org.gnome.keyring;
 
-import org.freedesktop.Secret.Collection;
-import org.freedesktop.Secret.Secret;
-import org.freedesktop.Secret.Service;
-import org.freedesktop.Secret.Static;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
+import org.freedesktop.secret.Collection;
+import org.freedesktop.secret.Secret;
+import org.freedesktop.secret.Service;
+import org.freedesktop.secret.Static;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;

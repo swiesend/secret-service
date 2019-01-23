@@ -1,11 +1,11 @@
 package org.gnome.keyring;
 
-import org.freedesktop.Secret.Secret;
-import org.freedesktop.Secret.Service;
-import org.freedesktop.Secret.handlers.Messaging;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.types.Variant;
+import org.freedesktop.secret.Secret;
+import org.freedesktop.secret.Service;
+import org.freedesktop.secret.handlers.Messaging;
 
 import java.util.Map;
 
@@ -14,8 +14,8 @@ public class InternalUnsupportedGuiltRiddenInterface extends Messaging implement
 
     public InternalUnsupportedGuiltRiddenInterface(Service service) {
         super(service.getConnection(), null,
-                org.freedesktop.Secret.Static.Service.SECRETS,
-                org.freedesktop.Secret.Static.ObjectPaths.SECRETS,
+                org.freedesktop.secret.Static.Service.SECRETS,
+                org.freedesktop.secret.Static.ObjectPaths.SECRETS,
                 org.gnome.keyring.Static.Interfaces.INTERNAL_UNSUPPORTED_GUILT_RIDDEN_INTERFACE);
     }
 
