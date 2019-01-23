@@ -1,0 +1,26 @@
+language: java
+sudo: true
+jdk:
+  - openjdk8
+  - openjdk9
+  - openjdk10
+  - openjdk11
+  - oraclejdk8
+  - oraclejdk9
+  - oraclejdk10
+  - oraclejdk11
+branches:
+cache:
+  directories:
+    - $HOME/.m2
+env:
+addons:
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install -y gnome-session gnome-keyring libsecret-1-0
+install:
+script:
+after_success:
+before_deploy:
+deploy:
+tags: true
