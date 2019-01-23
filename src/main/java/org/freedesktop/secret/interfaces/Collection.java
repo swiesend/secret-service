@@ -19,6 +19,7 @@ import java.util.Map;
 
 @DBusInterfaceName(Static.Interfaces.COLLECTION)
 public abstract class Collection extends AbstractInterface implements DBusInterface {
+
     public static final String LABEL = "org.freedesktop.Secret.Collection.Label";
 
     public Collection(DBusConnection connection, List<Class> signals,
