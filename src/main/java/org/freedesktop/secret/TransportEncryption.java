@@ -22,7 +22,7 @@ import java.security.spec.InvalidKeySpecException;
 
 public class TransportEncryption {
 
-    Logger log = LoggerFactory.getLogger(getClass());
+    private Logger log = LoggerFactory.getLogger(getClass());
 
     private Service service;
 
