@@ -1,6 +1,5 @@
 package org.freedesktop.secret;
 
-import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.types.Variant;
