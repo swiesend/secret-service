@@ -130,7 +130,6 @@ public class ItemTest {
             assertEquals("org.freedesktop.Secret.Generic", attributes.get("xdg:schema"));
         }
 
-
         attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
         attributes.put("Attribute2", "Replaced");

@@ -15,6 +15,7 @@ import java.util.List;
 
 @DBusInterfaceName(Static.Interfaces.PROMT)
 public abstract class Prompt extends Messaging implements DBusInterface {
+
     public Prompt(DBusConnection connection, List<Class> signals,
                   String serviceName, String objectPath, String interfaceName) {
         super(connection, signals, serviceName, objectPath, interfaceName);
@@ -24,6 +25,15 @@ public abstract class Prompt extends Messaging implements DBusInterface {
         public final boolean dismissed;
         public final Variant result;
 
+        /**
+         * The prompt and operation completed.
+         * 
+         * @param path          The path to the object this is emitted from.
+         * @param dismissed     Whether the prompt and operation were dismissed or not.
+         * @param result        The possibly empty, operation specific, result.
+         * 
+         * @throws DBusException
+         */
         public Completed(String path, boolean dismissed, Variant result) throws DBusException {
             super(path, dismissed, result);
             this.dismissed = dismissed;
@@ -31,12 +41,47 @@ public abstract class Prompt extends Messaging implements DBusInterface {
         }
     }
 
+    /**
+     * Perform the prompt.
+     * 
+     * @param window_id     Platform specific window handle to use for showing the prompt.
+     * 
+     * @see Completed
+     */
     abstract public void prompt(String window_id);
 
+    /**
+     * Perform the prompt.
+     * 
+     * @param prompt        Objectpath of the prompt.
+     * @throws NoSuchObject
+     * 
+     * @see Completed
+     */
     abstract public void prompt(ObjectPath prompt) throws NoSuchObject;
 
+    /**
+     * Await the user interaction with the prompt.
+     * 
+     * A prompt can either be dismissed or be completed successfully.
+     * 
+     * @param prompt        Objectpath of the prompt.
+     * 
+     * @throws InterruptedException
+     * @throws NoSuchObject
+     * 
+     * @see Completed
+     */
     abstract public void await(ObjectPath prompt) throws InterruptedException, NoSuchObject;
 
+    /**
+     * Dismiss the prompt.
+     */
     abstract public void dismiss();
+
+    /**
+     * @return the signal that was handled at last.
+     */
+    abstract public Completed getLastHandledSignal();
 
 }

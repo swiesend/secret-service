@@ -10,10 +10,14 @@ import java.util.List;
 
 @DBusInterfaceName(Static.Interfaces.SESSION)
 public abstract class Session extends Messaging implements DBusInterface {
+
     public Session(DBusConnection connection, List<Class> signals,
                    String serviceName, String objectPath, String interfaceName) {
         super(connection, signals, serviceName, objectPath, interfaceName);
     }
 
+    /**
+     * Close this session.
+     */
     abstract public void close();
 }

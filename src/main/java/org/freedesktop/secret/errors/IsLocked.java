@@ -2,8 +2,8 @@ package org.freedesktop.secret.errors;
 
 /**
  * The object must be unlocked before this action can be carried out.
- * <p>
- * org.freedesktop.Secret.Error.IsLocked
+ *
+ * <p><code>org.freedesktop.Secret.Error.IsLocked</code></p>
  */
 public class IsLocked extends Exception {
     public IsLocked() {

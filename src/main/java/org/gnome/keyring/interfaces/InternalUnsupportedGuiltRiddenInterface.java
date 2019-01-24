@@ -12,12 +12,40 @@ import java.util.Map;
 @DBusInterfaceName("org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface")
 public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
 
-    public void changeWithMasterPassword(DBusPath collection, Secret original, Secret master);
+    String INTERNAL_UNSUPPORTED_GUILT_RIDDEN_INTERFACE = "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface";
 
-    public ObjectPath changeWithPrompt(DBusPath collection);
+    /**
+     * Change the password of a collection.
+     * 
+     * @param collection    The ObjectPath of the collection.
+     * @param original      The current password.
+     * @param master        The new password.
+     */
+    void changeWithMasterPassword(DBusPath collection, Secret original, Secret master);
 
-    public ObjectPath createWithMasterPassword(Map<String, Variant> properties, Secret master);
+    /**
+     * Toggle the lock of a collection.
+     * 
+     * @param collection    The ObjectPath of the collection.
+     */
+    ObjectPath changeWithPrompt(DBusPath collection);
 
-    public void unlockWithMasterPassword(DBusPath collection, Secret master);
+    /**
+     * Create a collection with a password without prompting.
+     * 
+     * @param properties    The properties of the collection.
+     * @param master        The password of the collection.
+     * 
+     * @return  The ObjectPath of the created collection.
+     */
+    ObjectPath createWithMasterPassword(Map<String, Variant> properties, Secret master);
+
+    /**
+     * Unlock a collection without prompting.
+     * 
+     * @param collection    The ObjectPath of the collection.
+     * @param master        The password of the collection.
+     */
+    void unlockWithMasterPassword(DBusPath collection, Secret master);
 
 }

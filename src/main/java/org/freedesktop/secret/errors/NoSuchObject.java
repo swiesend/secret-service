@@ -2,8 +2,8 @@ package org.freedesktop.secret.errors;
 
 /**
  * No such item or collection exists.
- * <p>
- * org.freedesktop.Secret.Error.NoSuchObject
+ *
+ * <p><code>org.freedesktop.Secret.Error.NoSuchObject</code></p>
  */
 public class NoSuchObject extends Exception {
     public NoSuchObject() {

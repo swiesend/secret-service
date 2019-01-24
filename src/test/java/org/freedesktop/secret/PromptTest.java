@@ -49,7 +49,7 @@ public class PromptTest {
         ObjectPath prompt = unlocked.b;
         context.prompt.await(prompt);
 
-        Prompt.Completed completed = context.prompt.getCurrentSingal();
+        Prompt.Completed completed = context.prompt.getLastHandledSignal();
         assertNotNull(completed);
     }
 
@@ -68,7 +68,7 @@ public class PromptTest {
         context.prompt.dismiss();
         Thread.sleep(500L); // await signal
 
-        Prompt.Completed completed = context.prompt.getCurrentSingal();
+        Prompt.Completed completed = context.prompt.getLastHandledSignal();
         assertTrue(completed.dismissed);
     }
 

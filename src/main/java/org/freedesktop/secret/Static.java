@@ -156,10 +156,13 @@ public class Static {
     }
 
     /**
-     * RFC 2409: https://www.ietf.org/rfc/rfc2409
+     * RFC 2409: https://tools.ietf.org/html/rfc2409
      */
     public static class RFC_2409 {
 
+        /**
+         * RFC 2409: https://tools.ietf.org/html/rfc2409#section-6.2
+         */
         public static class SecondOakleyGroup {
 
             public static final byte[] PRIME = new byte[]{

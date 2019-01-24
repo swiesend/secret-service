@@ -23,6 +23,7 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
         send("Prompt", "s", window_id);
     }
 
+    @Override
     public void prompt(ObjectPath prompt) throws NoSuchObject {
         objectPath = prompt.getPath();
 
@@ -37,6 +38,7 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
         }
     }
 
+    @Override
     public void await(ObjectPath path) throws InterruptedException, NoSuchObject {
         int init = sh.getCount();
         int await = init;
@@ -63,7 +65,8 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
         return super.getObjectPath();
     }
 
-    public Completed getCurrentSingal() {
+    @Override
+    public Completed getLastHandledSignal() {
         return (Completed) sh.getHandled()[0];
     }
 

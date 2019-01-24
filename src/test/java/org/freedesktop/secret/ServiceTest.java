@@ -159,7 +159,7 @@ public class ServiceTest {
         assertEquals(0, unlocked.size());
         prompt = response.b;
         context.prompt.await(prompt);
-        completed = context.prompt.getCurrentSingal();
+        completed = context.prompt.getLastHandledSignal();
         if (completed.dismissed) {
             assertTrue(context.collection.isLocked());
         } else {
@@ -185,7 +185,7 @@ public class ServiceTest {
         assertEquals(0, unlocked.size());
         prompt = response.b;
         context.prompt.await(prompt);
-        completed = context.prompt.getCurrentSingal();
+        completed = context.prompt.getLastHandledSignal();
         if (completed.dismissed) {
             assertTrue(context.item.isLocked());
         } else {

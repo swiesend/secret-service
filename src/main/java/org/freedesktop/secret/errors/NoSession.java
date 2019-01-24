@@ -2,8 +2,8 @@ package org.freedesktop.secret.errors;
 
 /**
  * The session does not exist.
- * <p>
- * org.freedesktop.Secret.Error.NoSession
+ *
+ * <p><code>org.freedesktop.Secret.Error.NoSession</code></p>
  */
 public class NoSession extends Exception {
     public NoSession() {
