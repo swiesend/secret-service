@@ -136,7 +136,8 @@ public class ServiceTest {
     public void unlockCollectionsOrItems() throws InterruptedException, NoSuchObject {
 
         Pair<List<ObjectPath>, ObjectPath> response;
-        List<ObjectPath> locked, unlocked;
+        List<ObjectPath> locked;
+        List<ObjectPath> unlocked;
         ObjectPath prompt;
         Prompt.Completed completed;
 
@@ -241,7 +242,8 @@ public class ServiceTest {
     public void changeLock() {
         context.ensureSession();
 
-        ObjectPath obj, result;
+        ObjectPath obj;
+        ObjectPath result;
 
         obj = new ObjectPath("", Static.ObjectPaths.DEFAULT_COLLECTION);
         result = context.service.changeLock(obj);
