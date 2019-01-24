@@ -16,7 +16,7 @@ public class InternalUnsupportedGuiltRiddenInterface extends Messaging implement
         super(service.getConnection(), null,
                 org.freedesktop.secret.Static.Service.SECRETS,
                 org.freedesktop.secret.Static.ObjectPaths.SECRETS,
-                org.gnome.keyring.Static.Interfaces.INTERNAL_UNSUPPORTED_GUILT_RIDDEN_INTERFACE);
+                INTERNAL_UNSUPPORTED_GUILT_RIDDEN_INTERFACE);
     }
 
     @Override
