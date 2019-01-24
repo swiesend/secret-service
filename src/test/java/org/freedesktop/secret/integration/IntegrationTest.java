@@ -50,8 +50,8 @@ public class IntegrationTest {
         log.info(label("encrypted secret (base64)", new String(encBase64)));
 
         String decrypted = transportEncryption.decrypt(encrypted);
-        log.info(label("         decrypted secret", new String(decrypted)));
-        assertEquals(new String(plain), new String(decrypted));
+        log.info(label("         decrypted secret", decrypted));
+        assertEquals(plain, decrypted);
 
         Service service = transportEncryption.getService();
         Session session = service.getSession();
@@ -97,8 +97,8 @@ public class IntegrationTest {
         assertEquals(encrypted.getContentType(), actual.getContentType());
 
         decrypted = transportEncryption.decrypt(actual);
-        log.info(label("  decrypted remote secret", new String(decrypted)));
-        assertEquals(new String(plain), new String(decrypted));
+        log.info(label("  decrypted remote secret", decrypted));
+        assertEquals(plain, decrypted );
 
     }
 
