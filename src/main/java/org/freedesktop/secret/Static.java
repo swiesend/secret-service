@@ -32,8 +32,10 @@ public class Static {
         /**
          * The object path for a collection, where xxxx represents a possibly encoded or truncated version of the
          * initial label of the collection.
-         * <p>
-         * /org/freedesktop/secrets/collection/xxxx
+         *
+         * <code>
+         *   /org/freedesktop/secrets/collection/xxxx
+         * </code>
          */
         public static String collection(String name) {
             return COLLECTION + "/" + name;
@@ -42,8 +44,10 @@ public class Static {
         /**
          * The object path for an item, where xxxx is the collection (above) and iiii is an auto-generated item
          * specific identifier.
-         * <p>
-         * /org/freedesktop/secrets/collection/xxxx/iiii
+         *
+         * <code>
+         *   /org/freedesktop/secrets/collection/xxxx/iiii
+         * </code>
          */
         public static String item(String collection, String item_id) {
             return COLLECTION + "/" + collection + "/" + item_id;
@@ -51,13 +55,22 @@ public class Static {
 
         /**
          * The object path for a session, where ssss is an auto-generated session specific identifier.
-         * <p>
-         * /org/freedesktop/secrets/session/ssss
+         *
+         * <code>
+         *   /org/freedesktop/secrets/session/ssss
+         * </code>
          */
         public static String session(String session_id) {
             return SESSION + "/" + session_id;
         }
 
+        /**
+         * The object path for a prompt, where pppp is the window_id.
+         *
+         * <code>
+         *   /org/freedesktop/secrets/prompt/pppp
+         * </code>
+         */
         public static String prompt(String window_id) {
             return PROMPT + "/" + window_id;
         }

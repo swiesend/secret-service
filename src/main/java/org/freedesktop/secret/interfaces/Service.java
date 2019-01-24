@@ -27,15 +27,34 @@ public abstract class Service extends Messaging implements DBusInterface {
     public static class CollectionCreated extends DBusSignal {
         public final DBusPath collection;
 
+        /**
+         * A collection was created.
+         *
+         * @param path          The path to the object this is emitted from.
+         *
+         * @param collection    Collection that was created.
+         *
+         * @throws DBusException
+         */
         public CollectionCreated(String path, DBusPath collection) throws DBusException {
             super(path, collection);
             this.collection = collection;
         }
     }
 
+
     public static class CollectionDeleted extends DBusSignal {
         public final DBusPath collection;
 
+        /**
+         * A collection was deleted.
+         *
+         * @param path          The path to the object this is emitted from.
+         *
+         * @param collection    Collection that was deleted.
+         *
+         * @throws DBusException
+         */
         public CollectionDeleted(String path, DBusPath collection) throws DBusException {
             super(path, collection);
             this.collection = collection;
@@ -45,6 +64,15 @@ public abstract class Service extends Messaging implements DBusInterface {
     public static class CollectionChanged extends DBusSignal {
         public final DBusPath collection;
 
+        /**
+         * A collection was changed.
+         *
+         * @param path          The path to the object this is emitted from.
+         *
+         * @param collection    Collection that was changed.
+         *
+         * @throws DBusException
+         */
         public CollectionChanged(String path, DBusPath collection) throws DBusException {
             super(path, collection);
             this.collection = collection;
@@ -65,7 +93,7 @@ public abstract class Service extends Messaging implements DBusInterface {
 
     abstract public ObjectPath changeLock(ObjectPath collection);
 
-    abstract public Map<ObjectPath, Secret> getSecrets(List<ObjectPath> items, DBusPath session);
+    abstract public Map<ObjectPath, Secret> getSecrets(List<ObjectPath> items, ObjectPath session);
 
     abstract public ObjectPath readAlias(String name);
 
