@@ -13,7 +13,7 @@ import java.util.Map;
 public class Collection extends org.freedesktop.secret.interfaces.Collection {
 
     private Service service;
-    private String name;
+    private String id;
 
     public static final List<Class> signals = Arrays.asList(ItemCreated.class, ItemChanged.class, ItemDeleted.class);
 
@@ -24,16 +24,26 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
                 Static.Interfaces.COLLECTION);
         this.service = service;
         String[] split = path.getPath().split("/");
-        this.name = split[split.length - 1];
+        this.id = split[split.length - 1];
     }
 
-    public Collection(String name, Service service) {
+    public Collection(DBusPath path, Service service, List<Class> signals) {
         super(service.getConnection(), signals,
                 Static.Service.SECRETS,
-                Static.ObjectPaths.collection(name),
+                path.getPath(),
                 Static.Interfaces.COLLECTION);
         this.service = service;
-        this.name = name;
+        String[] split = path.getPath().split("/");
+        this.id = split[split.length - 1];
+    }
+
+    public Collection(String id, Service service) {
+        super(service.getConnection(), signals,
+                Static.Service.SECRETS,
+                Static.ObjectPaths.collection(id),
+                Static.Interfaces.COLLECTION);
+        this.service = service;
+        this.id = id;
     }
 
     @Override
@@ -101,12 +111,8 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
         return super.getObjectPath();
     }
 
-    public Session getSession() {
-        return service.getSession();
-    }
-
-    public String getName() {
-        return name;
+    public String getId() {
+        return id;
     }
 
 }
