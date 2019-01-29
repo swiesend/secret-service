@@ -17,8 +17,9 @@ import java.util.List;
 public class SignalHandler implements DBusSigHandler {
 
     private Logger log = LoggerFactory.getLogger(getClass());
-    private List<Class> signals = null;
-    private DBusConnection connection = null;
+
+    private DBusConnection connection;
+    private List<Class> signals;
     private DBusSignal[] handled = new DBusSignal[100];
     private int count = 0;
 
