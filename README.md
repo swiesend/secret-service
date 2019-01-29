@@ -1,5 +1,7 @@
 # Secret Service
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/61897aae6b5842f8a35ec81ca02112e3)](https://www.codacy.com?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=swiesend/secret-service&amp;utm_campaign=Badge_Grade)
+
 A Java library to interact with the Secret Service API over the D-Bus.
 
 The library is conform to [version 0.2](https://specifications.freedesktop.org/secret-service/) of the `freedesktop.org`
