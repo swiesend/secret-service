@@ -17,28 +17,36 @@ import java.util.List;
 public class SignalHandler implements DBusSigHandler {
 
     private Logger log = LoggerFactory.getLogger(getClass());
+    private List<Class> signals = null;
+    private DBusConnection connection = null;
     private DBusSignal[] handled = new DBusSignal[100];
     private int count = 0;
 
     public SignalHandler(DBusConnection connection, List<Class> signals) {
+        this.connection = connection;
+        this.signals = signals;
 
-        try {
-            for (Class sc : signals) {
-                connection.addSigHandler(sc, this);
-            }
-        } catch (DBusException e) {
-            log.error(e.toString(), e.getCause());
-        }
-
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        if (signals != null) {
             try {
                 for (Class sc : signals) {
-                    connection.removeSigHandler(sc, this);
+                    connection.addSigHandler(sc, this);
                 }
             } catch (DBusException e) {
                 log.error(e.toString(), e.getCause());
             }
-        }));
+
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> disconnect()));
+        }
+    }
+
+    public void disconnect() {
+        try {
+            for (Class sc : signals) {
+                connection.removeSigHandler(sc, this);
+            }
+        } catch (DBusException e) {
+            log.error(e.toString(), e.getCause());
+        }
     }
 
     @Override
@@ -80,6 +88,10 @@ public class SignalHandler implements DBusSigHandler {
 
     public int getCount() {
         return count;
+    }
+
+    public DBusSignal getLastHandledSignal() {
+        return handled[0];
     }
 
 }
