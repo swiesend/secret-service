@@ -12,7 +12,6 @@ import java.util.Map;
 
 public class Collection extends org.freedesktop.secret.interfaces.Collection {
 
-    private Service service;
     private String id;
 
     public static final List<Class> signals = Arrays.asList(ItemCreated.class, ItemChanged.class, ItemDeleted.class);
@@ -22,7 +21,6 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
                 Static.Service.SECRETS,
                 path.getPath(),
                 Static.Interfaces.COLLECTION);
-        this.service = service;
         String[] split = path.getPath().split("/");
         this.id = split[split.length - 1];
     }
@@ -32,7 +30,6 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
                 Static.Service.SECRETS,
                 path.getPath(),
                 Static.Interfaces.COLLECTION);
-        this.service = service;
         String[] split = path.getPath().split("/");
         this.id = split[split.length - 1];
     }
@@ -42,7 +39,6 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
                 Static.Service.SECRETS,
                 Static.ObjectPaths.collection(id),
                 Static.Interfaces.COLLECTION);
-        this.service = service;
         this.id = id;
     }
 
