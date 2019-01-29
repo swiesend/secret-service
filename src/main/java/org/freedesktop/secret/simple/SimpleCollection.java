@@ -230,7 +230,7 @@ public final class SimpleCollection {
             Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
             performPrompt(response.b);
             item = response.a;
-            if (item.equals("/")) {
+            if ("/".equals(item.getPath())) {
                 Completed completed = prompt.getLastHandledSignal();
                 if (!completed.dismissed) {
                     Collection.ItemCreated ic = (Collection.ItemCreated) collection.getSignalHandler().getLastHandledSignal();
