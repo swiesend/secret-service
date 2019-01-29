@@ -76,7 +76,9 @@ public abstract class Item extends Messaging implements DBusInterface {
     public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
         Map<String, Variant> properties = new HashMap();
         properties.put(LABEL, new Variant(label));
-        properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));
+        if (attributes != null) {
+            properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));
+        }
         return properties;
     }
 
