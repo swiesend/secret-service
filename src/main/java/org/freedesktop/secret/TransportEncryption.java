@@ -22,8 +22,6 @@ import java.security.spec.InvalidKeySpecException;
 
 public class TransportEncryption {
 
-    private Logger log = LoggerFactory.getLogger(getClass());
-
     private Service service;
 
     private DHParameterSpec dhParameters = null;
@@ -89,14 +87,6 @@ public class TransportEncryption {
         // transform peer's raw Y to a public key
         byte[] result = osResponse.a.getValue();
         yb = fromBinary(result);
-
-        ObjectPath session = osResponse.b;
-        log.info("opened session: " + session.getPath());
-
-        log.info("bits: " + ya.bitLength() + ",         public-key (ya): " + ya.toString(HEX));
-        log.info("bits: " + yb.bitLength() + ",         public-key (yb): " + yb.toString(HEX));
-        log.info("bits: " + dhParameters.getP().bitLength() + ",               prime (p): " + dhParameters.getP().toString(HEX));
-        log.info("bits: " + dhParameters.getP().bitLength() + ",           generator (g): " + dhParameters.getG().toString(HEX));
     }
 
     public void generateSessionKey() throws NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
@@ -112,8 +102,6 @@ public class TransportEncryption {
         keyAgreement.init(privateKey);
         keyAgreement.doPhase(peerPublicKey, true);
         byte[] rawSessionKey = keyAgreement.generateSecret();
-        BigInteger zz = fromBinary(rawSessionKey);
-        log.info("bits: " + zz.bitLength() + ",    raw session-key (zz): " + zz.toString(HEX));
 
         // HKDF digest into a 128-bit key by extract and expand with "NULL salt and empty info"
         // see: https://standards.freedesktop.org/secret-service/ch07s03.html
@@ -121,9 +109,6 @@ public class TransportEncryption {
         byte[] keyingMaterial = HKDF.fromHmacSha256().expand(pseudoRandomKey, null, toBytes(AES_BITS));
 
         sessionKey = new SecretKeySpec(keyingMaterial, Static.Algorithm.AES);
-
-        BigInteger X = fromBinary(sessionKey.getEncoded());
-        log.info("bits: " + X.bitLength() + ", digested session-key (x): " + X.toString(HEX));
     }
 
 
@@ -179,7 +164,7 @@ public class TransportEncryption {
         cipher.init(Cipher.DECRYPT_MODE, sessionKey, ivSpec);
         byte[] decrypted = cipher.doFinal(encrypted);
 
-        return new String(decrypted);
+        return new String(decrypted, secret.getCharset());
     }
 
     public Service getService() {
