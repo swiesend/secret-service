@@ -15,7 +15,7 @@ The Secret Service is implemented by the GNOME Keyring (`gnome-keyring`) or the 
 The library provides a simplified API, which sends only transport encrypted secrets over the D-Bus.
 
 @see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
-[TransportEncryption](/home/sebastian/develop/project/secret-service/src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)
+[Transport Encryption Example](src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)
 
 ```java
 import org.freedesktop.dbus.DBusPath;
