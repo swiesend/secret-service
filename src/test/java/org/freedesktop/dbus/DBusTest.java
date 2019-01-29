@@ -1,4 +1,4 @@
-package de.freedesktop.dbus;
+package org.freedesktop.dbus;
 
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
