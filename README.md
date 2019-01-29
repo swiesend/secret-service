@@ -77,7 +77,6 @@ public class Example {
 
 The low level API implements gives access to all defined Methods, Properties and Signals of the Secret Service 
 interface:
-
   * [Service](src/main/java/org/freedesktop/secret/Service.java)
   * [Collection](src/main/java/org/freedesktop/secret/Collection.java)
   * [Item](src/main/java/org/freedesktop/secret/Item.java)
@@ -85,7 +84,6 @@ interface:
   * [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
 
 For examples on API usage checkout the tests:
-
   * [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
   * [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
   * [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
@@ -97,6 +95,5 @@ For examples on API usage checkout the tests:
 ### CVE-2018-19358 (Vulnerability)
 
 There is a current investigation on the behaviour on the GNOME Keyring:
-
-* [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)
-* [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179)
+  * [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)
+  * [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179)
