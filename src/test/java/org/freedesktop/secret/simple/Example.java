@@ -13,7 +13,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
-    void createPasswordInDefaultCollection() {
+    public void createPasswordInDefaultCollection() {
         SimpleCollection collection = new SimpleCollection();
         DBusPath itemID = collection.createPassword("My Item", "secret");
         String actual = collection.getPassword(itemID);
@@ -25,7 +25,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxxx').")
-    void createPasswordInNonDefaultCollection() {
+    public void createPasswordInNonDefaultCollection() {
         SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
         DBusPath itemID = collection.createPassword("My Item", "secret");
         String actual = collection.getPassword(itemID);
@@ -38,7 +38,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password with additional attributes.")
-    void createPasswordWithAttributes() {
+    public void createPasswordWithAttributes() {
         SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
 
         Map<String, String> attributes = new HashMap();

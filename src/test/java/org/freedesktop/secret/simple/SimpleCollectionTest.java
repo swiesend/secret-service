@@ -12,7 +12,7 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class SimpleCollectionTest {
+public class SimpleCollectionTest {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollectionTest.class);
 
@@ -27,19 +27,19 @@ class SimpleCollectionTest {
 
     @Test
     @Disabled
-    void deleteDefaultCollection() {
+    public void deleteDefaultCollection() {
         SimpleCollection defaultCollection = new SimpleCollection();
         assertThrows(AccessControlException.class, () -> defaultCollection.delete());
     }
 
     @Test
-    void deleteNonDefaultCollection() {
+    public void deleteNonDefaultCollection() {
         SimpleCollection collection = new SimpleCollection("test", "test");
         assertDoesNotThrow(() -> collection.delete());
     }
 
     @Test
-    void createPassword() {
+    public void createPassword() {
         // before all
         SimpleCollection collection = new SimpleCollection("test", "test");
 
@@ -70,7 +70,7 @@ class SimpleCollectionTest {
     }
 
     @Test
-    void updatePassword() {
+    public void updatePassword() {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
         Map<String, String> attributes = new HashMap();
@@ -96,7 +96,7 @@ class SimpleCollectionTest {
     }
 
     @Test
-    void getPassword() {
+    public void getPassword() {
         // before
         SimpleCollection collection = new SimpleCollection();
         DBusPath itemID = collection.createPassword("item", "secret");
@@ -110,7 +110,7 @@ class SimpleCollectionTest {
     }
 
     @Test
-    void getPasswordFromNonDefaultCollection() {
+    public void getPasswordFromNonDefaultCollection() {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
@@ -126,7 +126,7 @@ class SimpleCollectionTest {
 
     @Test
     @Disabled
-    void getPasswords() {
+    public void getPasswords() {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
             // only with user permission
@@ -135,7 +135,7 @@ class SimpleCollectionTest {
     }
 
     @Test
-    void deletePassword() {
+    public void deletePassword() {
         SimpleCollection collection = new SimpleCollection();
         DBusPath item = collection.createPassword("item", "secret");
         assertDoesNotThrow(() -> {
@@ -148,7 +148,7 @@ class SimpleCollectionTest {
      * NOTE: Be aware that this can lead to the loss of passwords if performed on any default collections.
      */
     @Test
-    void deletePasswords() {
+    public void deletePasswords() {
         SimpleCollection collection = new SimpleCollection("test", "test");
         DBusPath item = collection.createPassword("item", "secret");
         assertDoesNotThrow(() -> {

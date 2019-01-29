@@ -9,32 +9,32 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class SecretTest {
+public class SecretTest {
 
     private static ObjectPath session = new ObjectPath("", Static.ObjectPaths.session("1"));
     private static byte[] parameters = "".getBytes();
     private static byte[] value = "secret".getBytes();
 
     @Test
-    void getSession() {
+    public void getSession() {
         Secret secret = new Secret(session, parameters, value);
         assertEquals("/org/freedesktop/secrets/session/1", secret.getSession().getPath());
     }
 
     @Test
-    void getSecretValue() {
+    public void getSecretValue() {
         Secret secret = new Secret(session, parameters, value);
         assertArrayEquals("secret".getBytes(), secret.getSecretValue());
     }
 
     @Test
-    void getSecretParameters() {
+    public void getSecretParameters() {
         Secret secret = new Secret(session, "initialization vector".getBytes(), value);
         assertArrayEquals("initialization vector".getBytes(), secret.getSecretParameters());
     }
 
     @Test
-    void createContentType() {
+    public void createContentType() {
         String contentType;
         Secret secret;
 
@@ -84,7 +84,7 @@ class SecretTest {
     }
 
     @Test
-    void getContentType() {
+    public void getContentType() {
         Secret secret = new Secret(session, parameters, value);
         assertEquals("text/plain; charset=utf-8", secret.getContentType());
 
@@ -102,7 +102,7 @@ class SecretTest {
     }
 
     @Test
-    void getMimeType() {
+    public void getMimeType() {
         Secret secret;
 
         secret = new Secret(session, parameters, value);
@@ -116,7 +116,7 @@ class SecretTest {
     }
 
     @Test
-    void getCharset() {
+    public void getCharset() {
         Secret secret;
 
         secret = new Secret(session, parameters, value);
