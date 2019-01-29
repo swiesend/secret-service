@@ -22,8 +22,11 @@ public class MessageHandler {
     public MessageHandler(DBusConnection connection) {
         this.connection = connection;
 
-        if (connection != null) {
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> this.connection.disconnect()));
+        if (this.connection != null) {
+            this.connection.setWeakReferences(true);
+            Runtime.getRuntime().addShutdownHook(new Thread(() ->
+                this.connection.disconnect()
+            ));
         }
     }
 
