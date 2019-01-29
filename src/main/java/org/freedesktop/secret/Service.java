@@ -11,10 +11,9 @@ import java.util.Map;
 
 public class Service extends org.freedesktop.secret.interfaces.Service {
 
-    private Session session = null;
-
     public static final List<Class> signals = Arrays.asList(
             CollectionCreated.class, CollectionChanged.class, CollectionDeleted.class);
+    private Session session = null;
 
     public Service(DBusConnection connection) {
         super(connection, signals,
@@ -32,10 +31,13 @@ public class Service extends org.freedesktop.secret.interfaces.Service {
 
     @Override
     public Pair<ObjectPath, ObjectPath> createCollection(Map<String, Variant> properties, String alias) {
+        String a;
         if (alias == null) {
-            alias = "";
+            a = "";
+        } else {
+            a = alias;
         }
-        Object[] params = send("CreateCollection", "a{sv}s", properties, alias);
+        Object[] params = send("CreateCollection", "a{sv}s", properties, a);
         return new Pair(params[0], params[1]);
     }
 
