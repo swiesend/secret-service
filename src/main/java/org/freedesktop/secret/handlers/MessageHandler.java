@@ -21,6 +21,10 @@ public class MessageHandler {
 
     public MessageHandler(DBusConnection connection) {
         this.connection = connection;
+
+        if (connection != null) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> this.connection.disconnect()));
+        }
     }
 
     public Object[] send(String service, String path, String iface, String method, String signature, Object... args) {
