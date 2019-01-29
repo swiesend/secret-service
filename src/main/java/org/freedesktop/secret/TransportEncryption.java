@@ -26,10 +26,8 @@ public class TransportEncryption {
     private KeyPair keypair = null;
     private PublicKey publicKey = null;
     private PrivateKey privateKey = null;
-    private DHPublicKey peerPublicKey = null;
     private SecretKey sessionKey = null;
 
-    private BigInteger ya = null;
     private BigInteger yb = null;
 
     public static final int PRIVATE_VALUE_BITS = 1024;
@@ -74,7 +72,7 @@ public class TransportEncryption {
 
         // The public keys are transferred as an array of bytes representing an unsigned integer of arbitrary size,
         // most-significant byte first (e.g., the integer 32768 is represented as the 2-byte string 0x80 0x00)
-        ya = ((DHPublicKey) publicKey).getY();
+        BigInteger ya = ((DHPublicKey) publicKey).getY();
 
         // open session with "Client DH pub key as an array of bytes" without prime or generator
         Pair<Variant<byte[]>, ObjectPath> osResponse = service.openSession(
@@ -92,7 +90,7 @@ public class TransportEncryption {
 
         DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(yb, dhParameters.getP(), dhParameters.getG());
         KeyFactory keyFactory = KeyFactory.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
-        peerPublicKey = (DHPublicKey) keyFactory.generatePublic(dhPublicKeySpec);
+        DHPublicKey peerPublicKey = (DHPublicKey) keyFactory.generatePublic(dhPublicKeySpec);
 
         KeyAgreement keyAgreement = KeyAgreement.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
         keyAgreement.init(privateKey);
