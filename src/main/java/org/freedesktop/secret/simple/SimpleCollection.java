@@ -34,6 +34,7 @@ public final class SimpleCollection {
 
     private Collection collection;
     private List<ObjectPath> unlock = null;
+    private String password = null;
 
     /**
      * The default collection.
@@ -42,7 +43,8 @@ public final class SimpleCollection {
         init();
         ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         this.collection = new Collection(path, service);
-        unlock(null);
+        log.info("locked on creation:" + collection.isLocked());
+        unlock();
     }
 
     /**
@@ -94,8 +96,8 @@ public final class SimpleCollection {
             this.collection = new Collection(path, service);
         }
 
-        service.lock(Arrays.asList(collection.getPath()));
-        unlock(password);
+        this.password = password;
+        unlock();
     }
 
     private void init() {
@@ -151,7 +153,7 @@ public final class SimpleCollection {
     }
 
     private void performPrompt(ObjectPath path) {
-        if (!path.getPath().equals("/")) {
+        if (!("/".equals(path.getPath()))) {
             try {
                 prompt.await(path);
             } catch (InterruptedException | NoSuchObject e) {
@@ -160,10 +162,11 @@ public final class SimpleCollection {
         }
     }
 
-    private void unlock(String password) {
+    private void unlock() {
         if (unlock == null) {
             unlock = Arrays.asList(collection.getPath());
         }
+        log.info("locked: " + collection.isLocked());
         if (collection.isLocked()) {
             if (password == null) {
                 Pair<List<ObjectPath>, ObjectPath> response = service.unlock(unlock);
@@ -224,7 +227,7 @@ public final class SimpleCollection {
 
         DBusPath item = null;
         try {
-            //unlock(null);
+            unlock();
             Map<String, Variant> properties = Item.createProperties(label, attributes);
             Secret secret = encryption.encrypt(password);
             Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
@@ -261,7 +264,7 @@ public final class SimpleCollection {
         }
 
         try {
-            unlock(null);
+            unlock();
             Item item = pathToItem(object);
             item.setLabel(label);
             if (attributes == null) {
@@ -277,12 +280,12 @@ public final class SimpleCollection {
     }
 
     public Item getItem(DBusPath object) {
-        unlock(null);
+        unlock();
         return pathToItem(object);
     }
 
     public String getPassword(DBusPath object) {
-        unlock(null);
+        unlock();
         Item item = pathToItem(object);
         Secret secret = item.getSecret(session.getPath());
         String decrypted = null;

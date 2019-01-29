@@ -16,10 +16,10 @@ class SimpleCollectionTest {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollectionTest.class);
 
-    private String getRandomHexString(int length){
+    private String getRandomHexString(int length) {
         Random r = new Random();
         StringBuffer sb = new StringBuffer();
-        while(sb.length() < length){
+        while (sb.length() < length) {
             sb.append(Integer.toHexString(r.nextInt()));
         }
         return sb.toString();
@@ -46,7 +46,7 @@ class SimpleCollectionTest {
         DBusPath itemID;
 
         // 1. create and get password
-        itemID = collection.createPassword("item",  "secret");
+        itemID = collection.createPassword("item", "secret");
         String actual = collection.getPassword(itemID);
         assertEquals("secret", actual);
         Item item = collection.getItem(itemID);
@@ -77,7 +77,7 @@ class SimpleCollectionTest {
 
         // create password
         attributes.put("uuid", getRandomHexString(32));
-        DBusPath itemID = collection.createPassword("item",  "secret", attributes);
+        DBusPath itemID = collection.createPassword("item", "secret", attributes);
         assertEquals("secret", collection.getPassword(itemID));
         Item item = collection.getItem(itemID);
         assertEquals("item", item.getLabel());
@@ -115,7 +115,7 @@ class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         // test
-        DBusPath item = collection.createPassword("item","secret");
+        DBusPath item = collection.createPassword("item", "secret");
         String password = collection.getPassword(item);
         assertEquals("secret", password);
 
@@ -125,19 +125,23 @@ class SimpleCollectionTest {
     }
 
     @Test
+    @Disabled
     void getPasswords() {
         SimpleCollection collection = new SimpleCollection();
-        Map<DBusPath, String> passwords = collection.getPasswords();
-        // only with user permission
-        log.info(passwords.toString());
+        assertDoesNotThrow(() -> {
+            // only with user permission
+            Map<DBusPath, String> passwords = collection.getPasswords();
+        });
     }
 
     @Test
     void deletePassword() {
         SimpleCollection collection = new SimpleCollection();
         DBusPath item = collection.createPassword("item", "secret");
-        // only with user permission
-        collection.deletePassword(item);
+        assertDoesNotThrow(() -> {
+            // only with user permission
+            collection.deletePassword(item);
+        });
     }
 
     /**
@@ -147,7 +151,10 @@ class SimpleCollectionTest {
     void deletePasswords() {
         SimpleCollection collection = new SimpleCollection("test", "test");
         DBusPath item = collection.createPassword("item", "secret");
-        assertDoesNotThrow(() -> collection.deletePasswords(Arrays.asList(item)));
+        assertDoesNotThrow(() -> {
+            collection.deletePasswords(Arrays.asList(item));
+        });
         collection.delete();
     }
+
 }
