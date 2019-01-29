@@ -5,8 +5,6 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.crypto.*;
 import javax.crypto.interfaces.DHPublicKey;
@@ -36,8 +34,6 @@ public class TransportEncryption {
 
     public static final int PRIVATE_VALUE_BITS = 1024;
     public static final int AES_BITS = 128;
-    private int HEX = 16;
-
 
     public TransportEncryption() throws DBusException {
         DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
