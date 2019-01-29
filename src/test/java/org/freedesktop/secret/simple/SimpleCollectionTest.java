@@ -77,6 +77,7 @@ public class SimpleCollectionTest {
 
         // create password
         attributes.put("uuid", getRandomHexString(32));
+        log.info("attributes: " + attributes);
         DBusPath itemID = collection.createPassword("item", "secret", attributes);
         assertEquals("secret", collection.getPassword(itemID));
         Item item = collection.getItem(itemID);
@@ -85,6 +86,7 @@ public class SimpleCollectionTest {
 
         // update password
         attributes.put("uuid", getRandomHexString(32));
+        log.info("attributes: " + attributes);
         collection.updatePassword(itemID, "updated item", "updated secret", attributes);
         assertEquals("updated secret", collection.getPassword(itemID));
         item = collection.getItem(itemID);
@@ -131,6 +133,7 @@ public class SimpleCollectionTest {
         assertDoesNotThrow(() -> {
             // only with user permission
             Map<DBusPath, String> passwords = collection.getPasswords();
+            assertNotNull(passwords);
         });
     }
 
