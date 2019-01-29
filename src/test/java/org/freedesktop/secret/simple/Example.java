@@ -19,7 +19,7 @@ public class Example {
         String actual = collection.getPassword(itemID);
         assertEquals("secret", actual);
 
-        // delete with user's permission trough a prompt.
+        // delete with user's permission trough a prompt, as password is unknown.
         collection.deletePassword(itemID);
     }
 
