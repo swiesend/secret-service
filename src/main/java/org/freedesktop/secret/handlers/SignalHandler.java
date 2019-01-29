@@ -36,14 +36,20 @@ public class SignalHandler implements DBusSigHandler {
                 log.error(e.toString(), e.getCause());
             }
 
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> disconnect()));
+            Runtime.getRuntime().addShutdownHook(new Thread(() ->
+                    disconnect()
+            ));
         }
     }
 
     public void disconnect() {
         try {
+            log.debug("remove signal handlers");
             for (Class sc : signals) {
-                connection.removeSigHandler(sc, this);
+                if (connection.isConnected()) {
+                    log.trace("remove signal handler: " + sc.getClass());
+                    connection.removeSigHandler(sc, this);
+                }
             }
         } catch (DBusException e) {
             log.error(e.toString(), e.getCause());
