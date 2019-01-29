@@ -121,7 +121,7 @@ public class ItemTest {
     public void setAttributes() {
 
         Map<String, String> attributes = context.item.getAttributes();
-        log.info(context.item.getItemId());
+        log.info(context.item.getId());
         log.info(attributes.toString());
         assertEquals(3, attributes.size());
         assertEquals("Value1", attributes.get("Attribute1"));
@@ -138,7 +138,7 @@ public class ItemTest {
         context.item.setAttributes(attributes);
 
         attributes = context.item.getAttributes();
-        log.info(context.item.getItemId());
+        log.info(context.item.getId());
         log.info(attributes.toString());
 
         assertTrue(attributes.size() >= 3);

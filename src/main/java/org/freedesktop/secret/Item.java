@@ -11,16 +11,14 @@ import java.util.Map;
 
 public class Item extends org.freedesktop.secret.interfaces.Item {
 
-    private String collection;
-    private String item_id;
+    private String id;
 
-    public Item(String collection_name, String item_id, Service service) {
+    public Item(String collectionID, String itemID, Service service) {
         super(service.getConnection(), null,
                 Static.Service.SECRETS,
-                Static.ObjectPaths.item(collection_name, item_id),
+                Static.ObjectPaths.item(collectionID, itemID),
                 Static.Interfaces.ITEM);
-        this.collection = collection_name;
-        this.item_id = item_id;
+        this.id = itemID;
     }
 
     public Item(ObjectPath item, Service service) {
@@ -29,10 +27,8 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
                 item.getPath(),
                 Static.Interfaces.ITEM);
         List<String> list = Arrays.asList(objectPath.split("/"));
-        String item_id = list.get(list.size() - 1);
-        String collection_name = list.get(list.size() - 2);
-        this.collection = collection_name;
-        this.item_id = item_id;
+        String itemID = list.get(list.size() - 1);
+        this.id = itemID;
     }
 
     @Override
@@ -126,12 +122,8 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
         return super.getObjectPath();
     }
 
-    public String getCollection() {
-        return collection;
-    }
-
-    public String getItemId() {
-        return item_id;
+    public String getId() {
+        return id;
     }
 
 }
