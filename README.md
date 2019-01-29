@@ -1,4 +1,4 @@
-# Secret-Service API
+# Secret Service
 
 A Java library to interact with the Secret Service API over the D-Bus.
 
@@ -8,7 +8,6 @@ Secret Service API to access user keyrings.
 The Secret Service is implemented by the GNOME Keyring (`gnome-keyring`) or the KDE Wallet Manager (`ksecretservice`).
 
 @see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specifications/secret-storage-spec/)
-
 
 ## Example
 
@@ -79,18 +78,19 @@ public class Example {
 The low level API implements gives access to all defined Methods, Properties and Signals of the Secret Service 
 interface:
 
-* [Service](src/main/java/org/freedesktop/secret/Service.java)
-* [Collection](src/main/java/org/freedesktop/secret/Collection.java)
-* [Item](src/main/java/org/freedesktop/secret/Item.java)
-* [Session](src/main/java/org/freedesktop/secret/Session.java)
-* [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
+  * [Service](src/main/java/org/freedesktop/secret/Service.java)
+  * [Collection](src/main/java/org/freedesktop/secret/Collection.java)
+  * [Item](src/main/java/org/freedesktop/secret/Item.java)
+  * [Session](src/main/java/org/freedesktop/secret/Session.java)
+  * [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
 
 For examples on API usage checkout the tests:
-* [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
-* [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
-* [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
-* [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
-* [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
+
+  * [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
+  * [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
+  * [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
+  * [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
+  * [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
 
 ## Security Issues
 
