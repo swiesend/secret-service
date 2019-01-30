@@ -99,18 +99,45 @@ public final class Secret extends Struct {
     }
 
     static public byte[] toBytes(CharSequence passphrase) {
-        final ByteBuffer buffer = StandardCharsets.UTF_8.encode(CharBuffer.wrap(passphrase));
-        final byte[] bytes = new byte[buffer.remaining()];
-        buffer.get(bytes);
+        final ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(passphrase));
+        final byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
         try {
             return bytes;
         } finally {
-            clear(buffer);
+            clear(encoded);
+        }
+    }
+
+    static public byte[] toBytes(char[] passphrase) {
+        final ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(passphrase));
+        final byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        try {
+            return bytes;
+        } finally {
+            clear(encoded);
+        }
+    }
+
+    static public char[] toChars(byte[] bytes){
+        ByteBuffer encoded = ByteBuffer.wrap(bytes);
+        CharBuffer decoded = StandardCharsets.UTF_8.decode(encoded);
+        final char[] chars = new char[decoded.remaining()];
+        decoded.get(chars);
+        try {
+            return chars;
+        } finally {
+            clear(encoded);
+            clear(decoded);
         }
     }
 
     static public void clear(byte[] bytes) {
         Arrays.fill(bytes, (byte) 0);
+        for(byte b: bytes) {
+            assert((byte) 0 == b);
+        }
     }
 
     static public void clear(ByteBuffer buffer) {
@@ -118,6 +145,19 @@ public final class Secret extends Struct {
         Arrays.fill(zeros, (byte) 0);
         buffer.rewind();
         buffer.put(zeros);
+        for(byte b: buffer.array()) {
+            assert((byte) 0 == b);
+        }
+    }
+
+    static public void clear(CharBuffer buffer) {
+        final char[] zeros = new char[buffer.limit()];
+        Arrays.fill(zeros, (char) 0);
+        buffer.rewind();
+        buffer.put(zeros);
+        for(char c: buffer.array()) {
+            assert((char) 0 == c);
+        }
     }
 
     public void clear() {

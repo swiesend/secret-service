@@ -41,10 +41,15 @@ public class SimpleCollectionTest {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
-        String item = collection.createPassword("item", "secret");
+        String item = collection.createPassword("item", "sécrèt");
         assertEquals("item", collection.getLabel(item));
-        assertEquals("secret", new String(collection.getPassword(item)));
-        assertEquals(Collections.emptyMap(), collection.getAttributes(item));
+        assertEquals("sécrèt", new String(collection.getPassword(item)));
+        Map<String, String> actualAttributes = collection.getAttributes(item);
+        if (actualAttributes.containsKey("xdg:schema")) {
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+        } else {
+            assertEquals(Collections.emptyMap(), collection.getAttributes(item));
+        }
 
         // after
         collection.deletePassword(item);
@@ -115,7 +120,7 @@ public class SimpleCollectionTest {
         String item = collection.createPassword("item", "secret");
 
         // test
-        byte[] password = collection.getPassword(item);
+        char[] password = collection.getPassword(item);
         assertEquals("secret", new String(password));
 
         // after
@@ -129,7 +134,7 @@ public class SimpleCollectionTest {
         String itemID = collection.createPassword("item", "secret");
 
         // test
-        byte[] password = collection.getPassword(itemID);
+        char[] password = collection.getPassword(itemID);
         assertEquals("secret", new String(password));
 
         // after
@@ -143,7 +148,7 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
             // only with user permission
-            Map<String, byte[]> passwords = collection.getPasswords();
+            Map<String, char[]> passwords = collection.getPasswords();
             assertNotNull(passwords);
         });
     }
@@ -170,5 +175,4 @@ public class SimpleCollectionTest {
         });
         collection.delete();
     }
-
 }

@@ -49,7 +49,7 @@ public class IntegrationTest {
         byte[] encBase64 = Base64.getEncoder().encode(encrypted.getSecretValue());
         log.info(label("encrypted secret (base64)", new String(encBase64)));
 
-        byte[] decrypted = transportEncryption.decrypt(encrypted);
+        char[] decrypted = transportEncryption.decrypt(encrypted);
         log.info(label("         decrypted secret", new String(decrypted)));
         assertEquals(plain, new String(decrypted));
 

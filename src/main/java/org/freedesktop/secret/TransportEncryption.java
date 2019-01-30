@@ -143,7 +143,7 @@ public class TransportEncryption {
         return new Secret(service.getSession().getPath(), ivSpec.getIV(), cipher.doFinal(plain), contentType);
     }
 
-    public byte[] decrypt(Secret secret) throws NoSuchPaddingException,
+    public char[] decrypt(Secret secret) throws NoSuchPaddingException,
             NoSuchAlgorithmException,
             InvalidAlgorithmParameterException,
             InvalidKeyException,
@@ -157,7 +157,12 @@ public class TransportEncryption {
         IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
         Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
         cipher.init(Cipher.DECRYPT_MODE, sessionKey, ivSpec);
-        return cipher.doFinal(secret.getSecretValue());
+        final byte[] decrypted = cipher.doFinal(secret.getSecretValue());
+        try {
+            return Secret.toChars(decrypted);
+        } finally {
+            Secret.clear(decrypted);
+        }
     }
 
     public Service getService() {

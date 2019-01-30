@@ -359,11 +359,11 @@ public final class SimpleCollection {
      *
      * @return plain bytes
      */
-    public byte[] getPassword(String objectPath) {
+    public char[] getPassword(String objectPath) {
         unlock();
         final Item item = getItem(objectPath);
         final Secret secret = item.getSecret(session.getPath());
-        byte[] decrypted = null;
+        char[] decrypted = null;
         try {
             decrypted = encryption.decrypt(secret);
         } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
@@ -379,11 +379,11 @@ public final class SimpleCollection {
      *
      * @return Mapping of DBus object paths and plain bytes
      */
-    public Map<String, byte[]> getPasswords() {
+    public Map<String, char[]> getPasswords() {
         getUserPermission();
 
         List<ObjectPath> items = collection.getItems();
-        Map<String, byte[]> passwords = new HashMap();
+        Map<String, char[]> passwords = new HashMap();
         for (ObjectPath item : items) {
             passwords.put(item.getPath(), getPassword(item.getPath()));
         }
@@ -417,5 +417,4 @@ public final class SimpleCollection {
             deletePassword(item);
         }
     }
-
 }
