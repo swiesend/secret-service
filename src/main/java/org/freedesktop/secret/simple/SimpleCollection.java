@@ -248,10 +248,11 @@ public final class SimpleCollection {
         }
 
         DBusPath item = null;
+        Secret secret = null;
         try {
             unlock();
             final Map<String, Variant> properties = Item.createProperties(label, attributes);
-            final Secret secret = encryption.encrypt(password);
+            secret = encryption.encrypt(password);
             final Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
             performPrompt(response.b);
             item = response.a;
@@ -269,6 +270,10 @@ public final class SimpleCollection {
                 BadPaddingException |
                 IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
+        } finally {
+            if (secret != null) {
+                secret.clear();
+            }
         }
 
         return item.getPath();
@@ -374,7 +379,9 @@ public final class SimpleCollection {
         } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
         } finally {
-            secret.clear();
+            if (secret != null) {
+                secret.clear();
+            }
         }
         return decrypted;
     }
