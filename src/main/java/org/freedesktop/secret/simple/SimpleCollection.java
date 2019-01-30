@@ -310,6 +310,7 @@ public final class SimpleCollection {
             throw new IllegalArgumentException("The new label of the item may not be null.");
         }
 
+        Secret secret = null;
         try {
             unlock();
             Item item = getItem(objectPath);
@@ -319,10 +320,14 @@ public final class SimpleCollection {
             } else {
                 item.setAttributes(attributes);
             }
-            Secret secret = encryption.encrypt(password);
+            secret = encryption.encrypt(password);
             item.setSecret(secret);
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
+        } finally {
+            if (secret != null) {
+                secret.clear();
+            }
         }
     }
 
@@ -357,7 +362,7 @@ public final class SimpleCollection {
      *
      * @param objectPath    The DBus object path of the item
      *
-     * @return plain bytes
+     * @return plain chars
      */
     public char[] getPassword(String objectPath) {
         unlock();
@@ -368,6 +373,8 @@ public final class SimpleCollection {
             decrypted = encryption.decrypt(secret);
         } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
+        } finally {
+            secret.clear();
         }
         return decrypted;
     }
@@ -377,7 +384,7 @@ public final class SimpleCollection {
      *
      * NOTE: <p>Retrieving all passwords form a collection requires permission.</p>
      *
-     * @return Mapping of DBus object paths and plain bytes
+     * @return Mapping of DBus object paths and plain chars
      */
     public Map<String, char[]> getPasswords() {
         getUserPermission();
