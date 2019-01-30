@@ -4,6 +4,8 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.Struct;
 import org.freedesktop.dbus.annotations.Position;
 
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -88,13 +90,38 @@ public final class Secret extends Struct {
         parseContentType(this.contentType);
     }
 
-
     static public String createContentType(String mimeType, Charset charset) {
         return mimeType + "; " + CHARSET + charset.name().toLowerCase();
     }
 
     static public String createContentType(Charset charset) {
         return TEXT_PLAIN + "; " + CHARSET + charset.name().toLowerCase();
+    }
+
+    static public byte[] toBytes(CharSequence passphrase) {
+        final ByteBuffer buffer = StandardCharsets.UTF_8.encode(CharBuffer.wrap(passphrase));
+        final byte[] bytes = new byte[buffer.remaining()];
+        buffer.get(bytes);
+        try {
+            return bytes;
+        } finally {
+            clear(buffer);
+        }
+    }
+
+    static public void clear(byte[] bytes) {
+        Arrays.fill(bytes, (byte) 0);
+    }
+
+    static public void clear(ByteBuffer buffer) {
+        final byte[] zeros = new byte[buffer.limit()];
+        Arrays.fill(zeros, (byte) 0);
+        buffer.rewind();
+        buffer.put(zeros);
+    }
+
+    public void clear() {
+        clear(value);
     }
 
     private void parseContentType(String contentType) {
