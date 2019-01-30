@@ -7,6 +7,7 @@ import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Collection;
 import org.freedesktop.secret.*;
 import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.interfaces.Prompt.Completed;
 import org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +21,6 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.*;
-import org.freedesktop.secret.interfaces.Prompt.Completed;
 
 public final class SimpleCollection {
 
@@ -33,8 +33,7 @@ public final class SimpleCollection {
     private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
 
     private Collection collection;
-    private List<ObjectPath> unlock = null;
-    private String password = null;
+    private Secret encrypted = null;
 
     /**
      * The default collection.
@@ -50,37 +49,45 @@ public final class SimpleCollection {
     /**
      * A user specified collection.
      *
-     * @param label     The label of the collection.
+     * @param label     The label of the collection
      *
-     *                  NOTE: The 'label' of a collection may differ from the 'id' of a collection, which get assigned
-     *                  by the Secret Service.
+     *                  <p>
+     *                      NOTE: The 'label' of a collection may differ from the 'id' of a collection. The 'id' is
+     *                      assigned by the Secret Service.
+     *                  <p>
      *
      *                  A SimpleCollection can't handle collections with the same label, but different ids correctly.
+     *
+     * @param password Password of the collection
      */
-    public SimpleCollection(String label, String password) {
+    public SimpleCollection(String label, CharSequence password) {
         init();
 
         if (exists(label)) {
             ObjectPath path = getCollectionPath(label);
             this.collection = new Collection(path, service);
         } else {
-            Map<String, Variant> properties = Collection.createProperties(label);
             DBusPath path = null;
+            Map<String, Variant> properties = Collection.createProperties(label);
 
             if (password == null) {
                 Pair<ObjectPath, ObjectPath> response = service.createCollection(properties);
-                if (!response.a.getPath().equals("/")) {
+                if (!"/".equals(response.a.getPath())) {
                     path = response.a;
                 }
                 performPrompt(response.b);
             } else {
-                Secret encrypted = null;
                 try {
                     encrypted = encryption.encrypt(password);
-                } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+                    path = withoutPrompt.createWithMasterPassword(properties, encrypted);
+                } catch (NoSuchAlgorithmException |
+                        NoSuchPaddingException |
+                        InvalidAlgorithmParameterException |
+                        InvalidKeyException |
+                        BadPaddingException |
+                        IllegalBlockSizeException e) {
                     log.error(e.toString(), e.getCause());
                 }
-                path = withoutPrompt.createWithMasterPassword(properties, encrypted);
             }
 
             if (path == null) {
@@ -96,7 +103,6 @@ public final class SimpleCollection {
             this.collection = new Collection(path, service);
         }
 
-        this.password = password;
         unlock();
     }
 
@@ -110,7 +116,11 @@ public final class SimpleCollection {
             session = service.getSession();
             prompt = new Prompt(service);
             withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
-        } catch (DBusException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeySpecException | InvalidKeyException e) {
+        } catch (DBusException |
+                NoSuchAlgorithmException |
+                InvalidAlgorithmParameterException |
+                InvalidKeySpecException |
+                InvalidKeyException e) {
             log.error(e.toString(), e.getCause());
         }
     }
@@ -119,7 +129,7 @@ public final class SimpleCollection {
         List<ObjectPath> collections = service.getCollections();
 
         Map<ObjectPath, String> labels = new HashMap();
-        for (ObjectPath path: collections) {
+        for (ObjectPath path : collections) {
             Collection c = new Collection(path, service, null);
             labels.put(path, c.getLabel());
         }
@@ -136,7 +146,7 @@ public final class SimpleCollection {
         Map<ObjectPath, String> labels = getLabels();
 
         ObjectPath path = null;
-        for (Map.Entry<ObjectPath, String> entry: labels.entrySet()) {
+        for (Map.Entry<ObjectPath, String> entry : labels.entrySet()) {
             ObjectPath p = entry.getKey();
             String l = entry.getValue();
             if (l.equals(label)) {
@@ -163,32 +173,22 @@ public final class SimpleCollection {
     }
 
     private void unlock() {
-        if (unlock == null) {
-            unlock = Arrays.asList(collection.getPath());
-        }
-        log.info("locked: " + collection.isLocked());
         if (collection.isLocked()) {
-            if (password == null) {
-                Pair<List<ObjectPath>, ObjectPath> response = service.unlock(unlock);
+            if (encrypted == null) {
+                Pair<List<ObjectPath>, ObjectPath> response = service.unlock(Arrays.asList(collection.getPath()));
                 performPrompt(response.b);
             } else {
-                Secret encrypted = null;
-                try {
-                    encrypted = encryption.encrypt(password);
-                } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
-                    log.error(e.toString(), e.getCause());
-                }
                 withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
             }
         }
     }
 
-    private Item pathToItem(DBusPath path) {
-        return new Item(Static.Convert.toObjectPath(path.getPath()), service);
+    private Item getItem(String path) {
+        return new Item(Static.Convert.toObjectPath(path), service);
     }
 
     private void getUserPermission() {
-        if(isDefault()) {
+        if (isDefault()) {
             List<ObjectPath> lockable = Arrays.asList(collection.getPath());
             service.lock(lockable);
             try {
@@ -205,9 +205,20 @@ public final class SimpleCollection {
     }
 
     /**
+     * clear the passphrase of the collection.
+     */
+    public void clear() {
+        if (encrypted != null) {
+            encrypted.clear();
+        }
+    }
+
+    /**
      * Delete this collection.
      */
     public void delete() throws AccessControlException {
+        clear();
+
         if (!isDefault()) {
             ObjectPath promptPath = collection.delete();
             performPrompt(promptPath);
@@ -216,7 +227,18 @@ public final class SimpleCollection {
         }
     }
 
-    public DBusPath createPassword(String label, String password, Map<String, String> attributes) throws IllegalArgumentException {
+    /**
+     * Creates an item with the provided properties in this collection.
+     *
+     * @param label         The displayable label of the new item
+     * @param password      The password of the new item
+     * @param attributes    The attributes of the new item
+     *
+     * @return DBus object path
+     *
+     * @throws IllegalArgumentException
+     */
+    public String createPassword(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
         if (password == null) {
             throw new IllegalArgumentException("The password may not be null.");
@@ -228,9 +250,9 @@ public final class SimpleCollection {
         DBusPath item = null;
         try {
             unlock();
-            Map<String, Variant> properties = Item.createProperties(label, attributes);
-            Secret secret = encryption.encrypt(password);
-            Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
+            final Map<String, Variant> properties = Item.createProperties(label, attributes);
+            final Secret secret = encryption.encrypt(password);
+            final Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
             performPrompt(response.b);
             item = response.a;
             if ("/".equals(item.getPath())) {
@@ -240,20 +262,45 @@ public final class SimpleCollection {
                     item = ic.item;
                 }
             }
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException  e) {
+        } catch (NoSuchAlgorithmException |
+                NoSuchPaddingException |
+                InvalidAlgorithmParameterException |
+                InvalidKeyException |
+                BadPaddingException |
+                IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
         }
 
-        return item;
+        return item.getPath();
     }
 
-    public DBusPath createPassword(String label, String password) throws IllegalArgumentException {
+    /**
+     * Creates an item with the provided properties in this collection.
+     *
+     * @param label         The displayable label of the new item
+     * @param password      The password of the new item
+     *
+     * @return DBus object path
+     *
+     * @throws IllegalArgumentException
+     */
+    public String createPassword(String label, String password) throws IllegalArgumentException {
         return createPassword(label, password, null);
     }
 
-    public void updatePassword(DBusPath object, String label, String password, Map<String, String> attributes) throws IllegalArgumentException {
+    /**
+     * Updates an item with the provided properties.
+     *
+     * @param objectPath    The DBus object path of the item
+     * @param label         The displayable label of the new item
+     * @param password      The password of the new item
+     * @param attributes    The attributes of the new item
+     *
+     * @throws IllegalArgumentException
+     */
+    public void updatePassword(String objectPath, String label, String password, Map<String, String> attributes) throws IllegalArgumentException {
 
-        if (object == null) {
+        if (objectPath == null) {
             throw new IllegalArgumentException("The object path of the item may not be null.");
         }
         if (password == null) {
@@ -265,7 +312,7 @@ public final class SimpleCollection {
 
         try {
             unlock();
-            Item item = pathToItem(object);
+            Item item = getItem(objectPath);
             item.setLabel(label);
             if (attributes == null) {
                 item.setAttributes(Collections.emptyMap());
@@ -279,16 +326,44 @@ public final class SimpleCollection {
         }
     }
 
-    public Item getItem(DBusPath object) {
+    /**
+     * Get the displayable label of an item.
+     *
+     * @param objectPath    The DBus object path of the item
+     *
+     * @return
+     */
+    public String getLabel(String objectPath) {
         unlock();
-        return pathToItem(object);
+        return getItem(objectPath).getLabel();
     }
 
-    public String getPassword(DBusPath object) {
+    /**
+     * Get the user specified attributes of an item.
+     *
+     * NOTE: <p>The attributes can contain an additional 'xdg:schema' key-value pair.</p>
+     *
+     * @param objectPath    The DBus object path of the item
+     *
+     * @return item attributes
+     */
+    public Map<String, String> getAttributes(String objectPath) {
         unlock();
-        Item item = pathToItem(object);
-        Secret secret = item.getSecret(session.getPath());
-        String decrypted = null;
+        return getItem(objectPath).getAttributes();
+    }
+
+    /**
+     * Get the secret of the item.
+     *
+     * @param objectPath    The DBus object path of the item
+     *
+     * @return plain bytes
+     */
+    public byte[] getPassword(String objectPath) {
+        unlock();
+        final Item item = getItem(objectPath);
+        final Secret secret = item.getSecret(session.getPath());
+        byte[] decrypted = null;
         try {
             decrypted = encryption.decrypt(secret);
         } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
@@ -297,27 +372,48 @@ public final class SimpleCollection {
         return decrypted;
     }
 
-    public Map<DBusPath, String> getPasswords() {
+    /**
+     * Get the secrets from this collection.
+     *
+     * NOTE: <p>Retrieving all passwords form a collection requires permission.</p>
+     *
+     * @return Mapping of DBus object paths and plain bytes
+     */
+    public Map<String, byte[]> getPasswords() {
         getUserPermission();
 
         List<ObjectPath> items = collection.getItems();
-        Map<DBusPath, String> passwords = new HashMap();
+        Map<String, byte[]> passwords = new HashMap();
         for (ObjectPath item : items) {
-            passwords.put(item, getPassword(item));
+            passwords.put(item.getPath(), getPassword(item.getPath()));
         }
         return passwords;
     }
 
-    public void deletePassword(DBusPath object) {
+    /**
+     * Delete an item from this collection.
+     *
+     * NOTE: <p>Deleting passwords form a collection requires permission.</p>
+     *
+     * @param objectPath    The DBus object path of the item
+     */
+    public void deletePassword(String objectPath) {
         getUserPermission();
 
-        Item item = pathToItem(object);
+        Item item = getItem(objectPath);
         ObjectPath promptPath = item.delete();
         performPrompt(promptPath);
     }
 
-    public void deletePasswords(List<DBusPath> objects) {
-        for (DBusPath item : objects) {
+    /**
+     * Delete specified items from this collection.
+     *
+     * NOTE: <p>Deleting passwords form a collection requires permission.</p>
+     *
+     * @param objectPaths   The DBus object paths of the items
+     */
+    public void deletePasswords(List<String> objectPaths) {
+        for (String item : objectPaths) {
             deletePassword(item);
         }
     }

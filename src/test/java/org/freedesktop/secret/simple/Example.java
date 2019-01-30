@@ -1,8 +1,7 @@
 package org.freedesktop.secret.simple;
 
-import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.secret.interfaces.Item;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -15,24 +14,26 @@ public class Example {
     @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
     public void createPasswordInDefaultCollection() {
         SimpleCollection collection = new SimpleCollection();
-        DBusPath itemID = collection.createPassword("My Item", "secret");
-        String actual = collection.getPassword(itemID);
-        assertEquals("secret", actual);
+        String item = collection.createPassword("My Item", "secret");
+        byte[] actual = collection.getPassword(item);
+        assertEquals("secret", new String(actual));
+        assertEquals("My Item", collection.getLabel(item));
 
         // delete with user's permission trough a prompt, as password is unknown.
-        collection.deletePassword(itemID);
+        collection.deletePassword(item);
     }
 
     @Test
     @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxxx').")
     public void createPasswordInNonDefaultCollection() {
         SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
-        DBusPath itemID = collection.createPassword("My Item", "secret");
-        String actual = collection.getPassword(itemID);
-        assertEquals("secret", actual);
+        String item = collection.createPassword("My Item", "secret");
+        byte[] actual = collection.getPassword(item);
+        assertEquals("secret", new String(actual));
+        assertEquals("My Item", collection.getLabel(item));
 
         // delete without prompting, as collection's password is known.
-        collection.deletePassword(itemID);
+        collection.deletePassword(item);
         collection.delete();
     }
 
@@ -44,14 +45,15 @@ public class Example {
         Map<String, String> attributes = new HashMap();
         attributes.put("uuid", "42");
 
-        DBusPath itemID = collection.createPassword("My Item", "secret", attributes);
-        String actual = collection.getPassword(itemID);
-        assertEquals("secret", actual);
-        Item item = collection.getItem(itemID);
-        assertEquals("42", item.getAttributes().get("uuid"));
+        String item = collection.createPassword("My Item", "secret", attributes);
+        byte[] actual = collection.getPassword(item);
+        assertEquals("secret", new String(actual));
+        assertEquals("My Item", collection.getLabel(item));
+        assertEquals("42", collection.getAttributes(item).get("uuid"));
 
         // delete without prompting, as collection's password is known.
-        collection.deletePassword(itemID);
+        collection.deletePassword(item);
         collection.delete();
     }
+
 }

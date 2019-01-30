@@ -1,7 +1,5 @@
 package org.freedesktop.secret.simple;
 
-import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.secret.interfaces.Item;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -39,33 +37,39 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    public void createPassword() {
-        // before all
+    public void createPasswordWithoutAttributes() {
+        // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
-        DBusPath itemID;
+        String item = collection.createPassword("item", "secret");
+        assertEquals("item", collection.getLabel(item));
+        assertEquals("secret", new String(collection.getPassword(item)));
+        assertEquals(Collections.emptyMap(), collection.getAttributes(item));
 
-        // 1. create and get password
-        itemID = collection.createPassword("item", "secret");
-        String actual = collection.getPassword(itemID);
-        assertEquals("secret", actual);
-        Item item = collection.getItem(itemID);
-        assertEquals(Collections.emptyMap(), item.getAttributes());
-        // after 1.
-        collection.deletePassword(itemID);
+        // after
+        collection.deletePassword(item);
+        collection.delete();
+    }
 
-        // 2. create and get attributes
+    @Test
+    public void createPasswordWithAttributes() {
+        // before
+        SimpleCollection collection = new SimpleCollection("test", "test");
+
         Map<String, String> attributes = new HashMap();
-        String uuid = getRandomHexString(32);
-        attributes.put("uuid", uuid);
-        itemID = collection.createPassword("item", "secret", attributes);
-        item = collection.getItem(itemID);
-        Map<String, String> actualAttributes = item.getAttributes();
-        assertEquals(attributes, actualAttributes);
-        // after 2.
-        collection.deletePassword(itemID);
+        attributes.put("uuid", getRandomHexString(32));
 
-        // after all
+        String item = collection.createPassword("item", "secret", attributes);
+        assertEquals("item", collection.getLabel(item));
+        assertEquals("secret", new String(collection.getPassword(item)));
+        Map<String, String> actualAttributes = collection.getAttributes(item);
+        assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
+        if (actualAttributes.containsKey("xdg:schema")) {
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+        }
+
+        // after
+        collection.deletePassword(item);
         collection.delete();
     }
 
@@ -78,51 +82,58 @@ public class SimpleCollectionTest {
         // create password
         attributes.put("uuid", getRandomHexString(32));
         log.info("attributes: " + attributes);
-        DBusPath itemID = collection.createPassword("item", "secret", attributes);
-        assertEquals("secret", collection.getPassword(itemID));
-        Item item = collection.getItem(itemID);
-        assertEquals("item", item.getLabel());
-        assertEquals(attributes.get("uuid"), item.getAttributes().get("uuid"));
+
+        String item = collection.createPassword("item", "secret", attributes);
+        assertEquals("item", collection.getLabel(item));
+        assertEquals("secret", new String(collection.getPassword(item)));
+        Map<String, String> actualAttributes = collection.getAttributes(item);
+        assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
+        if (actualAttributes.containsKey("xdg:schema")) {
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+        }
 
         // update password
         attributes.put("uuid", getRandomHexString(32));
         log.info("attributes: " + attributes);
-        collection.updatePassword(itemID, "updated item", "updated secret", attributes);
-        assertEquals("updated secret", collection.getPassword(itemID));
-        item = collection.getItem(itemID);
-        assertEquals("updated item", item.getLabel());
-        assertEquals(attributes.get("uuid"), item.getAttributes().get("uuid"));
+        collection.updatePassword(item, "updated item", "updated secret", attributes);
+        assertEquals("updated item", collection.getLabel(item));
+        assertEquals("updated secret", new String(collection.getPassword(item)));
+        actualAttributes = collection.getAttributes(item);
+        assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
+        if (actualAttributes.containsKey("xdg:schema")) {
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+        }
 
         // after
         collection.delete();
     }
 
     @Test
-    public void getPassword() {
+    public void getPasswordFromDefaultCollection() {
         // before
         SimpleCollection collection = new SimpleCollection();
-        DBusPath itemID = collection.createPassword("item", "secret");
+        String item = collection.createPassword("item", "secret");
 
         // test
-        String password = collection.getPassword(itemID);
-        assertEquals("secret", password);
+        byte[] password = collection.getPassword(item);
+        assertEquals("secret", new String(password));
 
         // after
-        collection.deletePassword(itemID);
+        collection.deletePassword(item);
     }
 
     @Test
     public void getPasswordFromNonDefaultCollection() {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
+        String itemID = collection.createPassword("item", "secret");
 
         // test
-        DBusPath item = collection.createPassword("item", "secret");
-        String password = collection.getPassword(item);
-        assertEquals("secret", password);
+        byte[] password = collection.getPassword(itemID);
+        assertEquals("secret", new String(password));
 
         // after
-        collection.deletePassword(item);
+        collection.deletePassword(itemID);
         collection.delete();
     }
 
@@ -132,7 +143,7 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
             // only with user permission
-            Map<DBusPath, String> passwords = collection.getPasswords();
+            Map<String, byte[]> passwords = collection.getPasswords();
             assertNotNull(passwords);
         });
     }
@@ -140,7 +151,7 @@ public class SimpleCollectionTest {
     @Test
     public void deletePassword() {
         SimpleCollection collection = new SimpleCollection();
-        DBusPath item = collection.createPassword("item", "secret");
+        String item = collection.createPassword("item", "secret");
         assertDoesNotThrow(() -> {
             // only with user permission
             collection.deletePassword(item);
@@ -153,7 +164,7 @@ public class SimpleCollectionTest {
     @Test
     public void deletePasswords() {
         SimpleCollection collection = new SimpleCollection("test", "test");
-        DBusPath item = collection.createPassword("item", "secret");
+        String item = collection.createPassword("item", "secret");
         assertDoesNotThrow(() -> {
             collection.deletePasswords(Arrays.asList(item));
         });

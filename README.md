@@ -19,8 +19,8 @@ The library provides a simplified API, which sends only transport encrypted secr
 [Transport Encryption Example](src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)
 
 ```java
-import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.secret.interfaces.Item;
+package org.freedesktop.secret.simple;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,51 +33,54 @@ public class Example {
 
     @Test
     @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
-    void createPasswordInDefaultCollection() {
+    public void createPasswordInDefaultCollection() {
         SimpleCollection collection = new SimpleCollection();
-        DBusPath itemID = collection.createPassword("My Item", "secret");
-        String actual = collection.getPassword(itemID);
-        assertEquals("secret", actual);
+        String item = collection.createPassword("My Item", "secret");
+        byte[] actual = collection.getPassword(item);
+        assertEquals("secret", new String(actual));
+        assertEquals("My Item", collection.getLabel(item));
 
         // delete with user's permission trough a prompt, as password is unknown.
-        collection.deletePassword(itemID);
+        collection.deletePassword(item);
     }
 
     @Test
     @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxxx').")
-    void createPasswordInNonDefaultCollection() {
+    public void createPasswordInNonDefaultCollection() {
         SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
-        DBusPath itemID = collection.createPassword("My Item", "secret");
-        String actual = collection.getPassword(itemID);
-        assertEquals("secret", actual);
+        String item = collection.createPassword("My Item", "secret");
+        byte[] actual = collection.getPassword(item);
+        assertEquals("secret", new String(actual));
+        assertEquals("My Item", collection.getLabel(item));
 
         // delete without prompting, as collection's password is known.
-        collection.deletePassword(itemID);
+        collection.deletePassword(item);
         collection.delete();
     }
 
     @Test
     @DisplayName("Create a password with additional attributes.")
-    void createPasswordWithAttributes() {
+    public void createPasswordWithAttributes() {
         SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
 
         Map<String, String> attributes = new HashMap();
         attributes.put("uuid", "42");
 
-        DBusPath itemID = collection.createPassword("My Item", "secret", attributes);
-        String actual = collection.getPassword(itemID);
-        assertEquals("secret", actual);
-        Item item = collection.getItem(itemID);
-        assertEquals("42", item.getAttributes().get("uuid"));
+        String item = collection.createPassword("My Item", "secret", attributes);
+        byte[] actual = collection.getPassword(item);
+        assertEquals("secret", new String(actual));
+        assertEquals("My Item", collection.getLabel(item));
+        assertEquals("42", collection.getAttributes(item).get("uuid"));
 
         // delete without prompting, as collection's password is known.
-        collection.deletePassword(itemID);
+        collection.deletePassword(item);
         collection.delete();
     }
+    
 }
 ```
 
-The low level API implements gives access to all defined Methods, Properties and Signals of the Secret Service 
+The low level API gives access to all defined Methods, Properties and Signals of the Secret Service 
 interface:
   * [Service](src/main/java/org/freedesktop/secret/Service.java)
   * [Collection](src/main/java/org/freedesktop/secret/Collection.java)
@@ -96,6 +99,6 @@ For examples on API usage checkout the tests:
 
 ### CVE-2018-19358 (Vulnerability)
 
-There is a current investigation on the behaviour on the GNOME Keyring:
+There is a current investigation on the behaviour of the Secret Service API:
   * [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)
   * [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179)

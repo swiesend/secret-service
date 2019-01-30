@@ -28,7 +28,7 @@ public class TransportEncryption {
     private PrivateKey privateKey = null;
     private SecretKey sessionKey = null;
 
-    private BigInteger yb = null;
+    private byte[] yb = null;
 
     public static final int PRIVATE_VALUE_BITS = 1024;
     public static final int AES_BITS = 128;
@@ -79,8 +79,7 @@ public class TransportEncryption {
                 Static.Algorithm.DH_IETF_1024_SHA_256_AES_128_CBC_PKCS_7, new Variant(ya.toByteArray()));
 
         // transform peer's raw Y to a public key
-        byte[] result = osResponse.a.getValue();
-        yb = fromBinary(result);
+        yb = osResponse.a.getValue();
     }
 
     public void generateSessionKey() throws NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
@@ -88,7 +87,7 @@ public class TransportEncryption {
             throw new IllegalStateException("Missing peer public key. Call openSession() first.");
         }
 
-        DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(yb, dhParameters.getP(), dhParameters.getG());
+        DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(fromBinary(yb), dhParameters.getP(), dhParameters.getG());
         KeyFactory keyFactory = KeyFactory.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
         DHPublicKey peerPublicKey = (DHPublicKey) keyFactory.generatePublic(dhPublicKeySpec);
 
@@ -105,15 +104,20 @@ public class TransportEncryption {
         sessionKey = new SecretKeySpec(keyingMaterial, Static.Algorithm.AES);
     }
 
-
-    public Secret encrypt(String plain) throws NoSuchAlgorithmException,
+    public Secret encrypt(CharSequence plain) throws NoSuchAlgorithmException,
             NoSuchPaddingException,
             InvalidAlgorithmParameterException,
             InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
-        return encrypt(plain, StandardCharsets.UTF_8);
+
+        final byte[] bytes = Secret.toBytes(plain);
+        try {
+            return encrypt(bytes, StandardCharsets.UTF_8);
+        } finally {
+            Secret.clear(bytes);
+        }
     }
 
-    public Secret encrypt(String plain, Charset charset) throws NoSuchAlgorithmException,
+    public Secret encrypt(byte[] plain, Charset charset) throws NoSuchAlgorithmException,
             NoSuchPaddingException,
             InvalidAlgorithmParameterException,
             InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
@@ -126,21 +130,20 @@ public class TransportEncryption {
         }
 
         // secret.parameter - 16 byte AES initialization vector
-        byte[] salt = new byte[toBytes(AES_BITS)];
+        final byte[] salt = new byte[toBytes(AES_BITS)];
         SecureRandom random = SecureRandom.getInstance(Static.Algorithm.SHA1_PRNG);
         random.nextBytes(salt);
         IvParameterSpec ivSpec = new IvParameterSpec(salt);
 
         Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
         cipher.init(Cipher.ENCRYPT_MODE, sessionKey, ivSpec);
-        byte[] encrypted = cipher.doFinal(plain.getBytes());
 
         String contentType = Secret.createContentType(charset);
 
-        return new Secret(service.getSession().getPath(), ivSpec.getIV(), encrypted, contentType);
+        return new Secret(service.getSession().getPath(), ivSpec.getIV(), cipher.doFinal(plain), contentType);
     }
 
-    public String decrypt(Secret secret) throws NoSuchPaddingException,
+    public byte[] decrypt(Secret secret) throws NoSuchPaddingException,
             NoSuchAlgorithmException,
             InvalidAlgorithmParameterException,
             InvalidKeyException,
@@ -152,13 +155,9 @@ public class TransportEncryption {
         }
 
         IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
-        byte[] encrypted = secret.getSecretValue();
-
         Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
         cipher.init(Cipher.DECRYPT_MODE, sessionKey, ivSpec);
-        byte[] decrypted = cipher.doFinal(encrypted);
-
-        return new String(decrypted, secret.getCharset());
+        return cipher.doFinal(secret.getSecretValue());
     }
 
     public Service getService() {
