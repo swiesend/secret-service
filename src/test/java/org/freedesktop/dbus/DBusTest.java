@@ -15,15 +15,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class DBusTest {
 
-    private Logger log = LoggerFactory.getLogger(getClass());
-    private DBusConnection connection = null;
+    private static final Logger log = LoggerFactory.getLogger(DBusTest.class);
 
     @Test
     @Disabled
     public void openSession() throws DBusException, InterruptedException {
         log.info("start");
 
-        connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+        DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
         assertNotNull(connection);
         log.info(Arrays.toString(connection.getNames()));
 
