@@ -36,7 +36,7 @@ public class Example {
     public void createPasswordInDefaultCollection() {
         SimpleCollection collection = new SimpleCollection();
         String item = collection.createPassword("My Item", "secret");
-        byte[] actual = collection.getPassword(item);
+        char[] actual = collection.getPassword(item);
         assertEquals("secret", new String(actual));
         assertEquals("My Item", collection.getLabel(item));
 
@@ -49,7 +49,7 @@ public class Example {
     public void createPasswordInNonDefaultCollection() {
         SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
         String item = collection.createPassword("My Item", "secret");
-        byte[] actual = collection.getPassword(item);
+        char[] actual = collection.getPassword(item);
         assertEquals("secret", new String(actual));
         assertEquals("My Item", collection.getLabel(item));
 
@@ -67,7 +67,7 @@ public class Example {
         attributes.put("uuid", "42");
 
         String item = collection.createPassword("My Item", "secret", attributes);
-        byte[] actual = collection.getPassword(item);
+        char[] actual = collection.getPassword(item);
         assertEquals("secret", new String(actual));
         assertEquals("My Item", collection.getLabel(item));
         assertEquals("42", collection.getAttributes(item).get("uuid"));
@@ -76,8 +76,8 @@ public class Example {
         collection.deletePassword(item);
         collection.delete();
     }
-    
 }
+
 ```
 
 The low level API gives access to all defined Methods, Properties and Signals of the Secret Service 
