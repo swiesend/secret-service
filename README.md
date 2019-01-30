@@ -82,23 +82,26 @@ public class Example {
 
 The low level API gives access to all defined Methods, Properties and Signals of the Secret Service 
 interface:
-  * [Service](src/main/java/org/freedesktop/secret/Service.java)
-  * [Collection](src/main/java/org/freedesktop/secret/Collection.java)
-  * [Item](src/main/java/org/freedesktop/secret/Item.java)
-  * [Session](src/main/java/org/freedesktop/secret/Session.java)
-  * [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
+
+* [Service](src/main/java/org/freedesktop/secret/Service.java)
+* [Collection](src/main/java/org/freedesktop/secret/Collection.java)
+* [Item](src/main/java/org/freedesktop/secret/Item.java)
+* [Session](src/main/java/org/freedesktop/secret/Session.java)
+* [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
 
 For examples on API usage checkout the tests:
-  * [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
-  * [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
-  * [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
-  * [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
-  * [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
+
+* [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
+* [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
+* [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
+* [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
+* [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
 
 ## Security Issues
 
 ### CVE-2018-19358 (Vulnerability)
 
 There is a current investigation on the behaviour of the Secret Service API:
-  * [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)
-  * [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179)
+
+* [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)
+* [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179)
