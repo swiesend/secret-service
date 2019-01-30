@@ -284,7 +284,7 @@ public final class SimpleCollection {
      *
      * @throws IllegalArgumentException
      */
-    public String createPassword(String label, String password) throws IllegalArgumentException {
+    public String createPassword(String label, CharSequence password) throws IllegalArgumentException {
         return createPassword(label, password, null);
     }
 
@@ -298,7 +298,7 @@ public final class SimpleCollection {
      *
      * @throws IllegalArgumentException
      */
-    public void updatePassword(String objectPath, String label, String password, Map<String, String> attributes) throws IllegalArgumentException {
+    public void updatePassword(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
         if (objectPath == null) {
             throw new IllegalArgumentException("The object path of the item may not be null.");
