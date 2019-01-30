@@ -130,7 +130,7 @@ public class SecretTest {
     }
 
     @Test
-    void toBytes() {
+    public void toBytes() {
         String plaintext = "sécrèt";
         byte[] encoded = Secret.toBytes(plaintext);
         assertEquals(plaintext, new String(encoded));
@@ -141,14 +141,14 @@ public class SecretTest {
     }
 
     @Test
-    void toChars() {
+    public void toChars() {
         String plaintext = "sécrèt";
         char[] decoded = Secret.toChars(plaintext.getBytes());
         assertEquals(plaintext, new String(decoded));
     }
 
     @Test
-    void clear() {
+    public void clear() {
         Secret secret;
         secret = new Secret(session, parameters.getBytes(), value.getBytes());
         secret.clear();
