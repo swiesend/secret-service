@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.security.auth.DestroyFailedException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -36,7 +37,7 @@ public class IntegrationTest {
             NoSuchPaddingException,
             InvalidKeyException,
             BadPaddingException,
-            IllegalBlockSizeException, InterruptedException, InvalidKeySpecException {
+            IllegalBlockSizeException, InterruptedException, InvalidKeySpecException, DestroyFailedException {
 
         TransportEncryption transportEncryption = new TransportEncryption();
         transportEncryption.initialize();
@@ -99,6 +100,8 @@ public class IntegrationTest {
         decrypted = transportEncryption.decrypt(actual);
         log.info(label("  decrypted remote secret", new String(decrypted)));
         assertEquals(plain, new String(decrypted));
-    }
 
+        // finally close and clear the private key
+        transportEncryption.close();
+    }
 }

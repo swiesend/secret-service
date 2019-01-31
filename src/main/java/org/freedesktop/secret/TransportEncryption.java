@@ -12,26 +12,25 @@ import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.DHPublicKeySpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import javax.security.auth.DestroyFailedException;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 
-public class TransportEncryption {
+public class TransportEncryption implements AutoCloseable {
+
+    public static final int PRIVATE_VALUE_BITS = 1024;
+    public static final int AES_BITS = 128;
 
     private Service service;
-
     private DHParameterSpec dhParameters = null;
     private KeyPair keypair = null;
     private PublicKey publicKey = null;
     private PrivateKey privateKey = null;
     private SecretKey sessionKey = null;
-
     private byte[] yb = null;
-
-    public static final int PRIVATE_VALUE_BITS = 1024;
-    public static final int AES_BITS = 128;
 
     public TransportEncryption() throws DBusException {
         DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
@@ -104,10 +103,8 @@ public class TransportEncryption {
         sessionKey = new SecretKeySpec(keyingMaterial, Static.Algorithm.AES);
     }
 
-    public Secret encrypt(CharSequence plain) throws NoSuchAlgorithmException,
-            NoSuchPaddingException,
-            InvalidAlgorithmParameterException,
-            InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+    public Secret encrypt(CharSequence plain) throws NoSuchAlgorithmException, NoSuchPaddingException,
+            InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
 
         final byte[] bytes = Secret.toBytes(plain);
         try {
@@ -117,10 +114,8 @@ public class TransportEncryption {
         }
     }
 
-    public Secret encrypt(byte[] plain, Charset charset) throws NoSuchAlgorithmException,
-            NoSuchPaddingException,
-            InvalidAlgorithmParameterException,
-            InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+    public Secret encrypt(byte[] plain, Charset charset) throws NoSuchAlgorithmException, NoSuchPaddingException,
+            InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
 
         if (service == null) {
             throw new IllegalStateException("Missing session. Call openSession() first.");
@@ -167,5 +162,14 @@ public class TransportEncryption {
 
     public Service getService() {
         return service;
+    }
+
+    public void clear() throws DestroyFailedException {
+        privateKey.destroy();
+    }
+
+    @Override
+    public void close() throws DestroyFailedException {
+        clear();
     }
 }

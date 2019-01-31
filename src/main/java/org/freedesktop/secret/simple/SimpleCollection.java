@@ -22,7 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.*;
 
-public final class SimpleCollection {
+public final class SimpleCollection implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
 
@@ -187,7 +187,7 @@ public final class SimpleCollection {
         return new Item(Static.Convert.toObjectPath(path), service);
     }
 
-    private void getUserPermission() {
+    private void getUserPermission() throws AccessControlException {
         if (isDefault()) {
             List<ObjectPath> lockable = Arrays.asList(collection.getPath());
             service.lock(lockable);
@@ -211,6 +211,11 @@ public final class SimpleCollection {
         if (encrypted != null) {
             encrypted.clear();
         }
+    }
+
+    @Override
+    public void close() {
+        clear();
     }
 
     /**
@@ -247,13 +252,12 @@ public final class SimpleCollection {
             throw new IllegalArgumentException("The label of the password may not be null.");
         }
 
+        unlock();
+
         DBusPath item = null;
-        Secret secret = null;
-        try {
-            unlock();
-            final Map<String, Variant> properties = Item.createProperties(label, attributes);
-            secret = encryption.encrypt(password);
-            final Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
+        final Map<String, Variant> properties = Item.createProperties(label, attributes);
+        try (final Secret secret = encryption.encrypt(password)) {
+            Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
             performPrompt(response.b);
             item = response.a;
             if ("/".equals(item.getPath())) {
@@ -270,10 +274,6 @@ public final class SimpleCollection {
                 BadPaddingException |
                 IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
-        } finally {
-            if (secret != null) {
-                secret.clear();
-            }
         }
 
         return item.getPath();
@@ -308,31 +308,28 @@ public final class SimpleCollection {
         if (objectPath == null) {
             throw new IllegalArgumentException("The object path of the item may not be null.");
         }
-        if (password == null) {
-            throw new IllegalArgumentException("The new password may not be null.");
-        }
-        if (label == null) {
-            throw new IllegalArgumentException("The new label of the item may not be null.");
+
+        unlock();
+
+        Item item = getItem(objectPath);
+
+        if (label != null) {
+            item.setLabel(label);
         }
 
-        Secret secret = null;
-        try {
-            unlock();
-            Item item = getItem(objectPath);
-            item.setLabel(label);
-            if (attributes == null) {
-                item.setAttributes(Collections.emptyMap());
-            } else {
-                item.setAttributes(attributes);
-            }
-            secret = encryption.encrypt(password);
+        if (attributes != null) {
+            item.setAttributes(attributes);
+        }
+
+        if (password != null) try (Secret secret = encryption.encrypt(password)) {
             item.setSecret(secret);
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+        } catch (NoSuchAlgorithmException |
+                NoSuchPaddingException |
+                InvalidAlgorithmParameterException |
+                InvalidKeyException |
+                BadPaddingException |
+                IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
-        } finally {
-            if (secret != null) {
-                secret.clear();
-            }
         }
     }
 
@@ -371,17 +368,19 @@ public final class SimpleCollection {
      */
     public char[] getPassword(String objectPath) {
         unlock();
+
         final Item item = getItem(objectPath);
-        final Secret secret = item.getSecret(session.getPath());
+
         char[] decrypted = null;
-        try {
+        try (final Secret secret = item.getSecret(session.getPath())) {
             decrypted = encryption.decrypt(secret);
-        } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+        } catch (NoSuchPaddingException |
+                NoSuchAlgorithmException |
+                InvalidAlgorithmParameterException |
+                InvalidKeyException |
+                BadPaddingException |
+                IllegalBlockSizeException e) {
             log.error(e.toString(), e.getCause());
-        } finally {
-            if (secret != null) {
-                secret.clear();
-            }
         }
         return decrypted;
     }
@@ -389,29 +388,31 @@ public final class SimpleCollection {
     /**
      * Get the secrets from this collection.
      *
-     * NOTE: <p>Retrieving all passwords form a collection requires permission.</p>
+     * NOTE: <p>Retrieving all passwords form a collection requires user permission.</p>
      *
      * @return Mapping of DBus object paths and plain chars
      */
-    public Map<String, char[]> getPasswords() {
+    public Map<String, char[]> getPasswords() throws AccessControlException {
         getUserPermission();
 
         List<ObjectPath> items = collection.getItems();
+
         Map<String, char[]> passwords = new HashMap();
         for (ObjectPath item : items) {
             passwords.put(item.getPath(), getPassword(item.getPath()));
         }
+
         return passwords;
     }
 
     /**
      * Delete an item from this collection.
      *
-     * NOTE: <p>Deleting passwords form a collection requires permission.</p>
+     * NOTE: <p>Deleting a password form a collection requires user permission.</p>
      *
      * @param objectPath    The DBus object path of the item
      */
-    public void deletePassword(String objectPath) {
+    public void deletePassword(String objectPath) throws AccessControlException {
         getUserPermission();
 
         Item item = getItem(objectPath);
@@ -422,11 +423,11 @@ public final class SimpleCollection {
     /**
      * Delete specified items from this collection.
      *
-     * NOTE: <p>Deleting passwords form a collection requires permission.</p>
+     * NOTE: <p>Deleting passwords form a collection requires user permission.</p>
      *
      * @param objectPaths   The DBus object paths of the items
      */
-    public void deletePasswords(List<String> objectPaths) {
+    public void deletePasswords(List<String> objectPaths) throws AccessControlException {
         for (String item : objectPaths) {
             deletePassword(item);
         }

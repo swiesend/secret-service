@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
-public final class Secret extends Struct {
+public final class Secret extends Struct implements AutoCloseable {
 
     @Position(0)
     private final ObjectPath session;
@@ -88,6 +88,26 @@ public final class Secret extends Struct {
         this.value = requireNonNull(value);
         this.contentType = createContentType(charset);
         parseContentType(this.contentType);
+    }
+
+    private void parseContentType(String contentType) {
+        String pattern = "[\\s\\\"\\;\\,]";
+        List<String> split = Arrays.asList(contentType.split(pattern));
+        List<String> filtered = split.stream().
+                filter(s -> !(s.isEmpty() || s.length() == 1)).
+                collect(Collectors.toList());
+
+        if (filtered.size() > 0) {
+            mimeType = filtered.get(0);
+        } else {
+            mimeType = TEXT_PLAIN;
+        }
+
+        if (filtered.size() == 2 && filtered.get(1).startsWith(CHARSET)) {
+            charset = Charset.forName(filtered.get(1).substring(CHARSET.length()).toUpperCase());
+        } else {
+            charset = null;
+        }
     }
 
     static public String createContentType(String mimeType, Charset charset) {
@@ -164,24 +184,9 @@ public final class Secret extends Struct {
         clear(value);
     }
 
-    private void parseContentType(String contentType) {
-        String pattern = "[\\s\\\"\\;\\,]";
-        List<String> split = Arrays.asList(contentType.split(pattern));
-        List<String> filtered = split.stream().
-                filter(s -> !(s.isEmpty() || s.length() == 1)).
-                collect(Collectors.toList());
-
-        if (filtered.size() > 0) {
-            mimeType = filtered.get(0);
-        } else {
-            mimeType = TEXT_PLAIN;
-        }
-
-        if (filtered.size() == 2 && filtered.get(1).startsWith(CHARSET)) {
-            charset = Charset.forName(filtered.get(1).substring(CHARSET.length()).toUpperCase());
-        } else {
-            charset = null;
-        }
+    @Override
+    public void close() {
+        clear();
     }
 
     public ObjectPath getSession() {
