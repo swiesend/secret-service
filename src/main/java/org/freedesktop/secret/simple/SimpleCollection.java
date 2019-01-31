@@ -49,16 +49,16 @@ public final class SimpleCollection {
     /**
      * A user specified collection.
      *
-     * @param label     The label of the collection
+     * @param label     The displayable label of the collection
      *
      *                  <p>
      *                      NOTE: The 'label' of a collection may differ from the 'id' of a collection. The 'id' is
-     *                      assigned by the Secret Service.
+     *                      assigned by the Secret Service and used in the DBus object path of a collection or item.
      *                  <p>
      *
      *                  A SimpleCollection can't handle collections with the same label, but different ids correctly.
      *
-     * @param password Password of the collection
+     * @param password  Password of the collection
      */
     public SimpleCollection(String label, CharSequence password) {
         init();
