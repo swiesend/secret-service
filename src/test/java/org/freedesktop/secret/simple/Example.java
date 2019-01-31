@@ -19,40 +19,41 @@ public class Example {
         assertEquals("secret", new String(actual));
         assertEquals("My Item", collection.getLabel(item));
 
-        // delete with user's permission trough a prompt, as password is unknown.
+        // delete with a prompt, as the collection password is unknown.
         collection.deletePassword(item);
     }
 
     @Test
     @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxxx').")
     public void createPasswordInNonDefaultCollection() {
-        SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
-        String item = collection.createPassword("My Item", "secret");
-        char[] actual = collection.getPassword(item);
-        assertEquals("secret", new String(actual));
-        assertEquals("My Item", collection.getLabel(item));
+        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
+            String item = collection.createPassword("My Item", "secret");
+            char[] actual = collection.getPassword(item);
+            assertEquals("secret", new String(actual));
+            assertEquals("My Item", collection.getLabel(item));
 
-        // delete without prompting, as collection's password is known.
-        collection.deletePassword(item);
-        collection.delete();
+            // delete without prompting, as the collection password is known.
+            collection.deletePassword(item);
+            collection.delete();
+        } // clears the collection password afterwards
     }
 
     @Test
     @DisplayName("Create a password with additional attributes.")
     public void createPasswordWithAttributes() {
-        SimpleCollection collection = new SimpleCollection("My Collection", "super secret");
+        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
+            Map<String, String> attributes = new HashMap();
+            attributes.put("uuid", "42");
 
-        Map<String, String> attributes = new HashMap();
-        attributes.put("uuid", "42");
+            String item = collection.createPassword("My Item", "secret", attributes);
+            char[] actual = collection.getPassword(item);
+            assertEquals("secret", new String(actual));
+            assertEquals("My Item", collection.getLabel(item));
+            assertEquals("42", collection.getAttributes(item).get("uuid"));
 
-        String item = collection.createPassword("My Item", "secret", attributes);
-        char[] actual = collection.getPassword(item);
-        assertEquals("secret", new String(actual));
-        assertEquals("My Item", collection.getLabel(item));
-        assertEquals("42", collection.getAttributes(item).get("uuid"));
-
-        // delete without prompting, as collection's password is known.
-        collection.deletePassword(item);
-        collection.delete();
+            // delete without prompting, as the collection password is known.
+            collection.deletePassword(item);
+            collection.delete();
+        } // clears the collection password afterwards
     }
 }
