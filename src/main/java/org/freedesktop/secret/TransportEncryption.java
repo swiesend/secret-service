@@ -166,6 +166,7 @@ public class TransportEncryption implements AutoCloseable {
 
     public void clear() throws DestroyFailedException {
         privateKey.destroy();
+        sessionKey.destroy();
     }
 
     @Override
