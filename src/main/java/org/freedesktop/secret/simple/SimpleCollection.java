@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.security.auth.DestroyFailedException;
 import java.security.AccessControlException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -208,6 +209,15 @@ public final class SimpleCollection implements AutoCloseable {
      * clear the passphrase of the collection.
      */
     public void clear() {
+
+        if (encryption != null) {
+            try {
+                encryption.clear();
+            } catch (DestroyFailedException e) {
+                log.error(e.toString(), e.getCause());
+            }
+        }
+
         if (encrypted != null) {
             encrypted.clear();
         }
