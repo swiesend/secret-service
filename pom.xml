@@ -19,8 +19,6 @@
 
     <dependencies>
 
-        <!-- TODO: how to define logging dependency correclty/easy to use/extensible? -->
-
         <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java -->
         <dependency>
             <groupId>com.github.hypfvieh</groupId>
@@ -33,6 +31,14 @@
             <groupId>at.favre.lib</groupId>
             <artifactId>hkdf</artifactId>
             <version>1.0.1</version>
+        </dependency>
+
+        <!-- simple logging included at runtime -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>1.7.25</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
