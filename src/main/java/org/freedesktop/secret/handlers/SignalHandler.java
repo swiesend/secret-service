@@ -10,11 +10,12 @@ import org.freedesktop.secret.interfaces.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Callable;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 public class SignalHandler implements DBusSigHandler {
@@ -23,7 +24,7 @@ public class SignalHandler implements DBusSigHandler {
 
     private DBusConnection connection = null;
     private List<Class<? extends DBusSignal>> registered = new ArrayList();
-    private DBusSignal[] handled = new DBusSignal[100];
+    private DBusSignal[] handled = new DBusSignal[250];
     private int count = 0;
 
     private SignalHandler() {
@@ -146,8 +147,9 @@ public class SignalHandler implements DBusSigHandler {
 
     public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
         int init = getHandledSignals(s, path).size();
-        int await = init;
-        List<S> signals = null;
+
+        final Duration timeout = Duration.ofSeconds(30);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
 
         try {
             action.call();
@@ -155,19 +157,26 @@ public class SignalHandler implements DBusSigHandler {
             log.error(e.toString(), e.getCause());
         }
 
-        try {
+        final Future<S> handler = executor.submit((Callable) () -> {
+            int await = init;
+            List<S> signals = null;
             while (await == init) {
                 Thread.sleep(50L);
                 signals = getHandledSignals(s, path);
                 await = signals.size();
             }
-        } catch (InterruptedException e) {
+            return signals.get(0);
+        });
+
+        try {
+            return handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException | InterruptedException | ExecutionException e) {
+            handler.cancel(true);
             log.error(e.toString(), e.getCause());
+        } finally {
+            executor.shutdownNow();
         }
 
-        // TODO: remove log.info
-        log.debug("prompt: " + signals.get(0).getPath());
-
-        return signals.get(0);
+        return getLastHandledSignal(s);
     }
 }
