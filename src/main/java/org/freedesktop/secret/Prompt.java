@@ -1,10 +1,8 @@
 package org.freedesktop.secret;
 
-import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.secret.errors.NoSuchObject;
-import org.freedesktop.secret.handlers.SignalHandler;
 
 import java.util.Arrays;
 import java.util.List;
