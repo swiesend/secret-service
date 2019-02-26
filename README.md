@@ -34,14 +34,15 @@ public class Example {
     @Test
     @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
     public void createPasswordInDefaultCollection() {
-        SimpleCollection collection = new SimpleCollection();
-        String item = collection.createPassword("My Item", "secret");
-        char[] actual = collection.getPassword(item);
-        assertEquals("secret", new String(actual));
-        assertEquals("My Item", collection.getLabel(item));
+        try (SimpleCollection collection = new SimpleCollection()) {
+            String item = collection.createPassword("My Item", "secret");
+            char[] actual = collection.getPassword(item);
+            assertEquals("secret", new String(actual));
+            assertEquals("My Item", collection.getLabel(item));
 
-        // delete with a prompt, as the collection password is unknown.
-        collection.deletePassword(item);
+            // delete with a prompt, as the collection password is unknown.
+            collection.deletePassword(item);
+        } // clears the private key and session key afterwards
     }
 
     @Test
@@ -56,7 +57,7 @@ public class Example {
             // delete without prompting, as the collection password is known.
             collection.deletePassword(item);
             collection.delete();
-        } // clears the collection password afterwards
+        } // clears the collection's password, private key and session key afterwards
     }
 
     @Test
@@ -75,7 +76,7 @@ public class Example {
             // delete without prompting, as the collection password is known.
             collection.deletePassword(item);
             collection.delete();
-        } // clears the collection password afterwards
+        } // clears the collection's password, private key and session key afterwards
     }
 }
 ```
