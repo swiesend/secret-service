@@ -2,20 +2,21 @@
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/61897aae6b5842f8a35ec81ca02112e3)](https://www.codacy.com?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=swiesend/secret-service&amp;utm_campaign=Badge_Grade)
 
-A Java library to interact with the Secret Service API over the D-Bus.
+A Java library to interact with the Secret Service API over the D-Bus to access user keyrings.
 
 The library is conform to [version 0.2](https://specifications.freedesktop.org/secret-service/) of the `freedesktop.org`
-Secret Service API to access user keyrings.
+Secret Service API.
 
-The Secret Service is usually implemented by the GNOME Keyring (`gnome-keyring`) or the KDE Wallet Manager (`ksecretservice`).
+The Secret Service itself is usually implemented by the GNOME Keyring (`gnome-keyring`) or the KDE Wallet Manager (`ksecretservice`).
+This library can be seen as the equivalent to [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C library only for Java.
 
-@see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specifications/secret-storage-spec/)
+see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specifications/secret-storage-spec/)
 
 ## Example
 
 The library provides a simplified API, which sends only transport encrypted secrets over the D-Bus.
 
-@see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
+see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
 [Transport Encryption Example](src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)
 
 ```java
