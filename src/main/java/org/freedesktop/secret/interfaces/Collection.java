@@ -25,7 +25,7 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      */
     public static final String LABEL = "org.freedesktop.Secret.Collection.Label";
 
-    public Collection(DBusConnection connection, List<Class> signals,
+    public Collection(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                       String serviceName, String objectPath, String interfaceName) {
         super(connection, signals, serviceName, objectPath, interfaceName);
     }

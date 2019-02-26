@@ -19,7 +19,7 @@ import java.util.Map;
 @DBusInterfaceName(Static.Interfaces.SERVICE)
 public abstract class Service extends Messaging implements DBusInterface {
 
-    public Service(DBusConnection connection, List<Class> signals,
+    public Service(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                    String serviceName, String objectPath, String interfaceName) {
         super(connection, signals, serviceName, objectPath, interfaceName);
     }

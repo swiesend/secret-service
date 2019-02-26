@@ -16,7 +16,7 @@ import java.util.List;
 @DBusInterfaceName(Static.Interfaces.PROMT)
 public abstract class Prompt extends Messaging implements DBusInterface {
 
-    public Prompt(DBusConnection connection, List<Class> signals,
+    public Prompt(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                   String serviceName, String objectPath, String interfaceName) {
         super(connection, signals, serviceName, objectPath, interfaceName);
     }
@@ -72,16 +72,11 @@ public abstract class Prompt extends Messaging implements DBusInterface {
      * 
      * @see Completed
      */
-    abstract public void await(ObjectPath prompt) throws InterruptedException, NoSuchObject;
+    abstract public Completed await(ObjectPath prompt) throws InterruptedException, NoSuchObject;
 
     /**
      * Dismiss the prompt.
      */
     abstract public void dismiss();
-
-    /**
-     * @return the signal that was handled at last.
-     */
-    abstract public Completed getLastHandledSignal();
 
 }

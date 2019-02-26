@@ -1,14 +1,17 @@
 package org.freedesktop.secret;
 
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.handlers.SignalHandler;
 
 import java.util.Arrays;
 import java.util.List;
 
 public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
 
-    public static final List<Class> signals = Arrays.asList(Completed.class);
+    public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
 
     public Prompt(Service service) {
         super(service.getConnection(), signals,
@@ -39,14 +42,14 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
     }
 
     @Override
-    public void await(ObjectPath path) throws InterruptedException, NoSuchObject {
-        int init = sh.getCount();
-        int await = init;
-        prompt(path);
-        while (await == init) {
-            // wait until the user handles the prompt
-            Thread.sleep(200L);
-            await = sh.getCount();
+    public Completed await(ObjectPath path) {
+        if ("/".equals(path.getPath())) {
+            return sh.getLastHandledSignal(Completed.class);
+        } else {
+            return sh.await(Completed.class, path.getPath(), () -> {
+                prompt(path);
+                return null;
+            });
         }
     }
 
@@ -63,11 +66,6 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
     @Override
     public String getObjectPath() {
         return super.getObjectPath();
-    }
-
-    @Override
-    public Completed getLastHandledSignal() {
-        return (Completed) sh.getHandled()[0];
     }
 
 }

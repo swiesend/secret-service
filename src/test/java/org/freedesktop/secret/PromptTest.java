@@ -47,9 +47,8 @@ public class PromptTest {
         Pair<List<ObjectPath>, ObjectPath> unlocked = context.service.unlock(cs);
         log.info(unlocked.toString());
         ObjectPath prompt = unlocked.b;
-        context.prompt.await(prompt);
 
-        Prompt.Completed completed = context.prompt.getLastHandledSignal();
+        Prompt.Completed completed = context.prompt.await(prompt);
         assertNotNull(completed);
     }
 
@@ -68,7 +67,8 @@ public class PromptTest {
         context.prompt.dismiss();
         Thread.sleep(500L); // await signal
 
-        Prompt.Completed completed = context.prompt.getLastHandledSignal();
+        Prompt.Completed completed = context.service.getSignalHandler()
+                .getLastHandledSignal(Prompt.Completed.class, prompt.getPath());
         assertTrue(completed.dismissed);
     }
 

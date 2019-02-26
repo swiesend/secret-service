@@ -106,7 +106,7 @@ public class ServiceTest {
         }
 
         List<ObjectPath> after = context.service.getCollections();
-        DBusSignal[] handled = context.prompt.getSignalHandler().getHandled();
+        DBusSignal[] handled = context.prompt.getSignalHandler().getHandledSignals();
         Prompt.Completed completed = (Prompt.Completed) handled[0];
         if (completed.dismissed) {
             assertEquals(before.size(), after.size());
@@ -159,8 +159,7 @@ public class ServiceTest {
         unlocked = response.a;
         assertEquals(0, unlocked.size());
         prompt = response.b;
-        context.prompt.await(prompt);
-        completed = context.prompt.getLastHandledSignal();
+        completed = context.prompt.await(prompt);
         if (completed.dismissed) {
             assertTrue(context.collection.isLocked());
         } else {
@@ -185,8 +184,7 @@ public class ServiceTest {
         unlocked = response.a;
         assertEquals(0, unlocked.size());
         prompt = response.b;
-        context.prompt.await(prompt);
-        completed = context.prompt.getLastHandledSignal();
+        completed = context.prompt.await(prompt);
         if (completed.dismissed) {
             assertTrue(context.item.isLocked());
         } else {

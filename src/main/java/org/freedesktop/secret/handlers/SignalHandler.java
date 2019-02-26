@@ -10,49 +10,67 @@ import org.freedesktop.secret.interfaces.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 public class SignalHandler implements DBusSigHandler {
 
     private Logger log = LoggerFactory.getLogger(getClass());
 
-    private DBusConnection connection;
-    private List<Class> signals;
+    private DBusConnection connection = null;
+    private List<Class<? extends DBusSignal>> registered = new ArrayList();
     private DBusSignal[] handled = new DBusSignal[100];
     private int count = 0;
 
-    public SignalHandler(DBusConnection connection, List<Class> signals) {
-        this.connection = connection;
-        this.signals = signals;
+    private SignalHandler() {
+        Runtime.getRuntime().addShutdownHook(new Thread(() ->
+            disconnect()
+        ));
+    }
 
+    private static class SingletonHelper {
+        private static final SignalHandler INSTANCE = new SignalHandler();
+    }
+
+    public static SignalHandler getInstance() {
+        return SingletonHelper.INSTANCE;
+    }
+
+    public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals) {
+        if (this.connection == null) {
+            this.connection = connection;
+        }
         if (signals != null) {
             try {
                 for (Class sc : signals) {
-                    connection.addSigHandler(sc, this);
+                    if (!registered.contains(sc)) {
+                        connection.addSigHandler(sc, this);
+                        this.registered.add(sc);
+                    }
                 }
             } catch (DBusException e) {
                 log.error(e.toString(), e.getCause());
             }
-
-            Runtime.getRuntime().addShutdownHook(new Thread(() ->
-                    disconnect()
-            ));
         }
     }
 
     public void disconnect() {
-        try {
-            log.debug("remove signal handlers");
-            for (Class sc : signals) {
-                if (connection.isConnected()) {
-                    log.trace("remove signal handler: " + sc.getClass());
-                    connection.removeSigHandler(sc, this);
+        if (connection != null) {
+            try {
+                log.debug("remove signal handlers");
+                for (Class sc : registered) {
+                    if (connection.isConnected()) {
+                        log.trace("remove signal handler: " + sc.getName());
+                        connection.removeSigHandler(sc, this);
+                    }
                 }
+            } catch (DBusException e) {
+                log.error(e.toString(), e.getCause());
             }
-        } catch (DBusException e) {
-            log.error(e.toString(), e.getCause());
         }
     }
 
@@ -74,7 +92,7 @@ public class SignalHandler implements DBusSigHandler {
             log.info("Collection.ItemDeleted: " + ic.item);
         } else if (s instanceof Prompt.Completed) {
             Prompt.Completed c = (Prompt.Completed) s;
-            log.info("Prompt.Completed: dismissed: " + c.dismissed + ", result: " + c.result);
+            log.info("Prompt.Completed (" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
         } else if (s instanceof Service.CollectionCreated) {
             Service.CollectionCreated cc = (Service.CollectionCreated) s;
             log.info("Service.CollectionCreated: " + cc.collection);
@@ -85,12 +103,29 @@ public class SignalHandler implements DBusSigHandler {
             Service.CollectionDeleted cc = (Service.CollectionDeleted) s;
             log.info("Service.CollectionDeleted: " + cc.collection);
         } else {
-            log.warn("handled unknown signal: " + s.getClass().toString() + " {" + s.toString() + "}");
+            log.warn("Handled unknown signal: " + s.getClass().toString() + " {" + s.toString() + "}");
         }
     }
 
-    public DBusSignal[] getHandled() {
+    public DBusSignal[] getHandledSignals() {
         return handled;
+    }
+
+    public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s) {
+        return Arrays.stream(handled)
+            .filter(signal -> signal != null)
+            .filter(signal -> signal.getClass().equals(s))
+            .map(signal -> (S) signal)
+            .collect(Collectors.toList());
+    }
+
+    public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s, String path) {
+        return Arrays.stream(handled)
+            .filter(signal -> signal != null)
+            .filter(signal -> signal.getClass().equals(s))
+            .filter(signal -> signal.getPath().equals(path))
+            .map(signal -> (S) signal)
+            .collect(Collectors.toList());
     }
 
     public int getCount() {
@@ -101,4 +136,38 @@ public class SignalHandler implements DBusSigHandler {
         return handled[0];
     }
 
+    public <S extends DBusSignal> S getLastHandledSignal(Class<S> s) {
+        return getHandledSignals(s).get(0);
+    }
+
+    public <S extends DBusSignal> S getLastHandledSignal(Class<S> s, String path) {
+        return getHandledSignals(s, path).get(0);
+    }
+
+    public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
+        int init = getHandledSignals(s, path).size();
+        int await = init;
+        List<S> signals = null;
+
+        try {
+            action.call();
+        } catch (Exception e) {
+            log.error(e.toString(), e.getCause());
+        }
+
+        try {
+            while (await == init) {
+                Thread.sleep(50L);
+                signals = getHandledSignals(s, path);
+                await = signals.size();
+            }
+        } catch (InterruptedException e) {
+            log.error(e.toString(), e.getCause());
+        }
+
+        // TODO: remove log.info
+        log.debug("prompt: " + signals.get(0).getPath());
+
+        return signals.get(0);
+    }
 }

@@ -164,13 +164,21 @@ public class TransportEncryption implements AutoCloseable {
         return service;
     }
 
-    public void clear() throws DestroyFailedException {
-        privateKey.destroy();
-        sessionKey.destroy();
+    public void clear() {
+        try {
+            privateKey.destroy();
+        } catch (DestroyFailedException e) {
+            Secret.clear(privateKey.getEncoded());
+        }
+        try {
+            sessionKey.destroy();
+        } catch (DestroyFailedException e) {
+            Secret.clear(sessionKey.getEncoded());
+        }
     }
 
     @Override
-    public void close() throws DestroyFailedException {
+    public void close() {
         clear();
     }
 }

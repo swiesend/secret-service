@@ -2,6 +2,7 @@ package org.freedesktop.secret.handlers;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Static;
 
@@ -11,17 +12,17 @@ public abstract class Messaging {
 
     protected DBusConnection connection;
     protected MessageHandler msg;
-    protected SignalHandler sh;
+    protected SignalHandler sh = SignalHandler.getInstance();
     protected String serviceName;
     protected String objectPath;
     protected String interfaceName;
 
-    public Messaging(DBusConnection connection, List<Class> signals,
+    public Messaging(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                      String serviceName, String objectPath, String interfaceName) {
         this.connection = connection;
         this.msg = new MessageHandler(connection);
         if (signals != null) {
-            this.sh = new SignalHandler(connection, signals);
+            this.sh.connect(connection, signals);
         }
         this.serviceName = serviceName;
         this.objectPath = objectPath;

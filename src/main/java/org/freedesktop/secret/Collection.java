@@ -2,6 +2,7 @@ package org.freedesktop.secret;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
 
@@ -14,7 +15,8 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
 
     private String id;
 
-    public static final List<Class> signals = Arrays.asList(ItemCreated.class, ItemChanged.class, ItemDeleted.class);
+    public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(
+            ItemCreated.class, ItemChanged.class, ItemDeleted.class);
 
     public Collection(DBusPath path, Service service) {
         super(service.getConnection(), signals,
@@ -25,7 +27,7 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
         this.id = split[split.length - 1];
     }
 
-    public Collection(DBusPath path, Service service, List<Class> signals) {
+    public Collection(DBusPath path, Service service, List<Class<? extends DBusSignal>> signals) {
         super(service.getConnection(), signals,
                 Static.Service.SECRETS,
                 path.getPath(),

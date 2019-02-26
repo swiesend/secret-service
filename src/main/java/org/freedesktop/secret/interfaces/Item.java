@@ -4,6 +4,7 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.interfaces.DBusInterface;
+import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Secret;
@@ -27,7 +28,7 @@ public abstract class Item extends Messaging implements DBusInterface {
      */
     public static final String ATTRIBUTES = "org.freedesktop.Secret.Item.Attributes";
 
-    public Item(DBusConnection connection, List<Class> signals,
+    public Item(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                 String serviceName, String objectPath, String interfaceName) {
         super(connection, signals, serviceName, objectPath, interfaceName);
     }

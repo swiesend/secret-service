@@ -4,9 +4,7 @@ import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.Collection;
 import org.freedesktop.secret.*;
-import org.freedesktop.secret.errors.NoSuchObject;
 import org.freedesktop.secret.interfaces.Prompt.Completed;
 import org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
@@ -15,13 +13,15 @@ import org.slf4j.LoggerFactory;
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
-import javax.security.auth.DestroyFailedException;
 import java.security.AccessControlException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public final class SimpleCollection implements AutoCloseable {
 
@@ -43,7 +43,6 @@ public final class SimpleCollection implements AutoCloseable {
         init();
         ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         this.collection = new Collection(path, service);
-        log.info("locked on creation:" + collection.isLocked());
         unlock();
     }
 
@@ -97,7 +96,7 @@ public final class SimpleCollection implements AutoCloseable {
                 } catch (InterruptedException e) {
                     log.error(e.toString(), e.getCause());
                 }
-                Service.CollectionCreated cc = (Service.CollectionCreated) service.getSignalHandler().getLastHandledSignal();
+                Service.CollectionCreated cc = service.getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class);
                 path = cc.collection;
             }
 
@@ -165,11 +164,7 @@ public final class SimpleCollection implements AutoCloseable {
 
     private void performPrompt(ObjectPath path) {
         if (!("/".equals(path.getPath()))) {
-            try {
-                prompt.await(path);
-            } catch (InterruptedException | NoSuchObject e) {
-                log.error(e.toString(), e.getCause());
-            }
+            prompt.await(path);
         }
     }
 
@@ -209,15 +204,9 @@ public final class SimpleCollection implements AutoCloseable {
      * clear the passphrase of the collection.
      */
     public void clear() {
-
         if (encryption != null) {
-            try {
-                encryption.clear();
-            } catch (DestroyFailedException e) {
-                log.error(e.toString(), e.getCause());
-            }
+            encryption.clear();
         }
-
         if (encrypted != null) {
             encrypted.clear();
         }
@@ -232,8 +221,6 @@ public final class SimpleCollection implements AutoCloseable {
      * Delete this collection.
      */
     public void delete() throws AccessControlException {
-        clear();
-
         if (!isDefault()) {
             ObjectPath promptPath = collection.delete();
             performPrompt(promptPath);
@@ -268,12 +255,11 @@ public final class SimpleCollection implements AutoCloseable {
         final Map<String, Variant> properties = Item.createProperties(label, attributes);
         try (final Secret secret = encryption.encrypt(password)) {
             Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
-            performPrompt(response.b);
             item = response.a;
             if ("/".equals(item.getPath())) {
-                Completed completed = prompt.getLastHandledSignal();
+                Completed completed = prompt.await(response.b);
                 if (!completed.dismissed) {
-                    Collection.ItemCreated ic = (Collection.ItemCreated) collection.getSignalHandler().getLastHandledSignal();
+                    Collection.ItemCreated ic = collection.getSignalHandler().getLastHandledSignal(Collection.ItemCreated.class);
                     item = ic.item;
                 }
             }
