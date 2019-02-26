@@ -123,7 +123,7 @@ public class ItemTest {
         Map<String, String> attributes = context.item.getAttributes();
         log.info(context.item.getId());
         log.info(attributes.toString());
-        assertEquals(3, attributes.size());
+        assertTrue(attributes.size() == 3 || attributes.size() == 4);
         assertEquals("Value1", attributes.get("Attribute1"));
         assertEquals("Value2", attributes.get("Attribute2"));
         if (attributes.containsKey("xdg:schema")) {
@@ -141,7 +141,7 @@ public class ItemTest {
         log.info(context.item.getId());
         log.info(attributes.toString());
 
-        assertTrue(attributes.size() >= 3);
+        assertTrue(attributes.size() == 3 || attributes.size() == 4);
         assertEquals("Value1", attributes.get("Attribute1"));
         assertEquals("Replaced", attributes.get("Attribute2"));
         assertEquals("Added", attributes.get("Attribute3"));
