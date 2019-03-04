@@ -8,7 +8,7 @@ The library is conform to [version 0.2](https://specifications.freedesktop.org/s
 Secret Service API.
 
 The Secret Service itself is usually implemented by the GNOME Keyring (`gnome-keyring`) or the KDE Wallet Manager (`ksecretservice`).
-This library can be seen as the equivalent to [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C library only for Java.
+This library can be seen as equivalent to the [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C library.
 
 see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specifications/secret-storage-spec/)
 
