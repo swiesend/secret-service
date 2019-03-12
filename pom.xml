@@ -32,7 +32,7 @@
         <developer>
             <name>Sebastian Wiesendahl</name>
             <email>sebastian@wiesendahl</email>
-            <!--<organization></organization>-->
+            <organization></organization>
             <organizationUrl>https://github.com/swiesend</organizationUrl>
         </developer>
     </developers>
