@@ -1,7 +1,6 @@
 # Secret Service
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/61897aae6b5842f8a35ec81ca02112e3)](https://www.codacy.com?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=swiesend/secret-service&amp;utm_campaign=Badge_Grade)
-
 [![Maven Central](https://img.shields.io/maven-central/v/de.swiesend/secret-service.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22de.swiesend%22%20AND%20a:%22secret-service%22)
 
 A Java library to interact with the Secret Service API over the D-Bus to access user keyrings.
