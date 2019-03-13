@@ -10,8 +10,7 @@
     <!-- Snapshots:         {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-RC.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH} -->
-    <!-- Setting the version with plugin Maven versions plugin: `mvn versions:set -DnewVersion=1.2.3` -->
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0-RC.2</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>
