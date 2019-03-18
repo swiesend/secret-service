@@ -82,7 +82,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void createCollection() throws InterruptedException, NoSuchObject {
+    public void createCollection() {
         context.ensureCollection();
 
         ObjectPath deletePrompt = context.collection.delete();
@@ -133,7 +133,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void unlockCollectionsOrItems() throws InterruptedException, NoSuchObject {
+    public void unlockCollections() {
 
         Pair<List<ObjectPath>, ObjectPath> response;
         List<ObjectPath> locked;
@@ -144,17 +144,17 @@ public class ServiceTest {
         // unlock a collection
         context.ensureCollection();
 
-        ArrayList<ObjectPath> lockable = new ArrayList();
-        lockable.add(context.collection.getPath());
+        ArrayList<ObjectPath> lockables = new ArrayList();
+        lockables.add(context.collection.getPath());
 
-        response = context.service.lock(lockable);
+        response = context.service.lock(lockables);
         log.info(response.toString());
         locked = response.a;
         assertEquals(1, locked.size());
         prompt = response.b;
         assertEquals("/", prompt.getPath());
 
-        response = context.service.unlock(lockable);
+        response = context.service.unlock(lockables);
         log.info(response.toString());
         unlocked = response.a;
         assertEquals(0, unlocked.size());
@@ -165,10 +165,16 @@ public class ServiceTest {
         } else {
             assertFalse(context.collection.isLocked());
         }
+    }
 
-        // unlock an item
-        context.after();
+    @Test
+    @Disabled
+    public void unlockItems() {
         context.ensureItem();
+
+        Pair<List<ObjectPath>, ObjectPath> response;
+        List<ObjectPath> locked, unlocked;
+        ObjectPath prompt;
 
         List<ObjectPath> items = context.collection.getItems();
 
@@ -184,13 +190,12 @@ public class ServiceTest {
         unlocked = response.a;
         assertEquals(0, unlocked.size());
         prompt = response.b;
-        completed = context.prompt.await(prompt);
+        Prompt.Completed completed = context.prompt.await(prompt);
         if (completed.dismissed) {
             assertTrue(context.item.isLocked());
         } else {
             assertFalse(context.item.isLocked());
         }
-
     }
 
     @Test
