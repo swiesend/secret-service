@@ -7,16 +7,16 @@
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
     <!-- Semantic Versioning - see https://semver.org/spec/v2.0.0.html -->
-    <!-- Snapshots:         {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
+    <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-RC.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH} -->
-    <version>1.0.0-RC.2</version>
+    <version>1.0.0-RC.3</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>
     <description>
-        A Java library to interact with the Secret Service API over the D-Bus to access user keyrings.
-        Simply store (set) and retrieve (get) passwords securely in a linux system.
+        A Java library for storing secrets in a keyring over the D-Bus.
+        Simply set and get passwords in a linux system.
     </description>
     <url>https://github.com/swiesend/secret-service</url>
 
