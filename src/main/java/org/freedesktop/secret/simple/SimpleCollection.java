@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import java.io.IOException;
 import java.security.AccessControlException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -39,7 +40,7 @@ public final class SimpleCollection implements AutoCloseable {
     /**
      * The default collection.
      */
-    public SimpleCollection() {
+    public SimpleCollection() throws IOException {
         init();
         ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         this.collection = new Collection(path, service);
@@ -60,7 +61,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @param password  Password of the collection
      */
-    public SimpleCollection(String label, CharSequence password) {
+    public SimpleCollection(String label, CharSequence password) throws IOException {
         init();
 
         if (exists(label)) {
@@ -106,7 +107,7 @@ public final class SimpleCollection implements AutoCloseable {
         unlock();
     }
 
-    private void init() {
+    private void init() throws IOException {
         try {
             encryption = new TransportEncryption();
             encryption.initialize();
@@ -122,6 +123,7 @@ public final class SimpleCollection implements AutoCloseable {
                 InvalidKeySpecException |
                 InvalidKeyException e) {
             log.error(e.toString(), e.getCause());
+            throw new IOException(e.toString(), e.getCause());
         }
     }
 
@@ -149,7 +151,7 @@ public final class SimpleCollection implements AutoCloseable {
         for (Map.Entry<ObjectPath, String> entry : labels.entrySet()) {
             ObjectPath p = entry.getKey();
             String l = entry.getValue();
-            if (l.equals(label)) {
+            if (label.equals(l)) {
                 path = p;
                 break;
             }
@@ -201,7 +203,7 @@ public final class SimpleCollection implements AutoCloseable {
     }
 
     /**
-     * clear the passphrase of the collection.
+     * Clears the private key of the transport encryption and the passphrase of the collection.
      */
     public void clear() {
         if (encryption != null) {
@@ -240,7 +242,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @throws IllegalArgumentException
      */
-    public String createPassword(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
+    public String createItem(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
         if (password == null) {
             throw new IllegalArgumentException("The password may not be null.");
@@ -285,8 +287,8 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @throws IllegalArgumentException
      */
-    public String createPassword(String label, CharSequence password) throws IllegalArgumentException {
-        return createPassword(label, password, null);
+    public String createItem(String label, CharSequence password) throws IllegalArgumentException {
+        return createItem(label, password, null);
     }
 
     /**
@@ -299,7 +301,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @throws IllegalArgumentException
      */
-    public void updatePassword(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
+    public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
         if (objectPath == null) {
             throw new IllegalArgumentException("The object path of the item may not be null.");
@@ -334,7 +336,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @param objectPath    The DBus object path of the item
      *
-     * @return
+     * @return label
      */
     public String getLabel(String objectPath) {
         unlock();
@@ -356,13 +358,30 @@ public final class SimpleCollection implements AutoCloseable {
     }
 
     /**
+     * Get the object paths of items with given attributes.
+     *
+     * @return object paths
+     */
+    public List<String> getItems(Map<String, String> attributes) {
+        unlock();
+
+        List<ObjectPath> objects = collection.searchItems(attributes);
+
+        if (objects != null && !objects.isEmpty()) {
+            return Static.Convert.toStrings(objects);
+        } else {
+            return null;
+        }
+    }
+
+    /**
      * Get the secret of the item.
      *
      * @param objectPath    The DBus object path of the item
      *
      * @return plain chars
      */
-    public char[] getPassword(String objectPath) {
+    public char[] getSecret(String objectPath) {
         unlock();
 
         final Item item = getItem(objectPath);
@@ -388,14 +407,15 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @return Mapping of DBus object paths and plain chars
      */
-    public Map<String, char[]> getPasswords() throws AccessControlException {
+    public Map<String, char[]> getSecrets() throws AccessControlException {
         getUserPermission();
 
         List<ObjectPath> items = collection.getItems();
 
         Map<String, char[]> passwords = new HashMap();
         for (ObjectPath item : items) {
-            passwords.put(item.getPath(), getPassword(item.getPath()));
+            String path = item.getPath();
+            passwords.put(path, getSecret(path));
         }
 
         return passwords;
@@ -408,7 +428,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @param objectPath    The DBus object path of the item
      */
-    public void deletePassword(String objectPath) throws AccessControlException {
+    public void deleteItem(String objectPath) throws AccessControlException {
         getUserPermission();
 
         Item item = getItem(objectPath);
@@ -423,9 +443,9 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @param objectPaths   The DBus object paths of the items
      */
-    public void deletePasswords(List<String> objectPaths) throws AccessControlException {
+    public void deleteItems(List<String> objectPaths) throws AccessControlException {
         for (String item : objectPaths) {
-            deletePassword(item);
+            deleteItem(item);
         }
     }
 }

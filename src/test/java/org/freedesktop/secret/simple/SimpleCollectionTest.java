@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.security.AccessControlException;
 import java.util.*;
 
@@ -25,25 +26,25 @@ public class SimpleCollectionTest {
 
     @Test
     @Disabled
-    public void deleteDefaultCollection() {
+    public void deleteDefaultCollection() throws IOException {
         SimpleCollection defaultCollection = new SimpleCollection();
         assertThrows(AccessControlException.class, () -> defaultCollection.delete());
     }
 
     @Test
-    public void deleteNonDefaultCollection() {
+    public void deleteNonDefaultCollection() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
         assertDoesNotThrow(() -> collection.delete());
     }
 
     @Test
-    public void createPasswordWithoutAttributes() {
+    public void createPasswordWithoutAttributes() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
-        String item = collection.createPassword("item", "sécrèt");
+        String item = collection.createItem("item", "sécrèt");
         assertEquals("item", collection.getLabel(item));
-        assertEquals("sécrèt", new String(collection.getPassword(item)));
+        assertEquals("sécrèt", new String(collection.getSecret(item)));
         Map<String, String> actualAttributes = collection.getAttributes(item);
         if (actualAttributes.containsKey("xdg:schema")) {
             assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
@@ -52,21 +53,21 @@ public class SimpleCollectionTest {
         }
 
         // after
-        collection.deletePassword(item);
+        collection.deleteItem(item);
         collection.delete();
     }
 
     @Test
-    public void createPasswordWithAttributes() {
+    public void createPasswordWithAttributes() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         Map<String, String> attributes = new HashMap();
         attributes.put("uuid", getRandomHexString(32));
 
-        String item = collection.createPassword("item", "secret", attributes);
+        String item = collection.createItem("item", "secret", attributes);
         assertEquals("item", collection.getLabel(item));
-        assertEquals("secret", new String(collection.getPassword(item)));
+        assertEquals("secret", new String(collection.getSecret(item)));
         Map<String, String> actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -74,12 +75,12 @@ public class SimpleCollectionTest {
         }
 
         // after
-        collection.deletePassword(item);
+        collection.deleteItem(item);
         collection.delete();
     }
 
     @Test
-    public void updatePassword() {
+    public void updatePassword() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
         Map<String, String> attributes = new HashMap();
@@ -88,9 +89,9 @@ public class SimpleCollectionTest {
         attributes.put("uuid", getRandomHexString(32));
         log.info("attributes: " + attributes);
 
-        String item = collection.createPassword("item", "secret", attributes);
+        String item = collection.createItem("item", "secret", attributes);
         assertEquals("item", collection.getLabel(item));
-        assertEquals("secret", new String(collection.getPassword(item)));
+        assertEquals("secret", new String(collection.getSecret(item)));
         Map<String, String> actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -100,9 +101,9 @@ public class SimpleCollectionTest {
         // update password
         attributes.put("uuid", getRandomHexString(32));
         log.info("attributes: " + attributes);
-        collection.updatePassword(item, "updated item", "updated secret", attributes);
+        collection.updateItem(item, "updated item", "updated secret", attributes);
         assertEquals("updated item", collection.getLabel(item));
-        assertEquals("updated secret", new String(collection.getPassword(item)));
+        assertEquals("updated secret", new String(collection.getSecret(item)));
         actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -110,6 +111,27 @@ public class SimpleCollectionTest {
         }
 
         // after
+        collection.deleteItem(item);
+        collection.delete();
+    }
+
+    @Test
+    public void getItems() throws IOException {
+        // before
+        SimpleCollection collection = new SimpleCollection("test", "test");
+
+        // create password
+        Map<String, String> attributes = new HashMap();
+        attributes.put("uuid", getRandomHexString(32));
+        log.info("attributes: " + attributes);
+        String item = collection.createItem("item", "secret", attributes);
+
+        // search for items by attributes
+        List<String> items = collection.getItems(attributes);
+        assertEquals(1, items.size());
+
+        // after
+        collection.deleteItem(item);
         collection.delete();
     }
 
@@ -121,41 +143,41 @@ public class SimpleCollectionTest {
      */
     @Test
     @Disabled
-    public void getPasswordFromDefaultCollection() {
+    public void getPasswordFromDefaultCollection() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection();
-        String item = collection.createPassword("item", "secret");
+        String item = collection.createItem("item", "secret");
 
         // test
-        char[] password = collection.getPassword(item);
+        char[] password = collection.getSecret(item);
         assertEquals("secret", new String(password));
 
         // after
-        collection.deletePassword(item);
+        collection.deleteItem(item);
     }
 
     @Test
-    public void getPasswordFromNonDefaultCollection() {
+    public void getPasswordFromNonDefaultCollection() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
-        String itemID = collection.createPassword("item", "secret");
+        String itemID = collection.createItem("item", "secret");
 
         // test
-        char[] password = collection.getPassword(itemID);
+        char[] password = collection.getSecret(itemID);
         assertEquals("secret", new String(password));
 
         // after
-        collection.deletePassword(itemID);
+        collection.deleteItem(itemID);
         collection.delete();
     }
 
     @Test
     @Disabled
-    public void getPasswords() {
+    public void getPasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
             // only with user permission
-            Map<String, char[]> passwords = collection.getPasswords();
+            Map<String, char[]> passwords = collection.getSecrets();
             assertNotNull(passwords);
         });
     }
@@ -168,12 +190,12 @@ public class SimpleCollectionTest {
      */
     @Test
     @Disabled
-    public void deletePassword() {
+    public void deletePassword() throws IOException {
         SimpleCollection collection = new SimpleCollection();
-        String item = collection.createPassword("item", "secret");
+        String item = collection.createItem("item", "secret");
         assertDoesNotThrow(() -> {
             // only with user permission
-            collection.deletePassword(item);
+            collection.deleteItem(item);
         });
     }
 
@@ -181,11 +203,11 @@ public class SimpleCollectionTest {
      * NOTE: Be aware that this can lead to the loss of passwords if performed on the default collection.
      */
     @Test
-    public void deletePasswords() {
+    public void deletePasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
-        String item = collection.createPassword("item", "secret");
+        String item = collection.createItem("item", "secret");
         assertDoesNotThrow(() -> {
-            collection.deletePasswords(Arrays.asList(item));
+            collection.deleteItems(Arrays.asList(item));
         });
         collection.delete();
     }
