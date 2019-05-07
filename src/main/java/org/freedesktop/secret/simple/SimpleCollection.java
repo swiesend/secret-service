@@ -360,6 +360,8 @@ public final class SimpleCollection implements AutoCloseable {
     /**
      * Get the object paths of items with given attributes.
      *
+     * @param attributes    The attributes of the secret
+     * 
      * @return object paths
      */
     public List<String> getItems(Map<String, String> attributes) {
