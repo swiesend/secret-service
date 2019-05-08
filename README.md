@@ -44,7 +44,7 @@ public class Example {
             assertEquals("My Item", collection.getLabel(item));
             
             collection.deleteItem(item);
-        } // clears automatically all secrets in memory
+        } // clears automatically all session secrets in memory
     }
 
     @Test
@@ -59,7 +59,7 @@ public class Example {
             
             collection.deleteItem(item);
             collection.delete();
-        } // clears automatically all secrets in memory
+        } // clears automatically all session secrets in memory
     }
 
     @Test
@@ -85,7 +85,7 @@ public class Example {
 
             collection.deleteItem(item);
             collection.delete();
-        } // clears automatically all secrets in memory
+        } // clears automatically all session secrets in memory
     }
 }
 ```
