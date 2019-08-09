@@ -4,10 +4,10 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -15,57 +15,66 @@ public class Example {
 
     @Test
     @Disabled
-    @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
-    public void createPasswordInDefaultCollection() throws IOException {
-        try (SimpleCollection collection = new SimpleCollection()) {
-            String item = collection.createItem("My Item", "secret");
+    @DisplayName("Create a password in the user's default collection.")
+    public void createPasswordInDefaultCollection() {
+        Optional<SimpleCollection> connection = new SimpleService().connect();
+        if (connection.isPresent()) {
+            try (SimpleCollection collection = connection.get()) {
+                String item = collection.createItem("My Item", "secret");
 
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
+                char[] actual = collection.getSecret(item);
+                assertEquals("secret", new String(actual));
+                assertEquals("My Item", collection.getLabel(item));
 
-            collection.deleteItem(item);
-        } // clears automatically all session secrets in memory
+                collection.deleteItem(item);
+            } // clears automatically all session secrets in memory
+        }
     }
 
     @Test
-    @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxxx').")
-    public void createPasswordInNonDefaultCollection() throws IOException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-            String item = collection.createItem("My Item", "secret");
+    @DisplayName("Create a password in a non-default collection.")
+    public void createPasswordInNonDefaultCollection() {
+        Optional<SimpleCollection> connection = new SimpleService().connect("My Collection", "super secret");
+        if (connection.isPresent()) {
+            try (SimpleCollection collection = connection.get()) {
+                String item = collection.createItem("My Item", "secret");
 
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
+                char[] actual = collection.getSecret(item);
+                assertEquals("secret", new String(actual));
+                assertEquals("My Item", collection.getLabel(item));
 
-            collection.deleteItem(item);
-            collection.delete();
-        } // clears automatically all session secrets in memory
+                collection.deleteItem(item);
+                collection.delete();
+            } // clears automatically all session secrets in memory
+        }
     }
 
     @Test
     @DisplayName("Create a password with additional attributes.")
-    public void createPasswordWithAttributes() throws IOException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-            // define unique attributes
-            Map<String, String> attributes = new HashMap();
-            attributes.put("uuid", "42");
+    public void createPasswordWithAttributes() {
+        Optional<SimpleCollection> connection = new SimpleService().connect("My Collection", "super secret");
+        if (connection.isPresent()) {
+            try (SimpleCollection collection = connection.get()) {
+                // define unique attributes
+                Map<String, String> attributes = new HashMap();
+                attributes.put("uuid", "42");
 
-            // create and forget
-            collection.createItem("My Item", "secret", attributes);
+                // create and forget
+                collection.createItem("My Item", "secret", attributes);
 
-            // find by attributes
-            List<String> items = collection.getItems(attributes);
-            assertEquals(1, items.size());
-            String item = items.get(0);
+                // find by attributes
+                List<String> items = collection.getItems(attributes);
+                assertEquals(1, items.size());
+                String item = items.get(0);
 
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
-            assertEquals("42", collection.getAttributes(item).get("uuid"));
+                char[] actual = collection.getSecret(item);
+                assertEquals("secret", new String(actual));
+                assertEquals("My Item", collection.getLabel(item));
+                assertEquals("42", collection.getAttributes(item).get("uuid"));
 
-            collection.deleteItem(item);
-            collection.delete();
-        } // clears automatically all session secrets in memory
+                collection.deleteItem(item);
+                collection.delete();
+            } // clears automatically all session secrets in memory
+        }
     }
 }
