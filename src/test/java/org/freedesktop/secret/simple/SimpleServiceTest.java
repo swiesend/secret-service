@@ -6,26 +6,35 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SimpleServiceTest {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleServiceTest.class);
 
     @Test
-    public void connectToDefaultCollection() throws UnsupportedOperationException {
+    public void connectToDefaultCollection() throws UnsupportedOperationException, InterruptedException {
 
         assertDoesNotThrow(() -> new SimpleService().connect());
 
         Optional<SimpleCollection> connection = new SimpleService().connect();
 
         if (connection.isPresent()) {
-            SimpleCollection collection = connection.get();
-            assertNotNull(collection);
+            try (SimpleCollection collection = connection.get()) {
+                String item = collection.createItem("My Item", "secret");
+
+                char[] actual = collection.getSecret(item);
+                assertEquals("secret", new String(actual));
+                assertEquals("My Item", collection.getLabel(item));
+
+                collection.deleteItem(item);
+            }
         } else {
             throw new UnsupportedOperationException("Could not establish a healthy D-Bus connection on this platform.");
         }
+
+        Thread.sleep(250);
     }
 
     @Test
@@ -36,9 +45,16 @@ public class SimpleServiceTest {
         Optional<SimpleCollection> connection = new SimpleService().connect("test", "test");
 
         if (connection.isPresent()) {
-            SimpleCollection collection = connection.get();
-            assertNotNull(collection);
-            collection.delete();
+            try (SimpleCollection collection = connection.get()) {
+                String item = collection.createItem("My Item", "secret");
+
+                char[] actual = collection.getSecret(item);
+                assertEquals("secret", new String(actual));
+                assertEquals("My Item", collection.getLabel(item));
+
+                collection.deleteItem(item);
+                collection.delete();
+            }
         } else {
             throw new UnsupportedOperationException("Could not establish a healthy D-Bus connection on this platform.");
         }
