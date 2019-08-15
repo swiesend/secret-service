@@ -1,5 +1,7 @@
 package org.freedesktop.secret.simple;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -24,6 +26,16 @@ public class SimpleCollectionTest {
         return sb.toString();
     }
 
+    @BeforeEach
+    public void beforeEach() throws InterruptedException {
+        Thread.sleep(50L);
+    }
+
+    @AfterEach
+    public void afterEach() throws InterruptedException {
+        Thread.sleep(50L);
+    }
+
     @Test
     @Disabled
     public void deleteDefaultCollection() throws IOException {
@@ -38,18 +50,19 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    public void createPasswordWithoutAttributes() throws IOException {
+    public void createPasswordWithoutAttributes() throws NoSuchElementException, IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
-        String item = collection.createItem("item", "sécrèt");
+        String item = collection.createItem("item", "sécrèt").get();
         assertEquals("item", collection.getLabel(item));
         assertEquals("sécrèt", new String(collection.getSecret(item)));
-        Map<String, String> actualAttributes = collection.getAttributes(item);
-        if (actualAttributes.containsKey("xdg:schema")) {
-            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+
+        Optional<Map<String, String>> attributes = collection.getAttributes(item);
+        if (attributes.isPresent() && attributes.get().containsKey("xdg:schema")) {
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get().get("xdg:schema"));
         } else {
-            assertEquals(Collections.emptyMap(), collection.getAttributes(item));
+            assertEquals(Optional.empty(), attributes);
         }
 
         // after
@@ -58,20 +71,20 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    public void createPasswordWithAttributes() throws IOException {
+    public void createPasswordWithAttributes() throws NoSuchElementException, IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         Map<String, String> attributes = new HashMap();
         attributes.put("uuid", getRandomHexString(32));
 
-        String item = collection.createItem("item", "secret", attributes);
+        String item = collection.createItem("item", "secret", attributes).get();
         assertEquals("item", collection.getLabel(item));
         assertEquals("secret", new String(collection.getSecret(item)));
-        Map<String, String> actualAttributes = collection.getAttributes(item);
+        Map<String, String> actualAttributes = collection.getAttributes(item).get();
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
-            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get().get("xdg:schema"));
         }
 
         // after
@@ -80,7 +93,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    public void updatePassword() throws IOException {
+    public void updatePassword() throws NoSuchElementException, IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
         Map<String, String> attributes = new HashMap();
@@ -89,13 +102,13 @@ public class SimpleCollectionTest {
         attributes.put("uuid", getRandomHexString(32));
         log.info("attributes: " + attributes);
 
-        String item = collection.createItem("item", "secret", attributes);
+        String item = collection.createItem("item", "secret", attributes).get();
         assertEquals("item", collection.getLabel(item));
         assertEquals("secret", new String(collection.getSecret(item)));
-        Map<String, String> actualAttributes = collection.getAttributes(item);
+        Map<String, String> actualAttributes = collection.getAttributes(item).get();
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
-            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get().get("xdg:schema"));
         }
 
         // update password
@@ -104,10 +117,10 @@ public class SimpleCollectionTest {
         collection.updateItem(item, "updated item", "updated secret", attributes);
         assertEquals("updated item", collection.getLabel(item));
         assertEquals("updated secret", new String(collection.getSecret(item)));
-        actualAttributes = collection.getAttributes(item);
+        actualAttributes = collection.getAttributes(item).get();
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
-            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
+            assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get().get("xdg:schema"));
         }
 
         // after
@@ -116,7 +129,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    public void getItems() throws IOException {
+    public void getItems() throws NoSuchElementException, IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
@@ -124,10 +137,10 @@ public class SimpleCollectionTest {
         Map<String, String> attributes = new HashMap();
         attributes.put("uuid", getRandomHexString(32));
         log.info("attributes: " + attributes);
-        String item = collection.createItem("item", "secret", attributes);
+        String item = collection.createItem("item", "secret", attributes).get();
 
         // search for items by attributes
-        List<String> items = collection.getItems(attributes);
+        List<String> items = collection.getItems(attributes).get();
         assertEquals(1, items.size());
 
         // after
@@ -143,10 +156,10 @@ public class SimpleCollectionTest {
      */
     @Test
     @Disabled
-    public void getPasswordFromDefaultCollection() throws IOException {
+    public void getPasswordFromDefaultCollection() throws NoSuchElementException, IOException {
         // before
         SimpleCollection collection = new SimpleCollection();
-        String item = collection.createItem("item", "secret");
+        String item = collection.createItem("item", "secret").get();
 
         // test
         char[] password = collection.getSecret(item);
@@ -157,10 +170,10 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    public void getPasswordFromNonDefaultCollection() throws IOException {
+    public void getPasswordFromNonDefaultCollection() throws NoSuchElementException, IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
-        String itemID = collection.createItem("item", "secret");
+        String itemID = collection.createItem("item", "secret").get();
 
         // test
         char[] password = collection.getSecret(itemID);
@@ -173,11 +186,11 @@ public class SimpleCollectionTest {
 
     @Test
     @Disabled
-    public void getPasswords() throws IOException {
+    public void getPasswords() throws NoSuchElementException, IOException {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
             // only with user permission
-            Map<String, char[]> passwords = collection.getSecrets();
+            Map<String, char[]> passwords = collection.getSecrets().get();
             assertNotNull(passwords);
         });
     }
@@ -190,9 +203,9 @@ public class SimpleCollectionTest {
      */
     @Test
     @Disabled
-    public void deletePassword() throws IOException {
+    public void deletePassword() throws NoSuchElementException, IOException {
         SimpleCollection collection = new SimpleCollection();
-        String item = collection.createItem("item", "secret");
+        String item = collection.createItem("item", "secret").get();
         assertDoesNotThrow(() -> {
             // only with user permission
             collection.deleteItem(item);
@@ -203,9 +216,9 @@ public class SimpleCollectionTest {
      * NOTE: Be aware that this can lead to the loss of passwords if performed on the default collection.
      */
     @Test
-    public void deletePasswords() throws IOException {
+    public void deletePasswords() throws NoSuchElementException, IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
-        String item = collection.createItem("item", "secret");
+        String item = collection.createItem("item", "secret").get();
         assertDoesNotThrow(() -> {
             collection.deleteItems(Arrays.asList(item));
         });

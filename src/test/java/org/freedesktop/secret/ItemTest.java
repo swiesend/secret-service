@@ -2,6 +2,7 @@ package org.freedesktop.secret;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.secret.test.Context;
 import org.junit.jupiter.api.*;
@@ -22,7 +23,7 @@ public class ItemTest {
     private Context context;
 
     @BeforeEach
-    public void beforeEach(TestInfo info) {
+    public void beforeEach(TestInfo info) throws DBusException {
         log.info(info.getDisplayName());
         context = new Context(log);
         context.ensureItem();
@@ -35,7 +36,7 @@ public class ItemTest {
 
     @Test
     @DisplayName("delete item")
-    public void delete() {
+    public void delete() throws DBusException {
         List<ObjectPath> items = context.collection.getItems();
         assertEquals(1, items.size());
 
@@ -48,7 +49,7 @@ public class ItemTest {
     }
 
     @Test
-    public void getSecret() {
+    public void getSecret() throws DBusException {
         Secret secret = context.item.getSecret(context.session.getPath());
         log.info(label("secret", secret.toString()));
         assertTrue(secret.getSession().getPath().startsWith("/org/freedesktop/secrets/session/s"));
@@ -65,15 +66,13 @@ public class ItemTest {
 
     @Test
     @Disabled
-    public void getForeignSecret() {
-
+    public void getForeignSecret() throws DBusException {
         //
         // NOTE: This is considered by NIST as a security vulnerability, but apparently it is not easy to solve with the
         //       current design of the gnome-keyring library and gnome-seahorse application.
         //
         //  see: https://nvd.nist.gov/vuln/detail/CVE-2018-19358
         //
-
         DBusPath alias = new DBusPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         Collection login = new Collection(alias, context.service);
         List<ObjectPath> items = login.getItems();
@@ -83,8 +82,7 @@ public class ItemTest {
     }
 
     @Test
-    public void setSecret() {
-
+    public void setSecret() throws DBusException {
         Secret secret = new Secret(context.session.getPath(), "new secret".getBytes());
         context.item.setSecret(secret);
 
@@ -94,16 +92,14 @@ public class ItemTest {
     }
 
     @Test
-    public void isLocked() {
-
+    public void isLocked() throws DBusException {
         boolean locked = context.item.isLocked();
         log.info(String.valueOf(locked));
         assertFalse(locked);
     }
 
     @Test
-    public void getAttributes() {
-
+    public void getAttributes() throws DBusException {
         Map<String, String> attributes = context.item.getAttributes();
         log.info(attributes.toString());
         assertTrue(attributes.size() > 0);
@@ -114,12 +110,10 @@ public class ItemTest {
         if (attributes.containsKey("xdg:schema")) {
             assertEquals("org.freedesktop.Secret.Generic", attributes.get("xdg:schema"));
         }
-
     }
 
     @Test
-    public void setAttributes() {
-
+    public void setAttributes() throws DBusException {
         Map<String, String> attributes = context.item.getAttributes();
         log.info(context.item.getId());
         log.info(attributes.toString());
@@ -161,14 +155,14 @@ public class ItemTest {
      * The displayable label for this item.
      */
     @Test
-    public void getLabel() {
+    public void getLabel() throws DBusException {
         String label = context.item.getLabel();
         log.info(label("label", label));
         assertEquals("TestItem", label);
     }
 
     @Test
-    public void setLabel() {
+    public void setLabel() throws DBusException {
         context.item.setLabel("RelabeledItem");
         String label = context.item.getLabel();
         log.info(label("label", label));
@@ -176,7 +170,7 @@ public class ItemTest {
     }
 
     @Test
-    public void getType() {
+    public void getType() throws DBusException {
         String type = context.item.getType();
         log.info(type);
         if (!type.isEmpty()) {
@@ -186,8 +180,7 @@ public class ItemTest {
 
     @Test
     @DisplayName("created at unixtime")
-    public void created() {
-
+    public void created() throws DBusException {
         UInt64 created = context.item.created();
         log.info(String.valueOf(created));
         assertTrue(created.longValue() > 0L);
@@ -195,8 +188,7 @@ public class ItemTest {
 
     @Test
     @DisplayName("modified at unixtime")
-    public void modified() {
-
+    public void modified() throws DBusException {
         UInt64 modified = context.item.created();
         log.info(String.valueOf(modified));
         assertTrue(modified.longValue() >= 0L);

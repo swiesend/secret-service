@@ -1,6 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.test.Context;
@@ -23,7 +24,7 @@ public class CollectionTest {
     private Context context;
 
     @BeforeEach
-    public void beforeEach(TestInfo info) {
+    public void beforeEach(TestInfo info) throws DBusException {
         log.info(info.getDisplayName());
         context = new Context(log);
         context.ensureItem();
@@ -36,7 +37,7 @@ public class CollectionTest {
 
     @Test
     @DisplayName("delete test collection")
-    public void delete() {
+    public void delete() throws DBusException {
         List<ObjectPath> expected = context.service.getCollections();
         ObjectPath promptPath = context.collection.delete();
         log.info(promptPath.toString());
@@ -48,7 +49,7 @@ public class CollectionTest {
     }
 
     @Test
-    public void searchItems() {
+    public void searchItems() throws DBusException {
         // search by attribute
         Map<String, String> attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
@@ -60,7 +61,7 @@ public class CollectionTest {
     }
 
     @Test
-    public void createItem() {
+    public void createItem() throws DBusException {
 
         // some empty cipher parameters
         byte[] parameters = "".getBytes();
@@ -85,7 +86,7 @@ public class CollectionTest {
     }
 
     @Test
-    public void getItems() {
+    public void getItems() throws DBusException {
         List<ObjectPath> items = context.collection.getItems();
         log.info(Arrays.toString(items.toArray()));
         assertEquals(1, items.size());
@@ -93,8 +94,7 @@ public class CollectionTest {
     }
 
     @Test
-    @Disabled
-    public void getLabel() {
+    public void getLabel() throws DBusException {
         Collection collection = new Collection("login", context.service);
         String response = collection.getLabel();
         log.info(response);
@@ -109,7 +109,7 @@ public class CollectionTest {
     }
 
     @Test
-    public void setLabel() {
+    public void setLabel() throws DBusException {
         String label = context.collection.getLabel();
         assertEquals("test", label);
 
@@ -123,7 +123,7 @@ public class CollectionTest {
     }
 
     @Test
-    public void isLocked() {
+    public void isLocked() throws DBusException {
         boolean locked = context.collection.isLocked();
         log.info(label("locked", String.valueOf(locked)));
         assertFalse(locked);
@@ -131,7 +131,7 @@ public class CollectionTest {
 
     @Test
     @DisplayName("created at unixtime")
-    public void created() {
+    public void created() throws DBusException {
         Collection collection;
         UInt64 response;
 
@@ -153,7 +153,7 @@ public class CollectionTest {
 
     @Test
     @DisplayName("modified at unixtime")
-    public void modified() {
+    public void modified() throws DBusException {
         Collection collection;
         UInt64 response;
 

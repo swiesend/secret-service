@@ -118,7 +118,7 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      * 
      * @see ObjectPath
      */
-    abstract public ObjectPath delete();
+    abstract public ObjectPath delete() throws DBusException;
 
     /**
      * Search for items in this collection matching the lookup attributes.
@@ -131,7 +131,7 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      * @see Secret
      * @see Item
      */
-    abstract public List<ObjectPath> searchItems(Map<String, String> attributes);
+    abstract public List<ObjectPath> searchItems(Map<String, String> attributes) throws DBusException;
 
     /**
      * Create an item with the given attributes, secret and label. If replace is set, then it replaces an item already 
@@ -178,7 +178,7 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      * @see Secret
      * @see Item
      */
-    abstract public Pair<ObjectPath, ObjectPath> createItem(Map<String, Variant> properties, Secret secret, boolean replace);
+    abstract public Pair<ObjectPath, ObjectPath> createItem(Map<String, Variant> properties, Secret secret, boolean replace) throws DBusException;
 
     /**
      * <b>Items</b> is a D-Bus Property.
@@ -187,7 +187,7 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      * 
      * @return  Items in this collection.
      */
-    abstract public List<ObjectPath> getItems();
+    abstract public List<ObjectPath> getItems() throws DBusException;
 
     /**
      * <b>Label</b> is a D-Bus Property.
@@ -201,7 +201,7 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
      *  </p>
      */
-    abstract public String getLabel();
+    abstract public String getLabel() throws DBusException;
 
     /**
      * <b>Label</b> is a D-Bus Property.
@@ -215,21 +215,21 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
      *  </p>
      */
-    abstract public void setLabel(String label);
+    abstract public void setLabel(String label) throws DBusException;
 
     /**
      * @return  Whether the collection is locked and must be authenticated by the client application. 
      */
-    abstract public boolean isLocked();
+    abstract public boolean isLocked() throws DBusException;
 
     /**
      * @return  The unix time when the collection was created.
      */
-    abstract public UInt64 created();
+    abstract public UInt64 created() throws DBusException;
 
     /**
      * @return  The unix time when the collection was last modified.
      */
-    abstract public UInt64 modified();
+    abstract public UInt64 modified() throws DBusException;
 
 }

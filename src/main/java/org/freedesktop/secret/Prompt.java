@@ -1,6 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.secret.errors.NoSuchObject;
 
@@ -19,13 +20,13 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
     }
 
     @Override
-    public void prompt(String window_id) {
+    public void prompt(String window_id) throws DBusException {
         objectPath = Static.ObjectPaths.prompt(window_id);
         send("Prompt", "s", window_id);
     }
 
     @Override
-    public void prompt(ObjectPath prompt) throws NoSuchObject {
+    public void prompt(ObjectPath prompt) throws NoSuchObject, DBusException {
         objectPath = prompt.getPath();
 
         if (objectPath.startsWith("/org/freedesktop/secrets/prompt/p") ||
@@ -40,20 +41,24 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
     }
 
     @Override
-    public Completed await(ObjectPath path) {
+    public Completed await(ObjectPath path) throws DBusException {
         if ("/".equals(path.getPath())) {
-            return sh.getLastHandledSignal(Completed.class);
+            return sh.getLastHandledSignal(Completed.class).orElseThrow(DBusException::new);
         } else {
             return sh.await(Completed.class, path.getPath(), () -> {
                 prompt(path);
                 return null;
-            });
+            }).orElseThrow(DBusException::new);
         }
     }
 
     @Override
     public void dismiss() {
-        send("Dismiss", "");
+        try {
+            send("Dismiss", "");
+        } catch (DBusException e) {
+            // nothing
+        }
     }
 
     @Override

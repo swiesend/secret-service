@@ -1,6 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.errors.NoSuchObject;
@@ -32,7 +33,7 @@ public class ServiceTest {
     }
 
     @Test
-    public void openSession() {
+    public void openSession() throws DBusException {
         context.ensureService();
 
         Pair<Variant<byte[]>, ObjectPath> response = context.service.openSession(Static.Algorithm.PLAIN, new Variant(""));
@@ -46,7 +47,7 @@ public class ServiceTest {
     }
 
     @Test
-    public void openSessionWithTransportEncryption() {
+    public void openSessionWithTransportEncryption() throws DBusException {
         context.ensureService();
 
         byte[] input = new byte[]{
@@ -82,7 +83,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void createCollection() {
+    public void createCollection() throws DBusException {
         context.ensureCollection();
 
         ObjectPath deletePrompt = context.collection.delete();
@@ -116,7 +117,7 @@ public class ServiceTest {
     }
 
     @Test
-    public void searchItems() {
+    public void searchItems() throws DBusException {
         context.ensureItem();
 
         Map<String, String> attributes = new HashMap();
@@ -133,7 +134,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void unlockCollections() {
+    public void unlockCollections() throws DBusException {
 
         Pair<List<ObjectPath>, ObjectPath> response;
         List<ObjectPath> locked;
@@ -169,7 +170,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void unlockItems() {
+    public void unlockItems() throws DBusException {
         context.ensureItem();
 
         Pair<List<ObjectPath>, ObjectPath> response;
@@ -200,7 +201,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void lockCommonCollections() throws InterruptedException, NoSuchObject {
+    public void lockCommonCollections() throws InterruptedException, NoSuchObject, DBusException {
 
         // lock common collections:
         //   * alias/default == collection/login
@@ -236,13 +237,13 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void lockService() {
+    public void lockService() throws DBusException {
         context.ensureSession();
         context.service.lockService();
     }
 
     @Test
-    public void changeLock() {
+    public void changeLock() throws DBusException {
         context.ensureSession();
 
         ObjectPath obj;
@@ -267,7 +268,7 @@ public class ServiceTest {
     }
 
     @Test
-    public void getSecrets() {
+    public void getSecrets() throws DBusException {
         context.ensureItem();
 
         List<ObjectPath> items = context.collection.getItems();
@@ -278,7 +279,7 @@ public class ServiceTest {
     }
 
     @Test
-    public void readAlias() {
+    public void readAlias() throws DBusException {
         context.ensureCollection();
 
         ObjectPath collection;
@@ -304,7 +305,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void setAlias() {
+    public void setAlias() throws DBusException {
         context.ensureCollection();
 
         ObjectPath collection;
@@ -324,7 +325,7 @@ public class ServiceTest {
     }
 
     @Test
-    public void getCollections() {
+    public void getCollections() throws DBusException {
         context.ensureCollection();
 
         List<ObjectPath> collections = context.service.getCollections();

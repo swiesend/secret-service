@@ -1,6 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.secret.errors.NoSuchObject;
 import org.freedesktop.secret.interfaces.Prompt;
 import org.freedesktop.secret.test.Context;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,7 +22,7 @@ public class PromptTest {
     private Context context;
 
     @BeforeEach
-    public void beforeEach(TestInfo info) {
+    public void beforeEach(TestInfo info) throws DBusException {
         log.info(info.getDisplayName());
         context = new Context(log);
         context.ensureCollection();
@@ -33,8 +35,7 @@ public class PromptTest {
 
     @Test
     @Disabled
-    public void prompt() throws InterruptedException, NoSuchObject {
-
+    public void prompt() throws DBusException {
         ObjectPath defaultCollection = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         ArrayList<ObjectPath> cs = new ArrayList();
         cs.add(defaultCollection);
@@ -54,7 +55,7 @@ public class PromptTest {
 
     @Test
     @Disabled
-    public void dismissPrompt() throws InterruptedException, NoSuchObject {
+    public void dismissPrompt() throws InterruptedException, NoSuchObject, DBusException {
         ArrayList<ObjectPath> cs = new ArrayList();
         cs.add(context.collection.getPath());
         context.service.lock(cs);
@@ -63,12 +64,14 @@ public class PromptTest {
         ObjectPath prompt = response.b;
 
         context.prompt.prompt(prompt);
-        Thread.sleep(250L);
+        Thread.sleep(500L);
         context.prompt.dismiss();
         Thread.sleep(500L); // await signal
 
-        Prompt.Completed completed = context.service.getSignalHandler()
-                .getLastHandledSignal(Prompt.Completed.class, prompt.getPath());
+        Prompt.Completed completed = context.service
+                .getSignalHandler()
+                .getLastHandledSignal(Prompt.Completed.class, prompt.getPath())
+                .get();
         assertTrue(completed.dismissed);
     }
 

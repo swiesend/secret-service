@@ -11,10 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -29,12 +26,8 @@ public class SignalHandler implements DBusSigHandler {
 
     private SignalHandler() {
         Runtime.getRuntime().addShutdownHook(new Thread(() ->
-            disconnect()
+                disconnect()
         ));
-    }
-
-    private static class SingletonHelper {
-        private static final SignalHandler INSTANCE = new SignalHandler();
     }
 
     public static SignalHandler getInstance() {
@@ -114,38 +107,46 @@ public class SignalHandler implements DBusSigHandler {
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s) {
         return Arrays.stream(handled)
-            .filter(signal -> signal != null)
-            .filter(signal -> signal.getClass().equals(s))
-            .map(signal -> (S) signal)
-            .collect(Collectors.toList());
+                .filter(signal -> signal != null)
+                .filter(signal -> signal.getClass().equals(s))
+                .map(signal -> (S) signal)
+                .collect(Collectors.toList());
     }
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s, String path) {
         return Arrays.stream(handled)
-            .filter(signal -> signal != null)
-            .filter(signal -> signal.getClass().equals(s))
-            .filter(signal -> signal.getPath().equals(path))
-            .map(signal -> (S) signal)
-            .collect(Collectors.toList());
+                .filter(signal -> signal != null)
+                .filter(signal -> signal.getClass().equals(s))
+                .filter(signal -> signal.getPath().equals(path))
+                .map(signal -> (S) signal)
+                .collect(Collectors.toList());
     }
 
     public int getCount() {
         return count;
     }
 
-    public DBusSignal getLastHandledSignal() {
-        return handled[0];
+    public Optional<DBusSignal> getLastHandledSignal() {
+        return Optional.ofNullable(handled[0]);
     }
 
-    public <S extends DBusSignal> S getLastHandledSignal(Class<S> s) {
-        return getHandledSignals(s).get(0);
+    public <S extends DBusSignal> Optional<S> getLastHandledSignal(Class<S> s) {
+        try {
+            return Optional.ofNullable(getHandledSignals(s).get(0));
+        } catch (NullPointerException | IndexOutOfBoundsException e) {
+            return Optional.empty();
+        }
     }
 
-    public <S extends DBusSignal> S getLastHandledSignal(Class<S> s, String path) {
-        return getHandledSignals(s, path).get(0);
+    public <S extends DBusSignal> Optional<S> getLastHandledSignal(Class<S> s, String path) {
+        try {
+            return Optional.ofNullable(getHandledSignals(s, path).get(0));
+        } catch (NullPointerException | IndexOutOfBoundsException e) {
+            return Optional.empty();
+        }
     }
 
-    public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
+    public <S extends DBusSignal> Optional<S> await(Class<S> s, String path, Callable action) {
 
         try {
             action.call();
@@ -175,14 +176,17 @@ public class SignalHandler implements DBusSigHandler {
         });
 
         try {
-            return handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            return Optional.ofNullable(handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS));
         } catch (TimeoutException | InterruptedException | ExecutionException e) {
             handler.cancel(true);
             log.error(e.toString(), e.getCause());
+            return Optional.empty();
         } finally {
             executor.shutdownNow();
         }
+    }
 
-        return null;
+    private static class SingletonHelper {
+        private static final SignalHandler INSTANCE = new SignalHandler();
     }
 }

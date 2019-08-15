@@ -3,6 +3,7 @@ package org.freedesktop.secret.interfaces;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
@@ -88,7 +89,7 @@ public abstract class Item extends Messaging implements DBusInterface {
      * 
      * @return Prompt   &mdash; A prompt objectpath, or the special value '/' if no prompt is necessary.    
      */
-    abstract public ObjectPath delete();
+    abstract public ObjectPath delete() throws DBusException;
 
     /**
      * Retrieve the secret for this item.
@@ -97,19 +98,19 @@ public abstract class Item extends Messaging implements DBusInterface {
      * 
      * @return secret   &mdash; The secret retrieved.
      */
-    abstract public Secret getSecret(ObjectPath session);
+    abstract public Secret getSecret(ObjectPath session) throws DBusException;
 
     /**
      * Set the secret for this item.
      * 
      * @param secret    The secret to set, encoded for the included session.
      */
-    abstract public void setSecret(Secret secret);
+    abstract public void setSecret(Secret secret) throws DBusException;
 
     /**
      * @return Whether the item is locked and requires authentication, or not.
      */
-    abstract public boolean isLocked();
+    abstract public boolean isLocked() throws DBusException;
 
     /**
      * The lookup attributes for this item.
@@ -120,7 +121,7 @@ public abstract class Item extends Messaging implements DBusInterface {
      * 
      * @return  The attributes of the item.
      */
-    abstract public Map<String, String> getAttributes();
+    abstract public Map<String, String> getAttributes() throws DBusException;
 
     
     /**
@@ -132,7 +133,7 @@ public abstract class Item extends Messaging implements DBusInterface {
      * 
      * @param attributes    The attributes of the item.
      */
-    abstract public void setAttributes(Map<String, String> attributes);
+    abstract public void setAttributes(Map<String, String> attributes) throws DBusException;
 
     /**
      * <b>Label</b> is a D-Bus Property.
@@ -146,7 +147,7 @@ public abstract class Item extends Messaging implements DBusInterface {
      *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
      *  </p>
      */
-    abstract public String getLabel();
+    abstract public String getLabel() throws DBusException;
 
 
     /**
@@ -161,20 +162,20 @@ public abstract class Item extends Messaging implements DBusInterface {
      *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
      *  </p>
      */
-    abstract public void setLabel(String label);
+    abstract public void setLabel(String label) throws DBusException;
 
     /**
      * @return The "xdg:schema" of the item attributes.
      */
-    abstract public String getType();
+    abstract public String getType() throws DBusException;
 
     /**
      * @return The unix time when the item was created.
      */
-    abstract public UInt64 created();
+    abstract public UInt64 created() throws DBusException;
 
     /**
      * @return The unix time when the item was last modified.
      */
-    abstract public UInt64 modified();
+    abstract public UInt64 modified() throws DBusException;
 }

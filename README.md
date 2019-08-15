@@ -21,13 +21,9 @@ The library provides a simplified high-level API, which sends only transport enc
 ```java
 package org.freedesktop.secret.simple;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import org.junit.jupiter.api.*;
+import java.io.IOException;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -35,28 +31,30 @@ public class Example {
 
     @Test
     @DisplayName("Create a password in the user's default collection.")
-    public void createPasswordInDefaultCollection() {
+    public void createPasswordInTheDefaultCollection() {
         Optional<SimpleCollection> connection = new SimpleService().connect();
         if (connection.isPresent()) {
             try (SimpleCollection collection = connection.get()) {
-                String item = collection.createItem("My Item", "secret");
+                String item = collection.createItem("My Item", "secret").get();
 
                 char[] actual = collection.getSecret(item);
                 assertEquals("secret", new String(actual));
                 assertEquals("My Item", collection.getLabel(item));
 
                 collection.deleteItem(item);
+            } catch (NoSuchElementException | IOException e) {
+                // something went wrong
             } // clears automatically all session secrets in memory
         }
     }
 
     @Test
     @DisplayName("Create a password in a non-default collection.")
-    public void createPasswordInNonDefaultCollection() {
+    public void createPasswordInANonDefaultCollection() {
         Optional<SimpleCollection> connection = new SimpleService().connect("My Collection", "super secret");
         if (connection.isPresent()) {
             try (SimpleCollection collection = connection.get()) {
-                String item = collection.createItem("My Item", "secret");
+                String item = collection.createItem("My Item", "secret").get();
 
                 char[] actual = collection.getSecret(item);
                 assertEquals("secret", new String(actual));
@@ -64,6 +62,8 @@ public class Example {
 
                 collection.deleteItem(item);
                 collection.delete();
+            } catch (NoSuchElementException | IOException e) {
+                // something went wrong
             } // clears automatically all session secrets in memory
         }
     }
@@ -82,17 +82,19 @@ public class Example {
                 collection.createItem("My Item", "secret", attributes);
 
                 // find by attributes
-                List<String> items = collection.getItems(attributes);
+                List<String> items = collection.getItems(attributes).get();
                 assertEquals(1, items.size());
                 String item = items.get(0);
 
                 char[] actual = collection.getSecret(item);
                 assertEquals("secret", new String(actual));
                 assertEquals("My Item", collection.getLabel(item));
-                assertEquals("42", collection.getAttributes(item).get("uuid"));
+                assertEquals("42", collection.getAttributes(item).get().get("uuid"));
 
                 collection.deleteItem(item);
                 collection.delete();
+            } catch (NoSuchElementException | IOException e) {
+                // something went wrong
             } // clears automatically all session secrets in memory
         }
     }

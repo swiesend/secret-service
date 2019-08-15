@@ -1,10 +1,10 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 
 
 public class Session extends org.freedesktop.secret.interfaces.Session {
-
 
     public Session(DBusPath path, Service service) {
         super(service.getConnection(), null,
@@ -17,7 +17,7 @@ public class Session extends org.freedesktop.secret.interfaces.Session {
     }
 
     @Override
-    public void close() {
+    public void close() throws DBusException {
         send("Close");
     }
 

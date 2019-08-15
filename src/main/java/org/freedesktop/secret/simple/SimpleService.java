@@ -26,15 +26,16 @@ public class SimpleService {
      * Connect to a user specified collection.
      *
      * @param label     The displayable label of the collection
-     *
+     *                  <br>
+     *                  <br>
      *                  <p>
-     *                      NOTE: The 'label' of a collection may differ from the 'id' of a collection. The 'id' is
-     *                      assigned by the Secret Service and used in the DBus object path of a collection or item.
-     *                  <p>
+     *                      <b>NOTE:</b> The <i>label</i> of a collection may differ from the <i>id</i> of a collection. The <i>id</i> is
+     *                      assigned by the Secret Service and used as unique identifier in the DBus <i>object path</i> of
+     *                      a collection or item.
+     *                  <p/>
+     *                  A <code>SimpleCollection</code> can <b>not</b> handle different collections with the same <i>label</i>.
      *
-     *                  A SimpleCollection can't handle collections with the same label, but different ids correctly.
-     *
-     * @param password  Password of the collection
+     * @param password  The password of the collection
      */
     public Optional<SimpleCollection> connect(String label, CharSequence password) {
         try {

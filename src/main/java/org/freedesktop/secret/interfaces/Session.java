@@ -2,6 +2,7 @@ package org.freedesktop.secret.interfaces;
 
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.secret.Static;
@@ -20,5 +21,5 @@ public abstract class Session extends Messaging implements DBusInterface {
     /**
      * Close this session.
      */
-    abstract public void close();
+    abstract public void close() throws DBusException;
 }
