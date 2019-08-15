@@ -181,6 +181,7 @@ public final class Secret extends Struct implements AutoCloseable {
     }
 
     public void clear() {
+        clear(parameters);
         clear(value);
     }
 

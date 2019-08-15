@@ -150,8 +150,21 @@ public class SecretTest {
     @Test
     public void clear() {
         Secret secret;
+
         secret = new Secret(session, parameters.getBytes(), value.getBytes());
         secret.clear();
+        for(byte b: secret.getSecretParameters()) {
+            assertEquals((byte) 0 ,b);
+        }
+        for(byte b: secret.getSecretValue()) {
+            assertEquals((byte) 0 ,b);
+        }
+
+        secret = new Secret(session, value.getBytes());
+        secret.clear();
+        for(byte b: secret.getSecretParameters()) {
+            assertEquals((byte) 0 ,b);
+        }
         for(byte b: secret.getSecretValue()) {
             assertEquals((byte) 0 ,b);
         }
