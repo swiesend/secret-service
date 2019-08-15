@@ -2,6 +2,7 @@ package org.freedesktop.secret.handlers;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Static;
@@ -29,23 +30,23 @@ public abstract class Messaging {
         this.interfaceName = interfaceName;
     }
 
-    protected Object[] send(String method) {
+    protected Object[] send(String method) throws DBusException {
         return msg.send(serviceName, objectPath, interfaceName, method, "");
     }
 
-    protected Object[] send(String method, String signature, Object... arguments) {
+    protected Object[] send(String method, String signature, Object... arguments) throws DBusException {
         return msg.send(serviceName, objectPath, interfaceName, method, signature, arguments);
     }
 
-    protected Variant getProperty(String property) {
+    protected Variant getProperty(String property) throws DBusException {
         return msg.getProperty(serviceName, objectPath, interfaceName, property);
     }
 
-    protected Variant getAllProperties() {
+    protected Variant getAllProperties() throws DBusException {
         return msg.getAllProperties(serviceName, objectPath, interfaceName);
     }
 
-    protected void setProperty(String property, Variant value) {
+    protected void setProperty(String property, Variant value) throws DBusException {
         msg.setProperty(serviceName, objectPath, interfaceName, property, value);
     }
 

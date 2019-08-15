@@ -48,7 +48,7 @@ public abstract class Prompt extends Messaging implements DBusInterface {
      * 
      * @see Completed
      */
-    abstract public void prompt(String window_id);
+    abstract public void prompt(String window_id) throws DBusException;
 
     /**
      * Perform the prompt.
@@ -58,7 +58,7 @@ public abstract class Prompt extends Messaging implements DBusInterface {
      * 
      * @see Completed
      */
-    abstract public void prompt(ObjectPath prompt) throws NoSuchObject;
+    abstract public void prompt(ObjectPath prompt) throws NoSuchObject, DBusException;
 
     /**
      * Await the user interaction with the prompt.
@@ -74,11 +74,11 @@ public abstract class Prompt extends Messaging implements DBusInterface {
      * 
      * @see Completed
      */
-    abstract public Completed await(ObjectPath prompt) throws InterruptedException, NoSuchObject;
+    abstract public Completed await(ObjectPath prompt) throws InterruptedException, NoSuchObject, DBusException;
 
     /**
      * Dismiss the prompt.
      */
-    abstract public void dismiss();
+    abstract public void dismiss() throws DBusException;
 
 }

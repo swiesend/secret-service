@@ -3,6 +3,7 @@ package org.gnome.keyring.interfaces;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Secret;
@@ -21,7 +22,7 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * @param original      The current password.
      * @param master        The new password.
      */
-    void changeWithMasterPassword(DBusPath collection, Secret original, Secret master);
+    void changeWithMasterPassword(DBusPath collection, Secret original, Secret master) throws DBusException;
 
     /**
      * Toggle the lock of a collection.
@@ -30,7 +31,7 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      *
      * @return The ObjectPath of the collection.
      */
-    ObjectPath changeWithPrompt(DBusPath collection);
+    ObjectPath changeWithPrompt(DBusPath collection) throws DBusException;
 
     /**
      * Create a collection with a password without prompting.
@@ -40,7 +41,7 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * 
      * @return  The ObjectPath of the created collection.
      */
-    ObjectPath createWithMasterPassword(Map<String, Variant> properties, Secret master);
+    ObjectPath createWithMasterPassword(Map<String, Variant> properties, Secret master) throws DBusException;
 
     /**
      * Unlock a collection without prompting.
@@ -48,6 +49,6 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * @param collection    The ObjectPath of the collection.
      * @param master        The password of the collection.
      */
-    void unlockWithMasterPassword(DBusPath collection, Secret master);
+    void unlockWithMasterPassword(DBusPath collection, Secret master) throws DBusException;
 
 }

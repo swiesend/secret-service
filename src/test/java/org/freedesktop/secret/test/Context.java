@@ -78,7 +78,7 @@ public class Context {
         password = new Secret(session.getPath(), "".getBytes(), "test".getBytes());
     }
 
-    public void ensureCollection() {
+    public void ensureCollection() throws DBusException {
         ensureSession();
 
         collection = new Collection("test", service);
@@ -100,7 +100,7 @@ public class Context {
         }
     }
 
-    public void ensureItem() {
+    public void ensureItem() throws DBusException {
         ensureCollection();
 
         Map<String, String> attributes = new HashMap();

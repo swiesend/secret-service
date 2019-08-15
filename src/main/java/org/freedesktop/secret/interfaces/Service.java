@@ -95,7 +95,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see Variant
      * @see ObjectPath
      */
-    abstract public Pair<Variant<byte[]>, ObjectPath> openSession(String algorithm, Variant input);
+    abstract public Pair<Variant<byte[]>, ObjectPath> openSession(String algorithm, Variant input) throws DBusException;
 
     /**
      * Create a new collection with the specified properties.
@@ -127,7 +127,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see Variant
      * @see ObjectPath
      */
-    abstract public Pair createCollection(Map<String, Variant> properties, String alias);
+    abstract public Pair createCollection(Map<String, Variant> properties, String alias) throws DBusException;
 
     /**
      * Create a new collection with the specified properties.
@@ -151,7 +151,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see Variant
      * @see ObjectPath
      */
-    abstract public Pair createCollection(Map<String, Variant> properties);
+    abstract public Pair createCollection(Map<String, Variant> properties) throws DBusException;
 
     /**
      * Find items in any collection.
@@ -182,7 +182,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see Pair
      * @see ObjectPath
      */
-    abstract public Pair<List<ObjectPath>, List<ObjectPath>> searchItems(Map<String, String> attributes);
+    abstract public Pair<List<ObjectPath>, List<ObjectPath>> searchItems(Map<String, String> attributes) throws DBusException;
 
     /**
      * Unlock the specified objects.
@@ -198,7 +198,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see Pair
      * @see ObjectPath
      */
-    abstract public Pair<List<ObjectPath>, ObjectPath> unlock(List<ObjectPath> objects);
+    abstract public Pair<List<ObjectPath>, ObjectPath> unlock(List<ObjectPath> objects) throws DBusException;
 
     /**
      * Lock the items.
@@ -213,7 +213,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * 
      * @see Pair
      */
-    abstract public Pair<List<ObjectPath>, ObjectPath> lock(List<ObjectPath> objects);
+    abstract public Pair<List<ObjectPath>, ObjectPath> lock(List<ObjectPath> objects) throws DBusException;
 
     /**
      * Lock the entire Secret Service API.
@@ -224,7 +224,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * {@link #unlock(List objects)}<br>
      * {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#unlockWithMasterPassword(DBusPath collection, Secret master)}<br>
      */
-    abstract public void lockService();
+    abstract public void lockService() throws DBusException;
 
     /**
      * Toggle the lock for a collection with a prompt.
@@ -237,7 +237,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * See Also:<br>
      * {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#changeWithPrompt(DBusPath collection)}<br>
      */
-    abstract public ObjectPath changeLock(ObjectPath collection);
+    abstract public ObjectPath changeLock(ObjectPath collection) throws DBusException;
 
     /**
      * Retrieve multiple secrets from different items.
@@ -251,7 +251,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see Secret
      * @see ObjectPath
      */
-    abstract public Map<ObjectPath, Secret> getSecrets(List<ObjectPath> items, ObjectPath session);
+    abstract public Map<ObjectPath, Secret> getSecrets(List<ObjectPath> items, ObjectPath session) throws DBusException;
 
     /**
      * Get the collection with the given alias.
@@ -264,7 +264,7 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see ObjectPath
      * @see Collection
      */
-    abstract public ObjectPath readAlias(String name);
+    abstract public ObjectPath readAlias(String name) throws DBusException;
 
     /**
      * Setup a collection alias.
@@ -276,10 +276,10 @@ public abstract class Service extends Messaging implements DBusInterface {
      * @see ObjectPath
      * @see Collection
      */
-    abstract public void setAlias(String name, ObjectPath collection);
+    abstract public void setAlias(String name, ObjectPath collection) throws DBusException;
 
     /**
      * @return A list of present collections.
      */
-    abstract public List<ObjectPath> getCollections();
+    abstract public List<ObjectPath> getCollections() throws DBusException;
 }

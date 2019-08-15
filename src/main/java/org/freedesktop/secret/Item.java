@@ -1,6 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
 
@@ -32,14 +33,14 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
     }
 
     @Override
-    public ObjectPath delete() {
+    public ObjectPath delete() throws DBusException {
         Object[] response = send("Delete", "");
         ObjectPath prompt = (ObjectPath) response[0];
         return prompt;
     }
 
     @Override
-    public Secret getSecret(ObjectPath session) {
+    public Secret getSecret(ObjectPath session) throws DBusException {
         Object[] response = send("GetSecret", "o", session);
         Object[] inner = (Object[]) response[0];
 
@@ -62,52 +63,52 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
     }
 
     @Override
-    public void setSecret(Secret secret) {
+    public void setSecret(Secret secret) throws DBusException {
         send("SetSecret", "(oayays)", secret);
     }
 
     @Override
-    public boolean isLocked() {
+    public boolean isLocked() throws DBusException {
         Variant response = getProperty("Locked");
         return (boolean) response.getValue();
     }
 
     @Override
-    public Map<String, String> getAttributes() {
+    public Map<String, String> getAttributes() throws DBusException {
         Variant response = getProperty("Attributes");
         return (Map<String, String>) response.getValue();
     }
 
     @Override
-    public void setAttributes(Map<String, String> attributes) {
+    public void setAttributes(Map<String, String> attributes) throws DBusException {
         setProperty("Attributes", new Variant(attributes, "a{ss}"));
     }
 
     @Override
-    public String getLabel() {
+    public String getLabel() throws DBusException {
         Variant response = getProperty("Label");
         return (String) response.getValue();
     }
 
     @Override
-    public void setLabel(String label) {
+    public void setLabel(String label) throws DBusException {
         setProperty("Label", new Variant(label));
     }
 
     @Override
-    public String getType() {
+    public String getType() throws DBusException {
         Variant response = getProperty("Type");
         return (String) response.getValue();
     }
 
     @Override
-    public UInt64 created() {
+    public UInt64 created() throws DBusException {
         Variant response = getProperty("Created");
         return (UInt64) response.getValue();
     }
 
     @Override
-    public UInt64 modified() {
+    public UInt64 modified() throws DBusException {
         Variant response = getProperty("Modified");
         return (UInt64) response.getValue();
     }

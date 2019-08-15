@@ -11,10 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -129,24 +126,32 @@ public class SignalHandler implements DBusSigHandler {
         return count;
     }
 
-    public DBusSignal getLastHandledSignal() {
-        return handled[0];
+    public Optional<DBusSignal> getLastHandledSignal() {
+        return Optional.ofNullable(handled[0]);
     }
 
-    public <S extends DBusSignal> S getLastHandledSignal(Class<S> s) {
-        return getHandledSignals(s).get(0);
+    public <S extends DBusSignal> Optional<S> getLastHandledSignal(Class<S> s) {
+        try {
+            return Optional.ofNullable(getHandledSignals(s).get(0));
+        } catch (NullPointerException | IndexOutOfBoundsException e) {
+            return Optional.empty();
+        }
     }
 
-    public <S extends DBusSignal> S getLastHandledSignal(Class<S> s, String path) {
-        return getHandledSignals(s, path).get(0);
+    public <S extends DBusSignal> Optional<S> getLastHandledSignal(Class<S> s, String path) {
+        try {
+            return Optional.ofNullable(getHandledSignals(s, path).get(0));
+        } catch (NullPointerException | IndexOutOfBoundsException e) {
+            return Optional.empty();
+        }
     }
 
-    public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
+    public <S extends DBusSignal> Optional<S> await(Class<S> s, String path, Callable action) {
         final Duration timeout = Duration.ofSeconds(300);
         return await(s, path, action, timeout);
     }
 
-    public <S extends DBusSignal> S await(Class<S> s, String path, Callable action, Duration timeout) {
+    public <S extends DBusSignal> Optional<S> await(Class<S> s, String path, Callable action, Duration timeout) {
 
         try {
             action.call();
@@ -175,18 +180,18 @@ public class SignalHandler implements DBusSigHandler {
         });
 
         try {
-            return handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            return Optional.ofNullable(handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS));
         } catch (TimeoutException | InterruptedException | ExecutionException e) {
             handler.cancel(true);
             log.error(e.toString(), e.getCause());
+            return Optional.empty();
         } finally {
             executor.shutdownNow();
         }
-
-        return null;
     }
 
     private static class SingletonHelper {
         private static final SignalHandler INSTANCE = new SignalHandler();
     }
+
 }

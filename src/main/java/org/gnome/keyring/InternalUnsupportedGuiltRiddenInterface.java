@@ -2,6 +2,7 @@ package org.gnome.keyring;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Secret;
 import org.freedesktop.secret.Service;
@@ -20,24 +21,24 @@ public class InternalUnsupportedGuiltRiddenInterface extends Messaging implement
     }
 
     @Override
-    public void changeWithMasterPassword(DBusPath collection, Secret original, Secret master) {
+    public void changeWithMasterPassword(DBusPath collection, Secret original, Secret master) throws DBusException {
         send("ChangeWithMasterPassword", "o(oayays)(oayays)", collection, original, master);
     }
 
     @Override
-    public ObjectPath changeWithPrompt(DBusPath collection) {
+    public ObjectPath changeWithPrompt(DBusPath collection) throws DBusException {
         Object[] response = send("ChangeWithPrompt", "o", collection);
         return (ObjectPath) response[0];
     }
 
     @Override
-    public ObjectPath createWithMasterPassword(Map<String, Variant> properties, Secret master) {
+    public ObjectPath createWithMasterPassword(Map<String, Variant> properties, Secret master) throws DBusException {
         Object[] response = send("CreateWithMasterPassword", "a{sv}(oayays)", properties, master);
         return (ObjectPath) response[0];
     }
 
     @Override
-    public void unlockWithMasterPassword(DBusPath collection, Secret master) {
+    public void unlockWithMasterPassword(DBusPath collection, Secret master) throws DBusException {
         send("UnlockWithMasterPassword", "o(oayays)", collection, master);
     }
 
