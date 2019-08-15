@@ -6,9 +6,9 @@
 A Java library for storing secrets in a keyring over the D-Bus.
 
 The library is conform to the freedesktop.org
-[Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) and thus compatible with gnome linux systems.
+[Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) and thus compatible with many Linux systems.
 
-The Secret Service itself is usually implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring).
+The Secret Service itself is usually implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and should be installed on the host system to provide the service over the D-Bus. On Linux systems with a GNOME Shell this should work out of the box. On other Linux systems, like KDE with Plasma, one can install [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) additionally.
 
 This library can be seen as the functional equivalent to the [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C library.
 
