@@ -15,8 +15,8 @@
 
     <name>secret-service</name>
     <description>
-        A Java library for storing secrets in the gnome-keyring over the DBus.
-        Simply set and get passwords in a gnome linux system.
+        A Java library for storing secrets in the gnome keyring over the D-Bus.
+        Simply manage passwords in a linux system.
     </description>
     <url>https://github.com/swiesend/secret-service</url>
 
