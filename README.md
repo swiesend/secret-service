@@ -14,6 +14,15 @@ This library can be seen as the functional equivalent to the [`libsecret`](https
 
 see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specifications/secret-storage-spec/)
 
+## Security Issues
+
+### CVE-2018-19358 (Vulnerability)
+
+There is a current investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked). Available D-Bus protection mechanisms (involving the busconfig and policy XML elements) are not used by default. The Secret Service API was never designed with a secure retrival mechanism.
+
+* [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358) Base Score: __[7.8 HIGH]__, CVSS:3.0
+* [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179) Base Score: __[5.5 Medium]__, CVSS:3.0
+
 ## Usage
 
 The library provides a simplified high-level API, which sends only transport encrypted secrets over the D-Bus.
@@ -108,12 +117,3 @@ For examples on API usage checkout the tests:
 * [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
 * [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
 * [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
-
-## Security Issues
-
-### CVE-2018-19358 (Vulnerability)
-
-There is a current investigation on the behaviour of the Secret Service API:
-
-* [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)
-* [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179)
