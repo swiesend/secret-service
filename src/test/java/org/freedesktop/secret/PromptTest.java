@@ -2,7 +2,7 @@ package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.exceptions.DBusException;
-import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.errors.NoSuchObjectException;
 import org.freedesktop.secret.interfaces.Prompt;
 import org.freedesktop.secret.test.Context;
 import org.junit.jupiter.api.*;
@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -55,7 +54,7 @@ public class PromptTest {
 
     @Test
     @Disabled
-    public void dismissPrompt() throws InterruptedException, NoSuchObject, DBusException {
+    public void dismissPrompt() throws InterruptedException, NoSuchObjectException, DBusException {
         ArrayList<ObjectPath> cs = new ArrayList();
         cs.add(context.collection.getPath());
         context.service.lock(cs);

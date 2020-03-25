@@ -6,9 +6,9 @@ import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.Message;
 import org.freedesktop.dbus.messages.MethodCall;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.errors.IsLocked;
-import org.freedesktop.secret.errors.NoSession;
-import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.errors.IsLockedException;
+import org.freedesktop.secret.errors.NoSessionException;
+import org.freedesktop.secret.errors.NoSuchObjectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,11 +48,11 @@ public class MessageHandler {
                 if (response instanceof org.freedesktop.dbus.errors.Error) {
                     switch (response.getName()) {
                         case "org.freedesktop.Secret.Error.NoSession":
-                            throw new NoSession((String) response.getParameters()[0]);
+                            throw new NoSessionException((String) response.getParameters()[0]);
                         case "org.freedesktop.Secret.Error.NoSuchObject":
-                            throw new NoSuchObject((String) response.getParameters()[0]);
+                            throw new NoSuchObjectException((String) response.getParameters()[0]);
                         case "org.freedesktop.Secret.Error.IsLocked":
-                            throw new IsLocked((String) response.getParameters()[0]);
+                            throw new IsLockedException((String) response.getParameters()[0]);
                         default:
                             throw new DBusException(response.getName() + ": " + response.getParameters()[0]);
                     }

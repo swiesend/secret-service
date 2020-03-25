@@ -4,7 +4,7 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.errors.NoSuchObjectException;
 import org.freedesktop.secret.test.Context;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
@@ -201,7 +201,7 @@ public class ServiceTest {
 
     @Test
     @Disabled
-    public void lockCommonCollections() throws InterruptedException, NoSuchObject, DBusException {
+    public void lockCommonCollections() throws InterruptedException, NoSuchObjectException, DBusException {
 
         // lock common collections:
         //   * alias/default == collection/login

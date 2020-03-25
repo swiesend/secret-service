@@ -72,6 +72,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     }
 
     @Test
+    @Disabled
     public void changeWithPrompt() throws DBusException {
         // NOTE: There is no prompt popup. This method behaves weird. Is this expected behavior?
         //       As the InternalUnsupportedGuiltRiddenInterface actually exists for not needing to use the prompt.

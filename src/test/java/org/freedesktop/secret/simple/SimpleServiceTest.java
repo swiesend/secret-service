@@ -8,9 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SimpleServiceTest {
@@ -31,22 +30,18 @@ public class SimpleServiceTest {
     @Disabled
     public void connectToDefaultCollection() throws UnsupportedOperationException, InterruptedException, IOException {
 
-        assertDoesNotThrow(() -> new SimpleService().connect());
+        assertDoesNotThrow(() -> SimpleService.create());
 
-        Optional<SimpleCollection> connection = new SimpleService().connect();
+        SimpleService service = SimpleService.create();
+        try (SimpleSession collection = service.createSession()) {
+            collection.openDefaultCollection();
+            String item = collection.createItem("My Item", "secret").get();
 
-        if (connection.isPresent()) {
-            try (SimpleCollection collection = connection.get()) {
-                String item = collection.createItem("My Item", "secret").get();
+            char[] actual = collection.getSecret(item);
+            assertEquals("secret", new String(actual));
+            assertEquals("My Item", collection.getLabel(item));
 
-                char[] actual = collection.getSecret(item);
-                assertEquals("secret", new String(actual));
-                assertEquals("My Item", collection.getLabel(item));
-
-                collection.deleteItem(item);
-            }
-        } else {
-            throw new UnsupportedOperationException("Could not establish a healthy D-Bus connection on this platform.");
+            collection.deleteItem(item);
         }
 
         Thread.sleep(250);
@@ -55,23 +50,19 @@ public class SimpleServiceTest {
     @Test
     public void connectToNonDefaultCollection() throws UnsupportedOperationException, InterruptedException, IOException {
 
-        assertDoesNotThrow(() -> new SimpleService().connect("test", "test"));
+        assertDoesNotThrow(() -> SimpleService.create());
 
-        Optional<SimpleCollection> connection = new SimpleService().connect("test", "test");
+        SimpleService service = SimpleService.create();
+        try (SimpleSession collection = service.createSession()) {
+            collection.openCollection("test", "test");
+            String item = collection.createItem("My Item", "secret").get();
 
-        if (connection.isPresent()) {
-            try (SimpleCollection collection = connection.get()) {
-                String item = collection.createItem("My Item", "secret").get();
+            char[] actual = collection.getSecret(item);
+            assertEquals("secret", new String(actual));
+            assertEquals("My Item", collection.getLabel(item));
 
-                char[] actual = collection.getSecret(item);
-                assertEquals("secret", new String(actual));
-                assertEquals("My Item", collection.getLabel(item));
-
-                collection.deleteItem(item);
-                collection.delete();
-            }
-        } else {
-            throw new UnsupportedOperationException("Could not establish a healthy D-Bus connection on this platform.");
+            collection.deleteItem(item);
+            collection.delete();
         }
 
         Thread.sleep(250);

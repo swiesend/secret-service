@@ -22,23 +22,22 @@ import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.*;
 
-public final class SimpleCollection implements AutoCloseable {
+public final class SimpleSession implements AutoCloseable {
 
-    private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
+    private static final Logger log = LoggerFactory.getLogger(SimpleSession.class);
 
     private TransportEncryption encryption = null;
     private Service service = null;
     private Session session = null;
     private Prompt prompt = null;
     private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
-
-    private Collection collection;
+    private Collection collection = null;
     private Secret encrypted = null;
 
     /**
      * The default collection.
      */
-    public SimpleCollection() throws IOException {
+    public void openDefaultCollection() throws IOException {
         try {
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
@@ -51,7 +50,7 @@ public final class SimpleCollection implements AutoCloseable {
     }
 
     /**
-     * A user specified collection.
+     * Open a session to a user specified collection.
      *
      * @param label    The displayable label of the collection
      *                 <br>
@@ -64,7 +63,7 @@ public final class SimpleCollection implements AutoCloseable {
      *                 A <code>SimpleCollection</code> can <b>not</b> handle different collections with the same <i>label</i>.
      * @param password The password of the collection
      */
-    public SimpleCollection(String label, CharSequence password) throws IOException {
+    public void openCollection(String label, CharSequence password) throws IOException {
         try {
             init();
 
@@ -225,6 +224,11 @@ public final class SimpleCollection implements AutoCloseable {
 
     @Override
     public void close() {
+        try {
+            session.close();
+        } catch (DBusException e) {
+            log.error(e.toString(), e.getCause());
+        }
         clear();
     }
 

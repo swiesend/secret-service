@@ -1,5 +1,6 @@
 package org.freedesktop.secret.simple;
 
+import org.freedesktop.secret.errors.SecretServiceUnavailableException;
 import org.junit.jupiter.api.*;
 
 import java.io.IOException;
@@ -29,9 +30,8 @@ public class Example {
     @Disabled
     @DisplayName("Create a password in the user's default collection.")
     public void createPasswordInTheDefaultCollection() {
-        Optional<SimpleCollection> connection = new SimpleService().connect();
-
-        try (SimpleCollection collection = connection.get()) {
+        SimpleService service = SimpleService.create();
+        try (SimpleSession collection = service.createSession()) {
             String item = collection.createItem("My Item", "secret").get();
 
             char[] actual = collection.getSecret(item);
@@ -47,9 +47,9 @@ public class Example {
     @Test
     @DisplayName("Create a password in a non-default collection.")
     public void createPasswordInANonDefaultCollection() {
-        Optional<SimpleCollection> connection = new SimpleService().connect("My Collection", "super secret");
-
-        try (SimpleCollection collection = connection.get()) {
+        SimpleService service = SimpleService.create();
+        try (SimpleSession collection = service.createSession()) {
+            collection.openCollection("My Collection", "super secret");
             String item = collection.createItem("My Item", "secret").get();
 
             char[] actual = collection.getSecret(item);
@@ -66,9 +66,9 @@ public class Example {
     @Test
     @DisplayName("Create a password with additional attributes.")
     public void createPasswordWithAttributes() {
-        Optional<SimpleCollection> connection = new SimpleService().connect("My Collection", "super secret");
-
-        try (SimpleCollection collection = connection.get()) {
+        SimpleService service = SimpleService.create();
+        try (SimpleSession collection = service.createSession()) {
+            collection.openCollection("My Collection", "super secret");
             // define unique attributes
             Map<String, String> attributes = new HashMap();
             attributes.put("uuid", "42");

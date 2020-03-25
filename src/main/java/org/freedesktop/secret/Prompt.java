@@ -3,7 +3,7 @@ package org.freedesktop.secret;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.DBusSignal;
-import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.errors.NoSuchObjectException;
 
 import java.util.Arrays;
 import java.util.List;
@@ -26,7 +26,7 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
     }
 
     @Override
-    public void prompt(ObjectPath prompt) throws NoSuchObject, DBusException {
+    public void prompt(ObjectPath prompt) throws NoSuchObjectException, DBusException {
         objectPath = prompt.getPath();
 
         if (objectPath.startsWith("/org/freedesktop/secrets/prompt/p") ||
@@ -36,7 +36,7 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
 
             send("Prompt", "s", window_id);
         } else {
-            throw new NoSuchObject(objectPath);
+            throw new NoSuchObjectException(objectPath);
         }
     }
 
