@@ -61,9 +61,9 @@ public class Example {
     @Test
     @DisplayName("Create a password in the user's default collection.")
     public void createPasswordInTheDefaultCollection() {
-        Optional<SimpleCollection> connection = new SimpleService().connect();
+        Optional<SimpleSession> connection = new SimpleService().connect();
         if (connection.isPresent()) {
-            try (SimpleCollection collection = connection.get()) {
+            try (SimpleSession collection = connection.get()) {
                 String item = collection.createItem("My Item", "secret").get();
 
                 char[] actual = collection.getSecret(item);
@@ -80,9 +80,9 @@ public class Example {
     @Test
     @DisplayName("Create a password in a non-default collection.")
     public void createPasswordInANonDefaultCollection() {
-        Optional<SimpleCollection> connection = new SimpleService().connect("My Collection", "super secret");
+        Optional<SimpleSession> connection = new SimpleService().connect("My Collection", "super secret");
         if (connection.isPresent()) {
-            try (SimpleCollection collection = connection.get()) {
+            try (SimpleSession collection = connection.get()) {
                 String item = collection.createItem("My Item", "secret").get();
 
                 char[] actual = collection.getSecret(item);
@@ -100,9 +100,9 @@ public class Example {
     @Test
     @DisplayName("Create a password with additional attributes.")
     public void createPasswordWithAttributes() {
-        Optional<SimpleCollection> connection = new SimpleService().connect("My Collection", "super secret");
+        Optional<SimpleSession> connection = new SimpleService().connect("My Collection", "super secret");
         if (connection.isPresent()) {
-            try (SimpleCollection collection = connection.get()) {
+            try (SimpleSession collection = connection.get()) {
                 // define unique attributes
                 Map<String, String> attributes = new HashMap();
                 attributes.put("uuid", "42");

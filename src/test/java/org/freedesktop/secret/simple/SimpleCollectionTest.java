@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class SimpleCollectionTest {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollectionTest.class);
+    private SimpleService service = SimpleService.create();
 
     private String getRandomHexString(int length) {
         Random r = new Random();
@@ -39,20 +40,23 @@ public class SimpleCollectionTest {
     @Test
     @Disabled
     public void deleteDefaultCollection() throws IOException {
-        SimpleCollection defaultCollection = new SimpleCollection();
+        SimpleSession defaultCollection = service.createSession();
+        defaultCollection.openDefaultCollection();
         assertThrows(AccessControlException.class, () -> defaultCollection.delete());
     }
 
     @Test
     public void deleteNonDefaultCollection() throws IOException {
-        SimpleCollection collection = new SimpleCollection("test", "test");
+        SimpleSession collection = service.createSession();
+        collection.openCollection("test", "test");
         assertDoesNotThrow(() -> collection.delete());
     }
 
     @Test
     public void createPasswordWithoutAttributes() throws NoSuchElementException, IOException {
         // before
-        SimpleCollection collection = new SimpleCollection("test", "test");
+        SimpleSession collection = service.createSession();
+        collection.openCollection("test", "test");
 
         String item = collection.createItem("item", "sécrèt").get();
         assertEquals("item", collection.getLabel(item));
@@ -73,7 +77,8 @@ public class SimpleCollectionTest {
     @Test
     public void createPasswordWithAttributes() throws NoSuchElementException, IOException {
         // before
-        SimpleCollection collection = new SimpleCollection("test", "test");
+        SimpleSession collection = service.createSession();
+        collection.openCollection("test", "test");
 
         Map<String, String> attributes = new HashMap();
         attributes.put("uuid", getRandomHexString(32));
@@ -95,7 +100,8 @@ public class SimpleCollectionTest {
     @Test
     public void updatePassword() throws NoSuchElementException, IOException {
         // before
-        SimpleCollection collection = new SimpleCollection("test", "test");
+        SimpleSession collection = service.createSession();
+        collection.openCollection("test", "test");
         Map<String, String> attributes = new HashMap();
 
         // create password
@@ -131,7 +137,8 @@ public class SimpleCollectionTest {
     @Test
     public void getItems() throws NoSuchElementException, IOException {
         // before
-        SimpleCollection collection = new SimpleCollection("test", "test");
+        SimpleSession collection = service.createSession();
+        collection.openCollection("test", "test");
 
         // create password
         Map<String, String> attributes = new HashMap();
@@ -158,7 +165,8 @@ public class SimpleCollectionTest {
     @Disabled
     public void getPasswordFromDefaultCollection() throws NoSuchElementException, IOException {
         // before
-        SimpleCollection collection = new SimpleCollection();
+        SimpleSession collection = service.createSession();
+        collection.openDefaultCollection();
         String item = collection.createItem("item", "secret").get();
 
         // test
@@ -167,12 +175,14 @@ public class SimpleCollectionTest {
 
         // after
         collection.deleteItem(item);
+        collection.close();
     }
 
     @Test
     public void getPasswordFromNonDefaultCollection() throws NoSuchElementException, IOException {
         // before
-        SimpleCollection collection = new SimpleCollection("test", "test");
+        SimpleSession collection = service.createSession();
+        collection.openCollection("test", "test");
         String itemID = collection.createItem("item", "secret").get();
 
         // test
@@ -187,7 +197,8 @@ public class SimpleCollectionTest {
     @Test
     @Disabled
     public void getPasswords() throws NoSuchElementException, IOException {
-        SimpleCollection collection = new SimpleCollection();
+        SimpleSession collection = service.createSession();
+        collection.openDefaultCollection();
         assertDoesNotThrow(() -> {
             // only with user permission
             Map<String, char[]> passwords = collection.getSecrets().get();
@@ -204,7 +215,8 @@ public class SimpleCollectionTest {
     @Test
     @Disabled
     public void deletePassword() throws NoSuchElementException, IOException {
-        SimpleCollection collection = new SimpleCollection();
+        SimpleSession collection = service.createSession();
+        collection.openDefaultCollection();
         String item = collection.createItem("item", "secret").get();
         assertDoesNotThrow(() -> {
             // only with user permission
@@ -217,7 +229,8 @@ public class SimpleCollectionTest {
      */
     @Test
     public void deletePasswords() throws NoSuchElementException, IOException {
-        SimpleCollection collection = new SimpleCollection("test", "test");
+        SimpleSession collection = service.createSession();
+        collection.openCollection("test", "test");
         String item = collection.createItem("item", "secret").get();
         assertDoesNotThrow(() -> {
             collection.deleteItems(Arrays.asList(item));

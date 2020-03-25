@@ -8,7 +8,7 @@ import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Static;
-import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.errors.NoSuchObjectException;
 import org.freedesktop.secret.handlers.Messaging;
 
 import java.util.List;
@@ -54,11 +54,12 @@ public abstract class Prompt extends Messaging implements DBusInterface {
      * Perform the prompt.
      * 
      * @param prompt        Objectpath of the prompt.
-     * @throws NoSuchObject No such item or collection exists.
+     * 
+     * @throws NoSuchObjectException No such item or collection exists.
      * 
      * @see Completed
      */
-    abstract public void prompt(ObjectPath prompt) throws NoSuchObject, DBusException;
+    abstract public void prompt(ObjectPath prompt) throws NoSuchObjectException, DBusException;
 
     /**
      * Await the user interaction with the prompt.
@@ -70,11 +71,11 @@ public abstract class Prompt extends Messaging implements DBusInterface {
      * @return Completed or null if user input exceeds the default timeout of 300 seconds.
      * 
      * @throws InterruptedException A D-Bus signal failed.
-     * @throws NoSuchObject         No such item or collection exists.
+     * @throws NoSuchObjectException No such item or collection exists.
      * 
      * @see Completed
      */
-    abstract public Completed await(ObjectPath prompt) throws InterruptedException, NoSuchObject, DBusException;
+    abstract public Completed await(ObjectPath prompt) throws InterruptedException, NoSuchObjectException, DBusException;
 
     /**
      * Dismiss the prompt.

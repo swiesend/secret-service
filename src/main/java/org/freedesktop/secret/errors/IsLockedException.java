@@ -5,23 +5,23 @@ package org.freedesktop.secret.errors;
  *
  * <p><code>org.freedesktop.Secret.Error.IsLocked</code></p>
  */
-public class IsLocked extends Exception {
-    public IsLocked() {
+public class IsLockedException extends Exception {
+    public IsLockedException() {
     }
 
-    public IsLocked(String message) {
+    public IsLockedException(String message) {
         super(message);
     }
 
-    public IsLocked(String message, Throwable cause) {
+    public IsLockedException(String message, Throwable cause) {
         super(message, cause);
     }
 
-    public IsLocked(Throwable cause) {
+    public IsLockedException(Throwable cause) {
         super(cause);
     }
 
-    public IsLocked(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
+    public IsLockedException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
         super(message, cause, enableSuppression, writableStackTrace);
     }
 }
