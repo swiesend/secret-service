@@ -75,7 +75,7 @@ public class TransportEncryption implements AutoCloseable {
 
         // open session with "Client DH pub key as an array of bytes" without prime or generator
         Pair<Variant<byte[]>, ObjectPath> osResponse = service.openSession(
-                Static.Algorithm.DH_IETF_1024_SHA_256_AES_128_CBC_PKCS_7, new Variant(ya.toByteArray()));
+                Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant(ya.toByteArray()));
 
         // transform peer's raw Y to a public key
         yb = osResponse.a.getValue();
@@ -97,7 +97,7 @@ public class TransportEncryption implements AutoCloseable {
 
         // HKDF digest into a 128-bit key by extract and expand with "NULL salt and empty info"
         // see: https://standards.freedesktop.org/secret-service/ch07s03.html
-        byte[] pseudoRandomKey = HKDF.fromHmacSha256().extract(null, rawSessionKey);
+        byte[] pseudoRandomKey = HKDF.fromHmacSha256().extract((byte[]) null, rawSessionKey);
         byte[] keyingMaterial = HKDF.fromHmacSha256().expand(pseudoRandomKey, null, toBytes(AES_BITS));
 
         sessionKey = new SecretKeySpec(keyingMaterial, Static.Algorithm.AES);
