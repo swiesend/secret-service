@@ -39,6 +39,8 @@ public final class SimpleCollection implements AutoCloseable {
 
     /**
      * The default collection.
+     *
+     * @throws IOException  Could not communicate properly with the D-Bus. Check the logs.
      */
     public SimpleCollection() throws IOException {
         init();
@@ -60,6 +62,9 @@ public final class SimpleCollection implements AutoCloseable {
      *                  A SimpleCollection can't handle collections with the same label, but different ids correctly.
      *
      * @param password  Password of the collection
+     *
+     * @throws IOException  Could not communicate properly with the D-Bus. Check the logs.
+     *
      */
     public SimpleCollection(String label, CharSequence password) throws IOException {
         init();
@@ -217,6 +222,9 @@ public final class SimpleCollection implements AutoCloseable {
     @Override
     public void close() {
         clear();
+        if (session != null) {
+            session.close();
+        }
     }
 
     /**
@@ -240,7 +248,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @return DBus object path
      *
-     * @throws IllegalArgumentException
+     * @throws IllegalArgumentException The label and password are non nullable.
      */
     public String createItem(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
@@ -285,7 +293,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @return DBus object path
      *
-     * @throws IllegalArgumentException
+     * @throws IllegalArgumentException The label and password are non nullable.
      */
     public String createItem(String label, CharSequence password) throws IllegalArgumentException {
         return createItem(label, password, null);
@@ -299,7 +307,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @param password      The password of the new item
      * @param attributes    The attributes of the new item
      *
-     * @throws IllegalArgumentException
+     * @throws IllegalArgumentException The object path, label and password are non nullable.
      */
     public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
