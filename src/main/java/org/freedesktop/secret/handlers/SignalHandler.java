@@ -29,12 +29,8 @@ public class SignalHandler implements DBusSigHandler {
 
     private SignalHandler() {
         Runtime.getRuntime().addShutdownHook(new Thread(() ->
-            disconnect()
+                disconnect()
         ));
-    }
-
-    private static class SingletonHelper {
-        private static final SignalHandler INSTANCE = new SignalHandler();
     }
 
     public static SignalHandler getInstance() {
@@ -114,19 +110,19 @@ public class SignalHandler implements DBusSigHandler {
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s) {
         return Arrays.stream(handled)
-            .filter(signal -> signal != null)
-            .filter(signal -> signal.getClass().equals(s))
-            .map(signal -> (S) signal)
-            .collect(Collectors.toList());
+                .filter(signal -> signal != null)
+                .filter(signal -> signal.getClass().equals(s))
+                .map(signal -> (S) signal)
+                .collect(Collectors.toList());
     }
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s, String path) {
         return Arrays.stream(handled)
-            .filter(signal -> signal != null)
-            .filter(signal -> signal.getClass().equals(s))
-            .filter(signal -> signal.getPath().equals(path))
-            .map(signal -> (S) signal)
-            .collect(Collectors.toList());
+                .filter(signal -> signal != null)
+                .filter(signal -> signal.getClass().equals(s))
+                .filter(signal -> signal.getPath().equals(path))
+                .map(signal -> (S) signal)
+                .collect(Collectors.toList());
     }
 
     public int getCount() {
@@ -146,6 +142,11 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
+        final Duration timeout = Duration.ofSeconds(300);
+        return await(s, path, action, timeout);
+    }
+
+    public <S extends DBusSignal> S await(Class<S> s, String path, Callable action, Duration timeout) {
 
         try {
             action.call();
@@ -154,7 +155,6 @@ public class SignalHandler implements DBusSigHandler {
         }
 
         int init = getHandledSignals(s, path).size();
-        final Duration timeout = Duration.ofSeconds(60);
         ExecutorService executor = Executors.newSingleThreadExecutor();
 
         log.info("await signal " + s.getName() + "(" + path + ") within " + timeout.getSeconds() + " seconds.");
@@ -184,5 +184,9 @@ public class SignalHandler implements DBusSigHandler {
         }
 
         return null;
+    }
+
+    private static class SingletonHelper {
+        private static final SignalHandler INSTANCE = new SignalHandler();
     }
 }
