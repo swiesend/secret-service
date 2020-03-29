@@ -27,6 +27,8 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * Toggle the lock of a collection.
      * 
      * @param collection    The ObjectPath of the collection.
+     *
+     * @return The ObjectPath of the collection.
      */
     ObjectPath changeWithPrompt(DBusPath collection);
 

@@ -67,12 +67,14 @@ public abstract class Item extends Messaging implements DBusInterface {
      *      Properties for a collection and properties for an item are not the same.
      *  </p>
      *
-     * @see {@link Item#getAttributes()}
-     * @see {@link Item#setAttributes(Map attributes)}
-     * @see {@link Collection#createItem(Map properties, Secret secret, boolean replace)}
-     * @see {@link Collection#createProperties(String label)}
-     * @see {@link Service#createCollection(Map properties)}
-     * @see {@link Service#createCollection(Map properties, String alias)}
+     *  <br>
+     *  See Also:<br>
+     *      {@link Item#getAttributes()}<br>
+     *      {@link Item#setAttributes(Map attributes)}<br>
+     *      {@link Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
+     *      {@link Collection#createProperties(String label)}<br>
+     *      {@link Service#createCollection(Map properties)}<br>
+     *      {@link Service#createCollection(Map properties, String alias)}<br>
      */
     public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
         Map<String, Variant> properties = new HashMap();
