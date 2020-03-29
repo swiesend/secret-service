@@ -1,10 +1,10 @@
 package org.freedesktop.secret.handlers;
 
-import org.freedesktop.dbus.Static;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.MethodCall;
 import org.freedesktop.dbus.types.Variant;
+import org.freedesktop.secret.Static;
 import org.freedesktop.secret.errors.IsLocked;
 import org.freedesktop.secret.errors.NoSession;
 import org.freedesktop.secret.errors.NoSuchObject;
@@ -67,19 +67,19 @@ public class MessageHandler {
     }
 
     public Variant getProperty(String service, String path, String iface, String property) {
-        Object[] response = send(service, path, Static.Interfaces.DBUS_PROPERTIES,
+        Object[] response = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
                 "Get", "ss", iface, property);
         return (Variant) response[0];
     }
 
     public Variant getAllProperties(String service, String path, String iface) {
-        Object[] response = send(service, path, Static.Interfaces.DBUS_PROPERTIES,
+        Object[] response = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
                 "GetAll", "ss", iface);
         return (Variant) response[0];
     }
 
     public void setProperty(String service, String path, String iface, String property, Variant value) {
-        send(service, path, Static.Interfaces.DBUS_PROPERTIES,
+        send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
                 "Set", "ssv", iface, property, value);
     }
 
