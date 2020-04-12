@@ -27,6 +27,26 @@ There is a current investigation on the behaviour of the Secret Service API, as 
 
 The library provides a simplified high-level API, which sends only transport encrypted secrets over the D-Bus.
 
+### Dependency
+
+Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use another version.
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service</artifactId>
+    <version>1.0.0</version>
+    <exclusions>
+        <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </exclusion>
+    </exclusions>
+</dependency>
+```
+
+### High-Level API
+
 ```java
 package org.freedesktop.secret.simple;
 
