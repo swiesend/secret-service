@@ -18,7 +18,7 @@ see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specificati
 
 ### CVE-2018-19358 (Vulnerability)
 
-There is a current investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked). Available D-Bus protection mechanisms (involving the busconfig and policy XML elements) are not used by default. The Secret Service API was never designed with a secure retrival mechanism.
+There is a current investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked). Available D-Bus protection mechanisms (involving the busconfig and policy XML elements) are not used by default. The Secret Service API was never designed with a secure retrieval mechanism.
 
 * [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358) Base Score: __[7.8 HIGH]__, CVSS:3.0
 * [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179) Base Score: __[5.5 Medium]__, CVSS:3.0
