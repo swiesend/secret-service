@@ -13,12 +13,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class Example {
 
-    /*
-     * FIXME: [#4](https://github.com/swiesend/secret-service/issues/4)
-     *     Running JUnit test for all in secret-service fails, whereas individually they pass.
-     *     [main] INFO org.freedesktop.secret.handlers.SignalHandler - await signal org.freedesktop.secret.interfaces.Prompt$Completed(/org/freedesktop/secrets/prompt/u8) within 60 seconds.
-     *     [main] ERROR org.freedesktop.secret.handlers.SignalHandler - java.util.concurrent.TimeoutException
-     */
     @Test
     @Disabled
     @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")

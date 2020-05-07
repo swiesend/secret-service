@@ -18,7 +18,7 @@ see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specificati
 
 ### CVE-2018-19358 (Vulnerability)
 
-There is a current investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked). Available D-Bus protection mechanisms (involving the busconfig and policy XML elements) are not used by default. The Secret Service API was never designed with a secure retrival mechanism.
+There is a current investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked). Available D-Bus protection mechanisms (involving the busconfig and policy XML elements) are not used by default. The Secret Service API was never designed with a secure retrieval mechanism.
 
 * [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358) Base Score: __[7.8 HIGH]__, CVSS:3.0
 * [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179) Base Score: __[5.5 Medium]__, CVSS:3.0
@@ -26,6 +26,26 @@ There is a current investigation on the behaviour of the Secret Service API, as 
 ## Usage
 
 The library provides a simplified high-level API, which sends only transport encrypted secrets over the D-Bus.
+
+### Dependency
+
+Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use another version.
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service</artifactId>
+    <version>1.0.0</version>
+    <exclusions>
+        <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </exclusion>
+    </exclusions>
+</dependency>
+```
+
+### High-Level API
 
 ```java
 package org.freedesktop.secret.simple;
@@ -102,7 +122,9 @@ public class Example {
 For the details of the transport encryption see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
 [Transport Encryption Example](src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)
 
-The low-level API gives access to all defined Methods, Properties and Signals of the Secret Service interface:
+### Low-Level API
+
+The low-level API gives access to all defined D-Bus `Methods`, `Properties` and `Signals` of the Secret Service interface:
 
 * [Service](src/main/java/org/freedesktop/secret/Service.java)
 * [Collection](src/main/java/org/freedesktop/secret/Collection.java)
@@ -110,10 +132,14 @@ The low-level API gives access to all defined Methods, Properties and Signals of
 * [Session](src/main/java/org/freedesktop/secret/Session.java)
 * [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
 
-For examples on API usage checkout the tests:
+For the usage of the low-level API see the tests:
 
 * [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
 * [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
 * [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
 * [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
 * [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
+
+#### D-Bus Interfaces
+
+The underlying introspected XML D-Bus interfaces are available at the [test/resources](src/test/resources) directory.

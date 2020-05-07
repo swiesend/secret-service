@@ -15,7 +15,7 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
         super(service.getConnection(), signals,
                 Static.Service.SECRETS,
                 "/",
-                Static.Interfaces.PROMT);
+                Static.Interfaces.PROMPT);
     }
 
     @Override

@@ -32,27 +32,29 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
 
     /**
      * Create propterties for a new collection.
-     * 
+     *
      * @param label The displayable label of this collection.
-     * 
+     *
      *  <p>
      *      <b>Note:</b>
      *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
      *  </p>
-     * 
+     *
      * @return properties   &mdash; The propterties for a collection.
-     * 
+     *
      *  <p><code>{org.freedesktop.Secret.Collection.Label: label}</code></p>
-     * 
+     *
      *  <p>
      *      <b>Note:</b>
      *      Properties for a collection and properties for an item are not the same.
      *  </p>
-     * 
-     * @see {@link Service#createCollection(Map properties)}
-     * @see {@link Service#createCollection(Map properties, String alias)}
-     * @see {@link Item#createProperties(String label, Map attributes)}
-     * @see {@link Collection#createItem(Map properties, Secret secret, boolean replace)}
+     *
+     *  <br>
+     *  See Also:<br>
+     *  {@link Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
+     *  {@link Service#createCollection(Map properties)}<br>
+     *  {@link Service#createCollection(Map properties, String alias)}<br>
+     *  {@link Item#createProperties(String label, Map attributes)}<br>
      */
     public static Map<String, Variant> createProperties(String label) {
         HashMap<String, Variant> properties = new HashMap();
@@ -65,11 +67,11 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
 
         /**
          * A new item in this collection was created.
-         * 
+         *
          * @param path  The path to the object this is emitted from.
          * @param item  The item that was created.
-         * 
-         * @throws DBusException
+         *
+         * @throws DBusException Could not communicate properly with the D-Bus.
          */
         public ItemCreated(String path, DBusPath item) throws DBusException {
             super(path, item);
@@ -82,11 +84,11 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
 
         /**
          * An item in this collection was deleted.
-         *   
+         *
          * @param path  The path to the object this is emitted from.
          * @param item  The item that was deleted.
-         * 
-         * @throws DBusException
+         *
+         * @throws DBusException Could not communicate properly with the D-Bus.
          */
         public ItemDeleted(String path, DBusPath item) throws DBusException {
             super(path, item);
@@ -99,11 +101,11 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
 
         /**
          * An item in this collection changed.
-         *   
+         *
          * @param path  The path to the object this is emitted from.
          * @param item  The item that was changed.
-         * 
-         * @throws DBusException
+         *
+         * @throws DBusException Could not communicate properly with the D-Bus.
          */
         public ItemChanged(String path, DBusPath item) throws DBusException {
             super(path, item);
@@ -113,20 +115,20 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
 
     /**
      * Delete this collection.
-     * 
+     *
      * @return prompt   &mdash; A prompt to delete the collection, or the special value '/' when no prompt is necessary.
-     * 
+     *
      * @see ObjectPath
      */
     abstract public ObjectPath delete();
 
     /**
      * Search for items in this collection matching the lookup attributes.
-     * 
+     *
      * @param attributes   Attributes to match.
-     * 
+     *
      * @return results     &mdash; Items that matched the attributes.
-     * 
+     *
      * @see ObjectPath
      * @see Secret
      * @see Item
@@ -134,14 +136,14 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
     abstract public List<ObjectPath> searchItems(Map<String, String> attributes);
 
     /**
-     * Create an item with the given attributes, secret and label. If replace is set, then it replaces an item already 
+     * Create an item with the given attributes, secret and label. If replace is set, then it replaces an item already
      * present with the same values for the attributes.
-     * 
+     *
      * @param  properties   The properties for the new item.
-     *                      
-     *                      <p>This allows setting the new item's properties upon its creation. All READWRITE properties 
+     *
+     *                      <p>This allows setting the new item's properties upon its creation. All READWRITE properties
      *                      are useable. Specify the property names in full <code>interface.Property</code> form.</p>
-     * 
+     *
      *                      <p>
      *                          <b>Example 13.2. Example for properties of an item:</b><br>
      *                          <code>
@@ -153,26 +155,28 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      *                              &nbsp;&nbsp;}<br>
      *                          }<br>
      *                      </code></p>
-     * 
+     *
      *                      <p>
      *                          <b>Note:</b>
-     *                          Please note that there is a distinction between the terms <i>Property</i>, which refers 
-     *                          to D-Bus properties of an object, and <i>Attribute</i>, which refers to one of a 
-     *                          secret item's string-valued attributes. 
+     *                          Please note that there is a distinction between the terms <i>Property</i>, which refers
+     *                          to D-Bus properties of an object, and <i>Attribute</i>, which refers to one of a
+     *                          secret item's string-valued attributes.
      *                      </p>
-     * 
+     *
      * @param secret        The secret to store in the item, encoded with the included session.
-     * 
+     *
      * @param replace       Whether to replace an item with the same attributes or not.
-     * 
+     *
      * @return Pair&lt;item, prompt&gt;<br>
      * <br>
      * item                 &mdash; The item created, or the special value '/' if a prompt is necessary.<br>
      * <br>
      * prompt               &mdash; A prompt object, or the special value '/' if no prompt is necessary.<br>
-     * 
-     * @see static {@link Collection#createProperties(String label)}}
-     * @see static {@link Item#createProperties(String label, Map attributes)}}
+     *
+     * <br>
+     * See Also:<br>
+     * {@link Collection#createProperties(String label)}<br>
+     * {@link Item#createProperties(String label, Map attributes)}<br>
      * @see Pair
      * @see ObjectPath
      * @see Secret
@@ -182,20 +186,20 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
 
     /**
      * <b>Items</b> is a D-Bus Property.
-     * 
+     *
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
-     * 
+     *
      * @return  Items in this collection.
      */
     abstract public List<ObjectPath> getItems();
 
     /**
      * <b>Label</b> is a D-Bus Property.
-     * 
+     *
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
-     * 
+     *
      * @return  The displayable label of this collection.
-     *                  
+     *
      *  <p>
      *      <b>Note:</b>
      *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
@@ -205,11 +209,11 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
 
     /**
      * <b>Label</b> is a D-Bus Property.
-     * 
+     *
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
-     * 
+     *
      * @param  label    The displayable label of this collection.
-     *                  
+     *
      *  <p>
      *      <b>Note:</b>
      *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
@@ -218,7 +222,7 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
     abstract public void setLabel(String label);
 
     /**
-     * @return  Whether the collection is locked and must be authenticated by the client application. 
+     * @return  Whether the collection is locked and must be authenticated by the client application.
      */
     abstract public boolean isLocked();
 

@@ -9,6 +9,21 @@ import java.util.List;
 
 public class Static {
 
+    public static class DBus {
+        public static class Service {
+            public static final String DBUS = "org.freedesktop.DBus";
+        }
+
+        public static class ObjectPaths {
+            public static final String DBUS = "/org/freedesktop/DBus";
+        }
+
+        public static class Interfaces {
+            public static final String DBUS = "org.freedesktop.DBus";
+            public static final String DBUS_PROPERTIES = "org.freedesktop.DBus.Properties";
+        }
+    }
+
     public static class Service {
         public static final String SECRETS = "org.freedesktop.secrets";
     }
@@ -33,6 +48,10 @@ public class Static {
          * The object path for a collection, where xxxx represents a possibly encoded or truncated version of the
          * initial label of the collection.
          *
+         * @param name the encoded name of the collection
+         *
+         * @return path of the collection
+         *
          * <code>
          *   /org/freedesktop/secrets/collection/xxxx
          * </code>
@@ -45,6 +64,11 @@ public class Static {
          * The object path for an item, where xxxx is the collection (above) and iiii is an auto-generated item
          * specific identifier.
          *
+         * @param collection    the encoded name of the collection
+         * @param item_id       the encoded name of the item
+         *
+         * @return path of the item
+         *
          * <code>
          *   /org/freedesktop/secrets/collection/xxxx/iiii
          * </code>
@@ -56,6 +80,10 @@ public class Static {
         /**
          * The object path for a session, where ssss is an auto-generated session specific identifier.
          *
+         * @param session_id the current id of the session
+         *
+         * @return path of the session
+         *
          * <code>
          *   /org/freedesktop/secrets/session/ssss
          * </code>
@@ -66,6 +94,10 @@ public class Static {
 
         /**
          * The object path for a prompt, where pppp is the window_id.
+         *
+         * @param window_id id of the current prompt's window
+         *
+         * @return path of the prompt
          *
          * <code>
          *   /org/freedesktop/secrets/prompt/pppp
@@ -102,13 +134,13 @@ public class Static {
         /**
          * A prompt necessary to complete an operation.
          */
-        public static final String PROMT = "org.freedesktop.Secret.Prompt";
+        public static final String PROMPT = "org.freedesktop.Secret.Prompt";
 
     }
 
     public static class Algorithm {
         public static final String PLAIN = "plain";
-        public static final String DH_IETF_1024_SHA_256_AES_128_CBC_PKCS_7 = "dh-ietf1024-sha256-aes128-cbc-pkcs7";
+        public static final String DH_IETF1024_SHA256_AES128_CBC_PKCS7 = "dh-ietf1024-sha256-aes128-cbc-pkcs7";
         public static final String DIFFIE_HELLMAN = "DH";
         public static final String AES = "AES";
         public static final String AES_CBC_PKCS5 = "AES/CBC/PKCS5Padding";

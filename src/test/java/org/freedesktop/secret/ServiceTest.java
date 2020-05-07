@@ -70,7 +70,7 @@ public class ServiceTest {
         assertEquals(128, input.length);
 
         Pair<Variant<byte[]>, ObjectPath> response = context.service.openSession(
-                Static.Algorithm.DH_IETF_1024_SHA_256_AES_128_CBC_PKCS_7, new Variant(input));
+                Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant(input));
         log.info(response.toString());
 
         byte[] peerPublicKey = response.a.getValue();

@@ -1,14 +1,8 @@
 language: java
 sudo: true
 jdk:
-  - openjdk8
-  # - openjdk9
-  # - openjdk10
-  # - openjdk11
-  # - oraclejdk8
-  # - oraclejdk9
-  # - oraclejdk10
-  # - oraclejdk11
+  - openjdk11
+  - oraclejdk11
 branches:
   only:
     - master
@@ -17,13 +11,14 @@ cache:
     - $HOME/.m2
 env:
 addons:
-before_install:
-  - sudo apt-get update
+#before_install:
+  # - sudo apt-get update
   # - sudo apt-get install -y dbus dbus-java-bin dbus-x11
-  - sudo apt-get install -y gnome-session gnome-keyring libsecret-1-0
+  # - sudo apt-get install -y gnome-session gnome-keyring libsecret-1-0
 install:
 script:
-  - mvn clean test verify -P coverage
+  - mvn compile
+  # - mvn clean test verify -P coverage
 after_success:
 before_deploy:
 deploy:

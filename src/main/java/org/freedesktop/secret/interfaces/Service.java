@@ -31,9 +31,10 @@ public abstract class Service extends Messaging implements DBusInterface {
          * A collection was created.
          *
          * @param path          The path to the object this is emitted from.
+         *
          * @param collection    Collection that was created.
          * 
-         * @throws DBusException
+         * @throws DBusException Could not communicate properly with the D-Bus.
          */
         public CollectionCreated(String path, DBusPath collection) throws DBusException {
             super(path, collection);
@@ -52,7 +53,7 @@ public abstract class Service extends Messaging implements DBusInterface {
          *
          * @param collection    Collection that was deleted.
          *
-         * @throws DBusException
+         * @throws DBusException Could not communicate properly with the D-Bus.
          */
         public CollectionDeleted(String path, DBusPath collection) throws DBusException {
             super(path, collection);
@@ -70,7 +71,7 @@ public abstract class Service extends Messaging implements DBusInterface {
          *
          * @param collection    Collection that was changed.
          *
-         * @throws DBusException
+         * @throws DBusException Could not communicate properly with the D-Bus.
          */
         public CollectionChanged(String path, DBusPath collection) throws DBusException {
             super(path, collection);
@@ -82,7 +83,6 @@ public abstract class Service extends Messaging implements DBusInterface {
      * Open a unique session for the caller application.
      *
      * @param algorithm The algorithm the caller wishes to use.
-     * 
      * @param input     Input arguments for the algorithm.
      * 
      * @return Pair&lt;output, result&gt;<br>
@@ -217,17 +217,25 @@ public abstract class Service extends Messaging implements DBusInterface {
 
     /**
      * Lock the entire Secret Service API.
-     * 
-     * @see {@link #lock(List objects)}
-     * @see {@link #unlock(List objects)}
-     * @see {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#unlockWithMasterPassword(DBusPath collection, Secret master)}
+     *
+     * <br>
+     * See Also:<br>
+     * {@link #lock(List objects)}<br>
+     * {@link #unlock(List objects)}<br>
+     * {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#unlockWithMasterPassword(DBusPath collection, Secret master)}<br>
      */
     abstract public void lockService();
 
     /**
      * Toggle the lock for a collection with a prompt.
+     *
+     * @param collection    Path of the collection.
+     *
+     * @return Path of the collection
      * 
-     * @see {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#changeWithPrompt(DBusPath collection)}
+     * <br>
+     * See Also:<br>
+     * {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#changeWithPrompt(DBusPath collection)}<br>
      */
     abstract public ObjectPath changeLock(ObjectPath collection);
 
