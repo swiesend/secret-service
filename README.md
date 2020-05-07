@@ -132,7 +132,7 @@ The low-level API gives access to all defined D-Bus `Methods`, `Properties` and 
 * [Session](src/main/java/org/freedesktop/secret/Session.java)
 * [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
 
-For examples on the low-level API usage checkout the tests:
+For the usage of the low-level API see the tests:
 
 * [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
 * [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
