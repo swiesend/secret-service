@@ -80,7 +80,7 @@ public class MessageHandler {
         try {
             return (Variant) response[0];
         } catch (Exception e) {
-            throw new DBusException("Could not get property: {" + service + ", " + path + ", " + iface + ", " + property + "}");
+            throw new DBusException("Could not get property: {service: " + service + ", path: " + path + ", interface: " + iface + ", property: " + property + "}");
         }
     }
 
@@ -90,7 +90,7 @@ public class MessageHandler {
         try {
             return (Variant) response[0];
         } catch (Exception e) {
-            throw new DBusException("Could not get all properties: {" + service + ", " + path + ", " + iface + "}");
+            throw new DBusException("Could not get all properties: {service: " + service + ", path: " + path + ", interface: " + iface + "}");
         }
     }
 
