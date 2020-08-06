@@ -37,7 +37,7 @@ public final class SimpleSession implements AutoCloseable {
     /**
      * The default collection.
      *
-     * @throws IOException  Could not communicate properly with the D-Bus. Check the logs.
+     * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
      */
     public void openDefaultCollection() throws IOException {
         try {
@@ -54,19 +54,16 @@ public final class SimpleSession implements AutoCloseable {
     /**
      * Open a session to a user specified collection.
      *
-     * @param label     The displayable label of the collection
+     * @param label    The displayable label of the collection
      *
-     *                  <p>
-     *                      NOTE: The 'label' of a collection may differ from the 'id' of a collection. The 'id' is
-     *                      assigned by the Secret Service and used in the DBus object path of a collection or item.
-     *                  <p>
-     *
-     *                  A SimpleCollection can't handle collections with the same label, but different ids correctly.
-     *
-     * @param password  Password of the collection
-     *
-     * @throws IOException  Could not communicate properly with the D-Bus. Check the logs.
-     *
+     *                 <p>
+     *                 NOTE: The 'label' of a collection may differ from the 'id' of a collection. The 'id' is
+     *                 assigned by the Secret Service and used in the DBus object path of a collection or item.
+     *                 <p>
+     *                 <p>
+     *                 A SimpleCollection can't handle collections with the same label, but different ids correctly.
+     * @param password Password of the collection
+     * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
      */
     public void openCollection(String label, CharSequence password) throws IOException {
         try {
