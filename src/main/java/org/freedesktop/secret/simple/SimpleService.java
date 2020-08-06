@@ -19,7 +19,7 @@ public class SimpleService {
      *   To open a session on the user's default collection call <code>SimpleService.open()</code>.
      *   To open a session on a non default collection call <code>SimpleService.openCollection()</code>.
      */
-    public static SimpleService create() {
+    public static SimpleService create() throws SecretServiceUnavailableException {
         try {
             new SimpleSession().openDefaultCollection();
         } catch (Exception e) {

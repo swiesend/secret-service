@@ -13,7 +13,7 @@ public class Example {
     @Test
     @Disabled
     @DisplayName("Create a password in the user's default collection.")
-    public void createPasswordInTheDefaultCollection() {
+    public void createPasswordInTheDefaultCollection() throws SecretServiceUnavailableException {
         SimpleService service = SimpleService.create();
         try (SimpleSession collection = service.createSession()) {
             String item = collection.createItem("My Item", "secret").get();
@@ -30,7 +30,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password in a non-default collection.")
-    public void createPasswordInANonDefaultCollection() {
+    public void createPasswordInANonDefaultCollection() throws SecretServiceUnavailableException  {
         SimpleService service = SimpleService.create();
         try (SimpleSession collection = service.createSession()) {
             collection.openCollection("My Collection", "super secret");
@@ -49,7 +49,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password with additional attributes.")
-    public void createPasswordWithAttributes() {
+    public void createPasswordWithAttributes() throws SecretServiceUnavailableException  {
         SimpleService service = SimpleService.create();
         try (SimpleSession collection = service.createSession()) {
             collection.openCollection("My Collection", "super secret");
@@ -75,6 +75,6 @@ public class Example {
         } catch (NoSuchElementException | IOException e) {
             // something went wrong
         } // clears automatically all session secrets in memory
-
     }
+
 }
