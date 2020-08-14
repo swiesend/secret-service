@@ -34,6 +34,7 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
     @Override
     public ObjectPath delete() {
         Object[] response = send("Delete", "");
+        if (response == null) return null;
         ObjectPath prompt = (ObjectPath) response[0];
         return prompt;
     }
@@ -41,6 +42,7 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
     @Override
     public Secret getSecret(ObjectPath session) {
         Object[] response = send("GetSecret", "o", session);
+        if (response == null) return null;
         Object[] inner = (Object[]) response[0];
 
         ObjectPath session_path = (ObjectPath) inner[0];
@@ -49,8 +51,7 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
         String contentType = (String) inner[3];
 
         Secret secret;
-        if (contentType.equals(Secret.TEXT_PLAIN) ||
-                contentType.equals(Secret.TEXT_PLAIN_CHARSET_UTF_8)) {
+        if (contentType.equals(Secret.TEXT_PLAIN) || contentType.equals(Secret.TEXT_PLAIN_CHARSET_UTF_8)) {
             // replace the content-type "text/plain" with default "text/plain; charset=utf8"
             secret = new Secret(session_path, parameters, value);
         } else {
@@ -69,12 +70,14 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
     @Override
     public boolean isLocked() {
         Variant response = getProperty("Locked");
+        if (response == null) return true;
         return (boolean) response.getValue();
     }
 
     @Override
     public Map<String, String> getAttributes() {
         Variant response = getProperty("Attributes");
+        if (response == null) return null;
         return (Map<String, String>) response.getValue();
     }
 
@@ -86,6 +89,7 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
     @Override
     public String getLabel() {
         Variant response = getProperty("Label");
+        if (response == null) return null;
         return (String) response.getValue();
     }
 
@@ -97,18 +101,21 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
     @Override
     public String getType() {
         Variant response = getProperty("Type");
+        if (response == null) return null;
         return (String) response.getValue();
     }
 
     @Override
     public UInt64 created() {
         Variant response = getProperty("Created");
+        if (response == null) return null;
         return (UInt64) response.getValue();
     }
 
     @Override
     public UInt64 modified() {
         Variant response = getProperty("Modified");
+        if (response == null) return null;
         return (UInt64) response.getValue();
     }
 

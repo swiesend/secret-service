@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.security.AccessControlException;
+import java.time.Duration;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -17,7 +18,7 @@ public class SimpleCollectionTest {
 
     private String getRandomHexString(int length) {
         Random r = new Random();
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         while (sb.length() < length) {
             sb.append(Integer.toHexString(r.nextInt()));
         }
@@ -28,13 +29,13 @@ public class SimpleCollectionTest {
     @Disabled
     public void deleteDefaultCollection() throws IOException {
         SimpleCollection defaultCollection = new SimpleCollection();
-        assertThrows(AccessControlException.class, () -> defaultCollection.delete());
+        assertThrows(AccessControlException.class, defaultCollection::delete);
     }
 
     @Test
     public void deleteNonDefaultCollection() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
-        assertDoesNotThrow(() -> collection.delete());
+        assertDoesNotThrow(collection::delete);
     }
 
     @Test
@@ -135,12 +136,6 @@ public class SimpleCollectionTest {
         collection.delete();
     }
 
-    /*
-     * FIXME: [#4](https://github.com/swiesend/secret-service/issues/4)
-     *     Running JUnit test for all in secret-service fails, whereas individually they pass.
-     *     [main] INFO org.freedesktop.secret.handlers.SignalHandler - await signal org.freedesktop.secret.interfaces.Prompt$Completed(/org/freedesktop/secrets/prompt/u8) within 60 seconds.
-     *     [main] ERROR org.freedesktop.secret.handlers.SignalHandler - java.util.concurrent.TimeoutException
-     */
     @Test
     @Disabled
     public void getPasswordFromDefaultCollection() throws IOException {
@@ -177,17 +172,14 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
             // only with user permission
-            Map<String, char[]> passwords = collection.getSecrets();
-            assertNotNull(passwords);
+            Map<String, char[]> secrets = collection.getSecrets();
+            assertNotNull(secrets);
+            for (char[] ignored : secrets.values()) {
+                log.info("secrets: ***");
+            }
         });
     }
 
-    /*
-     * FIXME: [#4](https://github.com/swiesend/secret-service/issues/4)
-     *     Running JUnit test for all in secret-service fails, whereas individually they pass.
-     *     [main] INFO org.freedesktop.secret.handlers.SignalHandler - await signal org.freedesktop.secret.interfaces.Prompt$Completed(/org/freedesktop/secrets/prompt/u8) within 60 seconds.
-     *     [main] ERROR org.freedesktop.secret.handlers.SignalHandler - java.util.concurrent.TimeoutException
-     */
     @Test
     @Disabled
     public void deletePassword() throws IOException {
@@ -206,9 +198,27 @@ public class SimpleCollectionTest {
     public void deletePasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
         String item = collection.createItem("item", "secret");
-        assertDoesNotThrow(() -> {
-            collection.deleteItems(Arrays.asList(item));
-        });
+        assertDoesNotThrow(() -> collection.deleteItems(Arrays.asList(item)));
         collection.delete();
+    }
+
+    @Test
+    @Disabled
+    public void setTimeout() throws IOException, InterruptedException {
+        SimpleCollection collection = new SimpleCollection();
+        String item = collection.createItem("item", "secret");
+
+        // wait 3 seconds before cancelling the prompt manually
+        try {
+            Duration kurz = Duration.ofSeconds(3);
+            collection.setTimeout(kurz);
+            Map<String, char[]> ignored = collection.getSecrets();
+        } catch (AccessControlException e) {
+            log.info(e.getMessage());
+        }
+
+        Duration lang = Duration.ofSeconds(120);
+        collection.setTimeout(lang);
+        collection.deleteItem(item);
     }
 }

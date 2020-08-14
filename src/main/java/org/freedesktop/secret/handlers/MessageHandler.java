@@ -69,12 +69,14 @@ public class MessageHandler {
     public Variant getProperty(String service, String path, String iface, String property) {
         Object[] response = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
                 "Get", "ss", iface, property);
+        if (response == null) return null;
         return (Variant) response[0];
     }
 
     public Variant getAllProperties(String service, String path, String iface) {
         Object[] response = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
                 "GetAll", "ss", iface);
+        if (response == null) return null;
         return (Variant) response[0];
     }
 
