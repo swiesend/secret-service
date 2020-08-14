@@ -28,7 +28,7 @@ import java.util.Map;
 public final class SimpleCollection implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
-    public final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+    public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
     private TransportEncryption encryption = null;
     private Service service = null;
     private Session session = null;
@@ -66,8 +66,8 @@ public final class SimpleCollection implements AutoCloseable {
      *                 <p>
      *                 NOTE: The 'label' of a collection may differ from the 'id' of a collection. The 'id' is
      *                 assigned by the Secret Service and used in the DBus object path of a collection or item.
-     *                 <p>
-     *                 <p>
+     *                 </p>
+     *
      *                 A SimpleCollection can't handle collections with the same label, but different ids correctly.
      * @param password Password of the collection
      * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
