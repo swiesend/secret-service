@@ -8,6 +8,8 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
+
 public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
@@ -48,8 +50,6 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
      * @param path    Objectpath of the prompt.
      * @param timeout Duration until the prompt times out.
      * @return Completed or null if user input exceeds the default timeout.
-     * @throws InterruptedException A D-Bus signal failed.
-     * @throws NoSuchObject         No such item or collection exists.
      * @see Completed
      */
     public Completed await(ObjectPath path, Duration timeout) {
@@ -69,14 +69,12 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
      * <p>
      * A prompt can either be dismissed or be completed successfully.
      *
-     * @param path    Objectpath of the prompt.
+     * @param path Objectpath of the prompt.
      * @return Completed or null if user input exceeds the default timeout of 300 seconds.
-     * @throws InterruptedException A D-Bus signal failed.
-     * @throws NoSuchObject         No such item or collection exists.
      * @see Completed
      */
     public Completed await(ObjectPath path) {
-        return await(path, Duration.ofSeconds(300));
+        return await(path, DEFAULT_TIMEOUT);
     }
 
 
