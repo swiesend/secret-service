@@ -106,7 +106,7 @@ public class ServiceTest {
         }
 
         List<ObjectPath> after = context.service.getCollections();
-        DBusSignal[] handled = context.prompt.getSignalHandler().getHandledSignals();
+        DBusSignal[] handled = context.prompt.getSignalHandler().getHandled();
         Prompt.Completed completed = (Prompt.Completed) handled[0];
         if (completed.dismissed) {
             assertEquals(before.size(), after.size());

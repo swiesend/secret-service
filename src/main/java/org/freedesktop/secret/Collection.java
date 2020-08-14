@@ -46,14 +46,16 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
 
     @Override
     public ObjectPath delete() {
-        Object[] result = send("Delete", "");
-        ObjectPath prompt = (ObjectPath) result[0];
+        Object[] response = send("Delete", "");
+        if (response == null) return null;
+        ObjectPath prompt = (ObjectPath) response[0];
         return prompt;
     }
 
     @Override
     public List<ObjectPath> searchItems(Map<String, String> attributes) {
         Object[] response = send("SearchItems", "a{ss}", attributes);
+        if (response == null) return null;
         return (List<ObjectPath>) response[0];
     }
 
@@ -61,18 +63,21 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
     public Pair<ObjectPath, ObjectPath> createItem(Map<String, Variant> properties, Secret secret,
                                                    boolean replace) {
         Object[] response = send("CreateItem", "a{sv}(oayays)b", properties, secret, replace);
+        if (response == null) return null;
         return new Pair(response[0], response[1]);
     }
 
     @Override
     public List<ObjectPath> getItems() {
         Variant response = getProperty("Items");
+        if (response == null) return null;
         return (ArrayList<ObjectPath>) response.getValue();
     }
 
     @Override
     public String getLabel() {
         Variant response = getProperty("Label");
+        if (response == null) return null;
         return (String) response.getValue();
     }
 
@@ -84,18 +89,21 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
     @Override
     public boolean isLocked() {
         Variant response = getProperty("Locked");
+        if (response == null) return true;
         return (boolean) response.getValue();
     }
 
     @Override
     public UInt64 created() {
         Variant response = getProperty("Created");
+        if (response == null) return null;
         return (UInt64) response.getValue();
     }
 
     @Override
     public UInt64 modified() {
         Variant response = getProperty("Modified");
+        if (response == null) return null;
         return (UInt64) response.getValue();
     }
 

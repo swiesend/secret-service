@@ -20,11 +20,11 @@ import java.util.stream.Collectors;
 
 public class SignalHandler implements DBusSigHandler {
 
+    private final int bufferSize = 250;
     private Logger log = LoggerFactory.getLogger(getClass());
-
     private DBusConnection connection = null;
     private List<Class<? extends DBusSignal>> registered = new ArrayList();
-    private DBusSignal[] handled = new DBusSignal[250];
+    private DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
 
     private SignalHandler() {
@@ -104,7 +104,7 @@ public class SignalHandler implements DBusSigHandler {
         }
     }
 
-    public DBusSignal[] getHandledSignals() {
+    public DBusSignal[] getHandled() {
         return handled;
     }
 
@@ -142,30 +142,32 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
-        final Duration timeout = Duration.ofSeconds(300);
+        final Duration timeout = Duration.ofSeconds(120);
         return await(s, path, action, timeout);
     }
 
     public <S extends DBusSignal> S await(Class<S> s, String path, Callable action, Duration timeout) {
+        final int init = this.count;
 
+        Object prompt = null;
         try {
-            action.call();
+            prompt = action.call();
         } catch (Exception e) {
             log.error(e.toString(), e.getCause());
         }
 
-        int init = getHandledSignals(s, path).size();
         ExecutorService executor = Executors.newSingleThreadExecutor();
 
-        log.info("await signal " + s.getName() + "(" + path + ") within " + timeout.getSeconds() + " seconds.");
+        log.info("Await signal " + s.getName() + "(" + path + ") within " + timeout.getSeconds() + " seconds.");
 
         final Future<S> handler = executor.submit((Callable) () -> {
             int await = init;
             List<S> signals = null;
             while (await == init) {
-                Thread.sleep(50L);
+                if (Thread.currentThread().isInterrupted()) return null;
+                Thread.currentThread().sleep(50L);
                 signals = getHandledSignals(s, path);
-                await = signals.size();
+                await = getCount();
             }
             if (!signals.isEmpty()) {
                 return signals.get(0);
@@ -177,8 +179,12 @@ public class SignalHandler implements DBusSigHandler {
         try {
             return handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException | InterruptedException | ExecutionException e) {
+            log.warn(e.toString(), e.getCause());
             handler.cancel(true);
-            log.error(e.toString(), e.getCause());
+            if (prompt != null && prompt instanceof Prompt) {
+                ((Prompt) prompt).dismiss();
+                log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
+            }
         } finally {
             executor.shutdownNow();
         }

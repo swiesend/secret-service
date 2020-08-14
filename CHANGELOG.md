@@ -2,6 +2,23 @@
 
 The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/).
 
+
+## [1.1.0] - 2020-08-14
+
+- `Added`
+ - add `SimpleCollection.setTimeout()`.
+ - add `SimpleCollection.lock()`.
+
+- `Changed`
+  - improve signal handling by closing open prompts automatically after the timeout.
+  - change the default timeout from 300 to 120 seconds and make it configurable.
+  - makes `SimpleCollection.unlockWithUserPermission()` public. 
+
+## [1.0.1] - 2020-08-14
+
+- `Changed`
+  - update `dbus-java` to `3.2.3` to fix #13.
+
 ## [1.0.0] - 2020-05-07
 
 - `Changed`

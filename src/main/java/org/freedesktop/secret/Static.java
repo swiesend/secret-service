@@ -4,10 +4,13 @@ import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Static {
+
+    public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
 
     public static class DBus {
         public static class Service {

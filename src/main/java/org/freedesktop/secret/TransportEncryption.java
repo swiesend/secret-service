@@ -117,6 +117,8 @@ public class TransportEncryption implements AutoCloseable {
     public Secret encrypt(byte[] plain, Charset charset) throws NoSuchAlgorithmException, NoSuchPaddingException,
             InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
 
+        if (plain == null) return null;
+
         if (service == null) {
             throw new IllegalStateException("Missing session. Call openSession() first.");
         }
@@ -144,6 +146,8 @@ public class TransportEncryption implements AutoCloseable {
             InvalidKeyException,
             BadPaddingException,
             IllegalBlockSizeException {
+
+        if (secret == null) return null;
 
         if (sessionKey == null) {
             throw new IllegalStateException("Missing session key. Call generateSessionKey() first.");

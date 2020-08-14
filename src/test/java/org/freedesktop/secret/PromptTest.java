@@ -8,6 +8,7 @@ import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,7 +49,9 @@ public class PromptTest {
         log.info(unlocked.toString());
         ObjectPath prompt = unlocked.b;
 
-        Prompt.Completed completed = context.prompt.await(prompt);
+        Duration timeout = Duration.ofSeconds(300);
+
+        Prompt.Completed completed = context.prompt.await(prompt, timeout);
         assertNotNull(completed);
     }
 
