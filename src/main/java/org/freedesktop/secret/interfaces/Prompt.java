@@ -61,22 +61,6 @@ public abstract class Prompt extends Messaging implements DBusInterface {
     abstract public void prompt(ObjectPath prompt) throws NoSuchObject;
 
     /**
-     * Await the user interaction with the prompt.
-     * 
-     * A prompt can either be dismissed or be completed successfully.
-     * 
-     * @param prompt        Objectpath of the prompt.
-     *
-     * @return Completed or null if user input exceeds the default timeout of 300 seconds.
-     * 
-     * @throws InterruptedException A D-Bus signal failed.
-     * @throws NoSuchObject         No such item or collection exists.
-     * 
-     * @see Completed
-     */
-    abstract public Completed await(ObjectPath prompt) throws InterruptedException, NoSuchObject;
-
-    /**
      * Dismiss the prompt.
      */
     abstract public void dismiss();

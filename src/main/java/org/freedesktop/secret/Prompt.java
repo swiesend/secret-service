@@ -4,6 +4,7 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.secret.errors.NoSuchObject;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
@@ -39,17 +40,45 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
         }
     }
 
-    @Override
-    public Completed await(ObjectPath path) {
+    /**
+     * Await the user interaction with the prompt.
+     * <p>
+     * A prompt can either be dismissed or be completed successfully.
+     *
+     * @param path    Objectpath of the prompt.
+     * @param timeout Duration until the prompt times out.
+     * @return Completed or null if user input exceeds the default timeout.
+     * @throws InterruptedException A D-Bus signal failed.
+     * @throws NoSuchObject         No such item or collection exists.
+     * @see Completed
+     */
+    public Completed await(ObjectPath path, Duration timeout) {
         if ("/".equals(path.getPath())) {
             return sh.getLastHandledSignal(Completed.class);
         } else {
             return sh.await(Completed.class, path.getPath(), () -> {
-                prompt(path);
-                return null;
-            });
+                        prompt(path);
+                        return this;
+                    },
+                    timeout);
         }
     }
+
+    /**
+     * Await the user interaction with the prompt.
+     * <p>
+     * A prompt can either be dismissed or be completed successfully.
+     *
+     * @param path    Objectpath of the prompt.
+     * @return Completed or null if user input exceeds the default timeout of 300 seconds.
+     * @throws InterruptedException A D-Bus signal failed.
+     * @throws NoSuchObject         No such item or collection exists.
+     * @see Completed
+     */
+    public Completed await(ObjectPath path) {
+        return await(path, Duration.ofSeconds(300));
+    }
+
 
     @Override
     public void dismiss() {

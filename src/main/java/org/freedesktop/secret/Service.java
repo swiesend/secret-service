@@ -26,6 +26,7 @@ public class Service extends org.freedesktop.secret.interfaces.Service {
     @Override
     public Pair<Variant<byte[]>, ObjectPath> openSession(String algorithm, Variant input) {
         Object[] params = send("OpenSession", "sv", algorithm, input);
+        if (params == null) return null;
         session = new Session((ObjectPath) params[1], this);
         return new Pair(params[0], params[1]);
     }
@@ -39,6 +40,7 @@ public class Service extends org.freedesktop.secret.interfaces.Service {
             a = alias;
         }
         Object[] params = send("CreateCollection", "a{sv}s", properties, a);
+        if (params == null) return null;
         return new Pair(params[0], params[1]);
     }
 
@@ -50,18 +52,21 @@ public class Service extends org.freedesktop.secret.interfaces.Service {
     @Override
     public Pair<List<ObjectPath>, List<ObjectPath>> searchItems(Map<String, String> attributes) {
         Object[] params = send("SearchItems", "a{ss}", attributes);
+        if (params == null) return null;
         return new Pair(params[0], params[1]);
     }
 
     @Override
     public Pair<List<ObjectPath>, ObjectPath> unlock(List<ObjectPath> objects) {
         Object[] params = send("Unlock", "ao", objects);
+        if (params == null) return null;
         return new Pair(params[0], params[1]);
     }
 
     @Override
     public Pair<List<ObjectPath>, ObjectPath> lock(List<ObjectPath> objects) {
         Object[] params = send("Lock", "ao", objects);
+        if (params == null) return null;
         return new Pair(params[0], params[1]);
     }
 
@@ -73,18 +78,21 @@ public class Service extends org.freedesktop.secret.interfaces.Service {
     @Override
     public ObjectPath changeLock(ObjectPath collection) {
         Object[] params = send("ChangeLock", "o", collection);
+        if (params == null) return null;
         return (ObjectPath) params[0];
     }
 
     @Override
     public Map<ObjectPath, Secret> getSecrets(List<ObjectPath> items, ObjectPath session) {
         Object[] params = send("GetSecrets", "aoo", items, session);
+        if (params == null) return null;
         return (Map<ObjectPath, Secret>) params[0];
     }
 
     @Override
     public ObjectPath readAlias(String name) {
         Object[] params = send("ReadAlias", "s", name);
+        if (params == null) return null;
         return (ObjectPath) params[0];
     }
 
@@ -96,6 +104,7 @@ public class Service extends org.freedesktop.secret.interfaces.Service {
     @Override
     public List<ObjectPath> getCollections() {
         Variant response = getProperty("Collections");
+        if (response == null) return null;
         return (ArrayList<ObjectPath>) response.getValue();
     }
 
