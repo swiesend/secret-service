@@ -8,10 +8,11 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
+
 public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
-    public static final Duration DEFAULT_DURATION = Duration.ofSeconds(300);
 
     public Prompt(Service service) {
         super(service.getConnection(), signals,
@@ -73,7 +74,7 @@ public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
      * @see Completed
      */
     public Completed await(ObjectPath path) {
-        return await(path, DEFAULT_DURATION);
+        return await(path, DEFAULT_TIMEOUT);
     }
 
 
