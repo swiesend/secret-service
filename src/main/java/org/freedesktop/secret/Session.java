@@ -1,9 +1,10 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.secret.handlers.Messaging;
 
 
-public class Session extends org.freedesktop.secret.interfaces.Session {
+public class Session extends Messaging implements org.freedesktop.secret.interfaces.Session {
 
 
     public Session(DBusPath path, Service service) {
