@@ -2,6 +2,7 @@ package org.freedesktop.secret.simple;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.*;
@@ -46,13 +47,11 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection() throws IOException {
         try {
+            if (!isAvailable())
+                new IOException("Could not communicate properly with the secret-service.");
             init();
-
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
             this.collection = new Collection(path, service);
-            unlock();
-            if (this.collection.isLocked())
-                throw new IOException("Could not communicate properly with the secret-service.");
         } catch (RuntimeException e) {
             log.error(e.toString(), e.getCause());
             throw new IOException(e.toString(), e.getCause());
@@ -75,8 +74,9 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
+            if (!isAvailable())
+                new IOException("Could not communicate properly with the secret-service.");
             init();
-
             if (exists(label)) {
                 ObjectPath path = getCollectionPath(label);
                 this.collection = new Collection(path, service);
@@ -118,13 +118,24 @@ public final class SimpleCollection implements AutoCloseable {
 
                 this.collection = new Collection(path, service);
             }
-
-            unlock();
-            if (this.collection.isLocked())
-                throw new IOException("Could not communicate properly with the secret-service.");
         } catch (RuntimeException e) {
             log.error(e.toString(), e.getCause());
             throw new IOException(e.toString(), e.getCause());
+        }
+    }
+
+    public static boolean isAvailable() {
+        try {
+            DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+            org.freedesktop.secret.interfaces.Service service = connection.getRemoteObject(
+                    Static.Service.SECRETS,
+                    Static.ObjectPaths.SECRETS,
+                    org.freedesktop.secret.interfaces.Service.class);
+            log.info("The Secret Service (gnome-keyring-daemon) is available.");
+            return service.isRemote();
+        } catch (DBusException e) {
+            log.error(e.toString(), e.getCause());
+            return false;
         }
     }
 
@@ -195,7 +206,7 @@ public final class SimpleCollection implements AutoCloseable {
         return new Item(Static.Convert.toObjectPath(path), service);
     }
 
-    void lock() {
+    public void lock() {
         if (collection != null && !collection.isLocked()) {
             List<ObjectPath> lockable = Arrays.asList(collection.getPath());
             service.lock(lockable);
@@ -218,22 +229,20 @@ public final class SimpleCollection implements AutoCloseable {
         }
     }
 
-    void unlockWithUserPermission() throws AccessControlException {
-        if (isDefault()) {
-            List<ObjectPath> lockable = Arrays.asList(collection.getPath());
-            service.lock(lockable);
-            try {
-                Thread.currentThread().sleep(250L);
-            } catch (InterruptedException e) {
-                log.error(e.toString(), e.getCause());
-            }
-            Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable);
-            performPrompt(response.b);
-            if (collection.isLocked()) {
-                throw new AccessControlException(
-                        "One may not read passwords from the default collection without user permission."
-                );
-            }
+    public void unlockWithUserPermission() throws AccessControlException {
+        List<ObjectPath> lockable = Arrays.asList(collection.getPath());
+        service.lock(lockable);
+        try {
+            Thread.currentThread().sleep(250L);
+        } catch (InterruptedException e) {
+            log.error(e.toString(), e.getCause());
+        }
+        Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable);
+        performPrompt(response.b);
+        if (collection.isLocked()) {
+            throw new AccessControlException(
+                    "One may not read passwords from the default collection without user permission."
+            );
         }
     }
 

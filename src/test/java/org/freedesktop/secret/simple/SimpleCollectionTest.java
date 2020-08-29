@@ -202,6 +202,14 @@ public class SimpleCollectionTest {
         collection.delete();
     }
 
+    /**
+     * Assuming you test on a system, where the secret-service is actually available.
+     */
+    @Test
+    public void isAvailable() {
+        assertTrue(SimpleCollection.isAvailable());
+    }
+
     @Test
     @Disabled
     public void setTimeout() throws IOException, InterruptedException {
