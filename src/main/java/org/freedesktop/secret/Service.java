@@ -4,13 +4,14 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
+import org.freedesktop.secret.handlers.Messaging;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-public class Service extends org.freedesktop.secret.interfaces.Service {
+public class Service extends Messaging implements org.freedesktop.secret.interfaces.Service {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(
             CollectionCreated.class, CollectionChanged.class, CollectionDeleted.class);

@@ -3,13 +3,11 @@ package org.freedesktop.secret;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
+import org.freedesktop.secret.handlers.Messaging;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-public class Item extends org.freedesktop.secret.interfaces.Item {
+public class Item extends Messaging implements org.freedesktop.secret.interfaces.Item {
 
     private String id;
 
@@ -29,6 +27,58 @@ public class Item extends org.freedesktop.secret.interfaces.Item {
         List<String> list = Arrays.asList(objectPath.split("/"));
         String itemID = list.get(list.size() - 1);
         this.id = itemID;
+    }
+
+    /**
+     * Create properties for a new item.
+     *
+     * @param label         The displayable label of the item.
+     *
+     * @param attributes    String-valued attributes of the item.
+     *
+     *                      <p>
+     *                          <b>Note:</b>
+     *                          Please note that there is a distinction between the terms <i>Property</i>, which refers
+     *                          to D-Bus properties of an object, and <i>Attribute</i>, which refers to one of a
+     *                          secret item's string-valued attributes.
+     *                      </p>
+     *
+     * @return properties   &mdash; The properties for an item.
+     *
+     *  <p>
+     *      <b>Example:</b><br>
+     *      <code>
+     *      properties = {<br>
+     *          &nbsp;&nbsp;"org.freedesktop.Secret.Item.Label": "MyItem",<br>
+     *          &nbsp;&nbsp;"org.freedesktop.Secret.Item.Attributes": {<br>
+     *          &nbsp;&nbsp;&nbsp;&nbsp;"Attribute1": "Value1",<br>
+     *          &nbsp;&nbsp;&nbsp;&nbsp;"Attribute2": "Value2"<br>
+     *          &nbsp;&nbsp;}<br>
+     *      }
+     *      </code>
+     *  </p>
+     *
+     *  <p>
+     *      <b>Note:</b>
+     *      Properties for a collection and properties for an item are not the same.
+     *  </p>
+     *
+     *  <br>
+     *  See Also:<br>
+     *      {@link org.freedesktop.secret.interfaces.Item#getAttributes()}<br>
+     *      {@link org.freedesktop.secret.interfaces.Item#setAttributes(Map attributes)}<br>
+     *      {@link org.freedesktop.secret.interfaces.Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
+     *      {@link org.freedesktop.secret.Collection#createProperties(String label)}<br>
+     *      {@link org.freedesktop.secret.interfaces.Service#createCollection(Map properties)}<br>
+     *      {@link org.freedesktop.secret.interfaces.Service#createCollection(Map properties, String alias)}<br>
+     */
+    public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
+        Map<String, Variant> properties = new HashMap();
+        properties.put(LABEL, new Variant(label));
+        if (attributes != null) {
+            properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));
+        }
+        return properties;
     }
 
     @Override

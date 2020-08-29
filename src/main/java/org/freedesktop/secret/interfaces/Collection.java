@@ -3,7 +3,6 @@ package org.freedesktop.secret.interfaces;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
-import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
@@ -13,54 +12,16 @@ import org.freedesktop.secret.Pair;
 import org.freedesktop.secret.Secret;
 import org.freedesktop.secret.Static;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @DBusInterfaceName(Static.Interfaces.COLLECTION)
-public abstract class Collection extends AbstractInterface implements DBusInterface {
+public interface Collection extends DBusInterface {
 
     /**
      * The key of the D-Bus properties for the label of a collection.
      */
     public static final String LABEL = "org.freedesktop.Secret.Collection.Label";
-
-    public Collection(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
-                      String serviceName, String objectPath, String interfaceName) {
-        super(connection, signals, serviceName, objectPath, interfaceName);
-    }
-
-    /**
-     * Create propterties for a new collection.
-     *
-     * @param label The displayable label of this collection.
-     *
-     *  <p>
-     *      <b>Note:</b>
-     *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
-     *  </p>
-     *
-     * @return properties   &mdash; The propterties for a collection.
-     *
-     *  <p><code>{org.freedesktop.Secret.Collection.Label: label}</code></p>
-     *
-     *  <p>
-     *      <b>Note:</b>
-     *      Properties for a collection and properties for an item are not the same.
-     *  </p>
-     *
-     *  <br>
-     *  See Also:<br>
-     *  {@link Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
-     *  {@link Service#createCollection(Map properties)}<br>
-     *  {@link Service#createCollection(Map properties, String alias)}<br>
-     *  {@link Item#createProperties(String label, Map attributes)}<br>
-     */
-    public static Map<String, Variant> createProperties(String label) {
-        HashMap<String, Variant> properties = new HashMap();
-        properties.put(LABEL, new Variant(label));
-        return properties;
-    }
 
     public static class ItemCreated extends DBusSignal {
         public final DBusPath item;
@@ -175,8 +136,8 @@ public abstract class Collection extends AbstractInterface implements DBusInterf
      *
      * <br>
      * See Also:<br>
-     * {@link Collection#createProperties(String label)}<br>
-     * {@link Item#createProperties(String label, Map attributes)}<br>
+     * {@link org.freedesktop.secret.Collection#createProperties(String label)}<br>
+     * {@link org.freedesktop.secret.Item#createProperties(String label, Map attributes)}<br>
      * @see Pair
      * @see ObjectPath
      * @see Secret

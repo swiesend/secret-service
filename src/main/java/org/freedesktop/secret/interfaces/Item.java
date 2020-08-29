@@ -2,21 +2,15 @@ package org.freedesktop.secret.interfaces;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
-import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.interfaces.DBusInterface;
-import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
-import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Secret;
 import org.freedesktop.secret.Static;
-import org.freedesktop.secret.handlers.Messaging;
 
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @DBusInterfaceName(Static.Interfaces.ITEM)
-public abstract class Item extends Messaging implements DBusInterface {
+public interface Item extends DBusInterface {
 
     /**
      * The key of of the D-Bus properties for the label of an item.
@@ -27,63 +21,6 @@ public abstract class Item extends Messaging implements DBusInterface {
      * The key of the D-Bus properties for the attributes of an item.
      */
     public static final String ATTRIBUTES = "org.freedesktop.Secret.Item.Attributes";
-
-    public Item(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
-                String serviceName, String objectPath, String interfaceName) {
-        super(connection, signals, serviceName, objectPath, interfaceName);
-    }
-
-    /**
-     * Create properties for a new item.
-     * 
-     * @param label         The displayable label of the item.
-     * 
-     * @param attributes    String-valued attributes of the item.
-     * 
-     *                      <p>
-     *                          <b>Note:</b>
-     *                          Please note that there is a distinction between the terms <i>Property</i>, which refers 
-     *                          to D-Bus properties of an object, and <i>Attribute</i>, which refers to one of a 
-     *                          secret item's string-valued attributes. 
-     *                      </p>
-     * 
-     * @return properties   &mdash; The properties for an item.
-     * 
-     *  <p>
-     *      <b>Example:</b><br>
-     *      <code>
-     *      properties = {<br>
-     *          &nbsp;&nbsp;"org.freedesktop.Secret.Item.Label": "MyItem",<br>
-     *          &nbsp;&nbsp;"org.freedesktop.Secret.Item.Attributes": {<br>
-     *          &nbsp;&nbsp;&nbsp;&nbsp;"Attribute1": "Value1",<br>
-     *          &nbsp;&nbsp;&nbsp;&nbsp;"Attribute2": "Value2"<br>
-     *          &nbsp;&nbsp;}<br>
-     *      }
-     *      </code>
-     *  </p>
-     *  
-     *  <p>
-     *      <b>Note:</b>
-     *      Properties for a collection and properties for an item are not the same.
-     *  </p>
-     *
-     *  <br>
-     *  See Also:<br>
-     *      {@link Item#getAttributes()}<br>
-     *      {@link Item#setAttributes(Map attributes)}<br>
-     *      {@link Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
-     *      {@link Collection#createProperties(String label)}<br>
-     *      {@link Service#createCollection(Map properties)}<br>
-     *      {@link Service#createCollection(Map properties, String alias)}<br>
-     */
-    public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
-        Map<String, Variant> properties = new HashMap();
-        properties.put(LABEL, new Variant(label));
-        if (attributes != null) {
-            properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));
-        }
-        return properties;
-    }
 
     /**
      * Delete this item.

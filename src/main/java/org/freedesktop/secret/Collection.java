@@ -5,13 +5,11 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
+import org.freedesktop.secret.handlers.Messaging;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-public class Collection extends org.freedesktop.secret.interfaces.Collection {
+public class Collection extends Messaging implements org.freedesktop.secret.interfaces.Collection {
 
     private String id;
 
@@ -42,6 +40,38 @@ public class Collection extends org.freedesktop.secret.interfaces.Collection {
                 Static.ObjectPaths.collection(id),
                 Static.Interfaces.COLLECTION);
         this.id = id;
+    }
+
+    /**
+     * Create propterties for a new collection.
+     *
+     * @param label The displayable label of this collection.
+     *
+     *  <p>
+     *      <b>Note:</b>
+     *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
+     *  </p>
+     *
+     * @return properties   &mdash; The propterties for a collection.
+     *
+     *  <p><code>{org.freedesktop.Secret.Collection.Label: label}</code></p>
+     *
+     *  <p>
+     *      <b>Note:</b>
+     *      Properties for a collection and properties for an item are not the same.
+     *  </p>
+     *
+     *  <br>
+     *  See Also:<br>
+     *  {@link Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
+     *  {@link Service#createCollection(Map properties)}<br>
+     *  {@link Service#createCollection(Map properties, String alias)}<br>
+     *  {@link Item#createProperties(String label, Map attributes)}<br>
+     */
+    public static Map<String, Variant> createProperties(String label) {
+        HashMap<String, Variant> properties = new HashMap();
+        properties.put(LABEL, new Variant(label));
+        return properties;
     }
 
     @Override

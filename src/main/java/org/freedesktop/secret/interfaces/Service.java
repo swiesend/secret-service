@@ -3,7 +3,6 @@ package org.freedesktop.secret.interfaces;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
-import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
@@ -11,18 +10,12 @@ import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Pair;
 import org.freedesktop.secret.Secret;
 import org.freedesktop.secret.Static;
-import org.freedesktop.secret.handlers.Messaging;
 
 import java.util.List;
 import java.util.Map;
 
 @DBusInterfaceName(Static.Interfaces.SERVICE)
-public abstract class Service extends Messaging implements DBusInterface {
-
-    public Service(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
-                   String serviceName, String objectPath, String interfaceName) {
-        super(connection, signals, serviceName, objectPath, interfaceName);
-    }
+public interface Service extends DBusInterface {
 
     public static class CollectionCreated extends DBusSignal {
         public final DBusPath collection;

@@ -3,6 +3,7 @@ package org.freedesktop.secret;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.handlers.Messaging;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -10,7 +11,7 @@ import java.util.List;
 
 import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
 
-public class Prompt extends org.freedesktop.secret.interfaces.Prompt {
+public class Prompt extends Messaging implements org.freedesktop.secret.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
 
