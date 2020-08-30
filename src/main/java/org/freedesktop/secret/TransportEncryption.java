@@ -23,7 +23,6 @@ public class TransportEncryption implements AutoCloseable {
 
     public static final int PRIVATE_VALUE_BITS = 1024;
     public static final int AES_BITS = 128;
-
     private Service service;
     private DHParameterSpec dhParameters = null;
     private KeyPair keypair = null;
@@ -34,6 +33,10 @@ public class TransportEncryption implements AutoCloseable {
 
     public TransportEncryption() throws DBusException {
         DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+        this.service = new Service(connection);
+    }
+
+    public TransportEncryption(DBusConnection connection) {
         this.service = new Service(connection);
     }
 
