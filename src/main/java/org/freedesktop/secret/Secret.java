@@ -29,7 +29,7 @@ public final class Secret extends Struct implements AutoCloseable {
     private Charset charset = null;
 
     // NOTE: the specification defines the default content_type differently with "text/plain; charset=utf8"
-    //  see: https://standards.freedesktop.org/secret-service/ch14.html
+    //  see: https://standards.freedesktop.org/secret-service/0.2/ch14.html
     public static final String TEXT_PLAIN_CHARSET_UTF_8 = "text/plain; charset=utf-8";
     public static final String TEXT_PLAIN = "text/plain";
     private static final String CHARSET = "charset=";

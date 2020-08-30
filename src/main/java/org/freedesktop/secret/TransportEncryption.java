@@ -96,7 +96,7 @@ public class TransportEncryption implements AutoCloseable {
         byte[] rawSessionKey = keyAgreement.generateSecret();
 
         // HKDF digest into a 128-bit key by extract and expand with "NULL salt and empty info"
-        // see: https://standards.freedesktop.org/secret-service/ch07s03.html
+        // see: https://standards.freedesktop.org/secret-service/0.2/ch07s03.html
         byte[] pseudoRandomKey = HKDF.fromHmacSha256().extract((byte[]) null, rawSessionKey);
         byte[] keyingMaterial = HKDF.fromHmacSha256().expand(pseudoRandomKey, null, toBytes(AES_BITS));
 
