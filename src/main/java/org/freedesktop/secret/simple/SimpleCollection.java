@@ -125,17 +125,24 @@ public final class SimpleCollection implements AutoCloseable {
     }
 
     public static boolean isAvailable() {
+        DBusConnection connection = null;
         try {
-            DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+            connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
             org.freedesktop.secret.interfaces.Service service = connection.getRemoteObject(
                     Static.Service.SECRETS,
                     Static.ObjectPaths.SECRETS,
                     org.freedesktop.secret.interfaces.Service.class);
-            log.info("The Secret Service (gnome-keyring-daemon) is available.");
+            log.info("The secret-service is available.");
             return service.isRemote();
         } catch (DBusException e) {
             log.error(e.toString(), e.getCause());
             return false;
+        } finally {
+            try {
+                if (connection != null) connection.close();
+            } catch (IOException e) {
+                log.error(e.toString(), e.getCause());
+            }
         }
     }
 
@@ -263,6 +270,9 @@ public final class SimpleCollection implements AutoCloseable {
         clear();
         if (session != null) {
             session.close();
+        }
+        if (encryption != null) {
+            encryption.close();
         }
     }
 
