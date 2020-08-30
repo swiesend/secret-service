@@ -11,4 +11,5 @@ public interface Session extends DBusInterface {
      * Close this session.
      */
     abstract public void close();
+
 }

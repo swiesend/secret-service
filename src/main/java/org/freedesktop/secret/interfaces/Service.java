@@ -35,7 +35,6 @@ public interface Service extends DBusInterface {
         }
     }
 
-
     public static class CollectionDeleted extends DBusSignal {
         public final DBusPath collection;
 
@@ -275,4 +274,5 @@ public interface Service extends DBusInterface {
      * @return A list of present collections.
      */
     abstract public List<ObjectPath> getCollections();
+
 }

@@ -24,24 +24,23 @@ public interface Item extends DBusInterface {
 
     /**
      * Delete this item.
-     * 
-     * @return Prompt   &mdash; A prompt objectpath, or the special value '/' if no prompt is necessary.    
+     *
+     * @return Prompt   &mdash; A prompt objectpath, or the special value '/' if no prompt is necessary.
      */
     abstract public ObjectPath delete();
 
     /**
      * Retrieve the secret for this item.
-     * 
-     * @param session   The session to use to encode the secret.
-     * 
+     *
+     * @param session The session to use to encode the secret.
      * @return secret   &mdash; The secret retrieved.
      */
     abstract public Secret getSecret(ObjectPath session);
 
     /**
      * Set the secret for this item.
-     * 
-     * @param secret    The secret to set, encoded for the included session.
+     *
+     * @param secret The secret to set, encoded for the included session.
      */
     abstract public void setSecret(Secret secret);
 
@@ -52,53 +51,53 @@ public interface Item extends DBusInterface {
 
     /**
      * The lookup attributes for this item.
-     * 
+     *
      * <b>Attributes</b> is a D-Bus Property.
-     * 
+     *
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
-     * 
-     * @return  The attributes of the item.
+     *
+     * @return The attributes of the item.
      */
     abstract public Map<String, String> getAttributes();
 
-    
+
     /**
      * The lookup attributes for this item.
-     * 
+     *
      * <b>Attributes</b> is a D-Bus Property.
-     * 
+     *
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
-     * 
-     * @param attributes    The attributes of the item.
+     *
+     * @param attributes The attributes of the item.
      */
     abstract public void setAttributes(Map<String, String> attributes);
 
     /**
      * <b>Label</b> is a D-Bus Property.
-     * 
+     *
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
-     * 
-     * @return  The displayable label of this collection.
-     *                  
-     *  <p>
-     *      <b>Note:</b>
-     *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
-     *  </p>
+     *
+     * @return The displayable label of this collection.
+     *
+     * <p>
+     * <b>Note:</b>
+     * The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
+     * </p>
      */
     abstract public String getLabel();
 
 
     /**
      * <b>Label</b> is a D-Bus Property.
-     * 
+     *
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
-     * 
-     * @param  label    The displayable label of this collection.
-     *                  
-     *  <p>
-     *      <b>Note:</b>
-     *      The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
-     *  </p>
+     *
+     * @param label The displayable label of this collection.
+     *
+     *              <p>
+     *              <b>Note:</b>
+     *              The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
+     *              </p>
      */
     abstract public void setLabel(String label);
 
@@ -116,4 +115,5 @@ public interface Item extends DBusInterface {
      * @return The unix time when the item was last modified.
      */
     abstract public UInt64 modified();
+
 }
