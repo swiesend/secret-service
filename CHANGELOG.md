@@ -1,14 +1,24 @@
 # Changelog
 
-The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/).
+The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
+## [1.2.0] - 2020-09-06
+
+- `Added`
+  - add `SimpleCollection.isAvailable()`, which checks if `org.freedesktop.secrets` is provided as D-Bus service.
+- `Changed`
+  - The `SimpleCollection` constructor checks the availability of the secret service by asking for the 
+    mere availability of the service, rather than actually unlocking it.
+  - synchronizes the access the handled signals for `SignalHandler.handle()`.
+- `Fix`
+  - make `SimpleCollection.lock()` and `SimpleCollection.unlockWithUserPermission()` actually public, instead of protected.
+  - do not exit early on non expected signals for `SignalHandler.await()`.
 
 ## [1.1.0] - 2020-08-14
 
 - `Added`
- - add `SimpleCollection.setTimeout()`.
- - add `SimpleCollection.lock()`.
-
+  - add `SimpleCollection.setTimeout()`.
+  - add `SimpleCollection.lock()`.
 - `Changed`
   - improve signal handling by closing open prompts automatically after the timeout.
   - change the default timeout from 300 to 120 seconds and make it configurable.
@@ -47,6 +57,9 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.2.0]:  https://github.com/swiesend/secret-service/compare/v1.1.0...v1.2.0
+[1.1.0]:  https://github.com/swiesend/secret-service/compare/v1.0.1...v1.1.0
+[1.0.1]:  https://github.com/swiesend/secret-service/compare/v1.0.0...v1.0.1
 [1.0.0]:  https://github.com/swiesend/secret-service/compare/v1.0.0-RC.3...v1.0.0
 [1.0.0-RC.3]:  https://github.com/swiesend/secret-service/compare/v1.0.0-RC.2...v1.0.0-RC.3
 [1.0.0-RC.2]:  https://github.com/swiesend/secret-service/compare/v1.0.0-RC.1...v1.0.0-RC.2
