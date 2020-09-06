@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 
 public class SignalHandler implements DBusSigHandler {
 
-    private final int bufferSize = 250;
+    private final int bufferSize = 1024;
     private Logger log = LoggerFactory.getLogger(getClass());
     private DBusConnection connection = null;
     private List<Class<? extends DBusSignal>> registered = new ArrayList();
@@ -74,33 +74,35 @@ public class SignalHandler implements DBusSigHandler {
     @Override
     public void handle(DBusSignal s) {
 
-        Collections.rotate(Arrays.asList(handled), 1);
-        handled[0] = s;
-        count += 1;
+        synchronized(handled) {
+            Collections.rotate(Arrays.asList(handled), 1);
+            handled[0] = s;
+            count++;
+        }
 
         if (s instanceof Collection.ItemCreated) {
             Collection.ItemCreated ic = (Collection.ItemCreated) s;
-            log.info("Collection.ItemCreated: " + ic.item);
+            log.info("Received signal Collection.ItemCreated: " + ic.item);
         } else if (s instanceof Collection.ItemChanged) {
             Collection.ItemChanged ic = (Collection.ItemChanged) s;
-            log.info("Collection.ItemChanged: " + ic.item);
+            log.info("Received signal Collection.ItemChanged: " + ic.item);
         } else if (s instanceof Collection.ItemDeleted) {
             Collection.ItemDeleted ic = (Collection.ItemDeleted) s;
-            log.info("Collection.ItemDeleted: " + ic.item);
+            log.info("Received signal Collection.ItemDeleted: " + ic.item);
         } else if (s instanceof Prompt.Completed) {
             Prompt.Completed c = (Prompt.Completed) s;
-            log.info("Prompt.Completed (" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
+            log.info("Received signal Prompt.Completed (" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
         } else if (s instanceof Service.CollectionCreated) {
             Service.CollectionCreated cc = (Service.CollectionCreated) s;
-            log.info("Service.CollectionCreated: " + cc.collection);
+            log.info("Received signal Service.CollectionCreated: " + cc.collection);
         } else if (s instanceof Service.CollectionChanged) {
             Service.CollectionChanged cc = (Service.CollectionChanged) s;
-            log.info("Service.CollectionChanged: " + cc.collection);
+            log.info("Received signal Service.CollectionChanged: " + cc.collection);
         } else if (s instanceof Service.CollectionDeleted) {
             Service.CollectionDeleted cc = (Service.CollectionDeleted) s;
-            log.info("Service.CollectionDeleted: " + cc.collection);
+            log.info("Received signal Service.CollectionDeleted: " + cc.collection);
         } else {
-            log.warn("Handled unknown signal: " + s.getClass().toString() + " {" + s.toString() + "}");
+            log.warn("Received unexpected signal: " + s.getClass().toString() + " {" + s.toString() + "}");
         }
     }
 
@@ -147,7 +149,7 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public <S extends DBusSignal> S await(Class<S> s, String path, Callable action, Duration timeout) {
-        final int init = this.count;
+        final int init = count;
 
         Object prompt = null;
         try {
@@ -156,23 +158,24 @@ public class SignalHandler implements DBusSigHandler {
             log.error(e.toString(), e.getCause());
         }
 
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-
         log.info("Await signal " + s.getName() + "(" + path + ") within " + timeout.getSeconds() + " seconds.");
 
+        ExecutorService executor = Executors.newSingleThreadExecutor();
         final Future<S> handler = executor.submit((Callable) () -> {
-            int await = init;
+            int current = init;
+            int last = init;
             List<S> signals = null;
-            while (await == init) {
+            while (true){
                 if (Thread.currentThread().isInterrupted()) return null;
-                Thread.currentThread().sleep(50L);
-                signals = getHandledSignals(s, path);
-                await = getCount();
-            }
-            if (!signals.isEmpty()) {
-                return signals.get(0);
-            } else {
-                return null;
+                Thread.currentThread().sleep(100L);
+                current = getCount();
+                if (current != last) {
+                    signals = getHandledSignals(s, path);
+                    if (!signals.isEmpty()) {
+                        return signals.get(0);
+                    }
+                    last = current;
+                }
             }
         });
 
