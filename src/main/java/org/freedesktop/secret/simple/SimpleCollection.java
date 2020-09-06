@@ -49,7 +49,7 @@ public final class SimpleCollection implements AutoCloseable {
     public SimpleCollection() throws IOException {
         try {
             if (!isAvailable())
-                new IOException("Could not communicate properly with the secret-service.");
+                new IOException("Could not communicate properly with the secret service.");
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
             this.collection = new Collection(path, service);
@@ -76,7 +76,7 @@ public final class SimpleCollection implements AutoCloseable {
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
             if (!isAvailable())
-                new IOException("Could not communicate properly with the secret-service.");
+                new IOException("Could not communicate properly with the secret service.");
             init();
             if (exists(label)) {
                 ObjectPath path = getCollectionPath(label);
@@ -107,7 +107,7 @@ public final class SimpleCollection implements AutoCloseable {
 
                 if (path == null) {
                     try {
-                        Thread.currentThread().sleep(100L);
+                        Thread.sleep(100L);
                     } catch (InterruptedException e) {
                         log.error(e.toString(), e.getCause());
                     }
@@ -133,16 +133,17 @@ public final class SimpleCollection implements AutoCloseable {
                     Static.Service.SECRETS,
                     Static.ObjectPaths.SECRETS,
                     org.freedesktop.secret.interfaces.Service.class);
-            log.info("The secret-service is available.");
             return service.isRemote();
         } catch (DBusException e) {
             log.error(e.toString(), e.getCause());
+            log.error("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?");
             return false;
         } finally {
             try {
                 if (connection != null) connection.close();
             } catch (IOException | RejectedExecutionException e) {
                 log.error(e.toString(), e.getCause());
+                log.error("Could not disconnect properly from the D-Bus.");
             }
         }
     }
@@ -214,12 +215,15 @@ public final class SimpleCollection implements AutoCloseable {
         return new Item(Static.Convert.toObjectPath(path), service);
     }
 
+    private List<ObjectPath> lockable() {
+        return Arrays.asList(collection.getPath());
+    }
+
     public void lock() {
         if (collection != null && !collection.isLocked()) {
-            List<ObjectPath> lockable = Arrays.asList(collection.getPath());
-            service.lock(lockable);
+            service.lock(lockable());
             try {
-                Thread.currentThread().sleep(250L);
+                Thread.sleep(100L);
             } catch (InterruptedException e) {
                 log.error(e.toString(), e.getCause());
             }
@@ -229,7 +233,7 @@ public final class SimpleCollection implements AutoCloseable {
     private void unlock() {
         if (collection != null && collection.isLocked()) {
             if (encrypted == null) {
-                Pair<List<ObjectPath>, ObjectPath> response = service.unlock(Arrays.asList(collection.getPath()));
+                Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable());
                 performPrompt(response.b);
             } else {
                 withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
@@ -238,19 +242,10 @@ public final class SimpleCollection implements AutoCloseable {
     }
 
     public void unlockWithUserPermission() throws AccessControlException {
-        List<ObjectPath> lockable = Arrays.asList(collection.getPath());
-        service.lock(lockable);
-        try {
-            Thread.currentThread().sleep(250L);
-        } catch (InterruptedException e) {
-            log.error(e.toString(), e.getCause());
-        }
-        Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable);
-        performPrompt(response.b);
+        if (isDefault()) lock();
+        unlock();
         if (collection.isLocked()) {
-            throw new AccessControlException(
-                    "One may not read passwords from the default collection without user permission."
-            );
+            throw new AccessControlException("The collection was not unlocked.");
         }
     }
 
@@ -366,7 +361,7 @@ public final class SimpleCollection implements AutoCloseable {
             throw new IllegalArgumentException("The object path of the item may not be null.");
         }
 
-        unlock();
+        unlockWithUserPermission();
 
         Item item = getItem(objectPath);
 
@@ -485,8 +480,6 @@ public final class SimpleCollection implements AutoCloseable {
 
     /**
      * Delete an item from this collection.
-     * <p>
-     * NOTE: <p>Deleting a password form a collection requires user permission.</p>
      *
      * @param objectPath The DBus object path of the item
      */
@@ -506,6 +499,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @param objectPaths The DBus object paths of the items
      */
     public void deleteItems(List<String> objectPaths) throws AccessControlException {
+        unlockWithUserPermission();
         for (String item : objectPaths) {
             deleteItem(item);
         }

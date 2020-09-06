@@ -171,7 +171,6 @@ public class SimpleCollectionTest {
     public void getPasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
-            // only with user permission
             Map<String, char[]> secrets = collection.getSecrets();
             assertNotNull(secrets);
             for (char[] ignored : secrets.values()) {
@@ -186,7 +185,6 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection();
         String item = collection.createItem("item", "secret");
         assertDoesNotThrow(() -> {
-            // only with user permission
             collection.deleteItem(item);
         });
     }
