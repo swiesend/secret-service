@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionException;
 
 import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
 
@@ -140,7 +141,7 @@ public final class SimpleCollection implements AutoCloseable {
         } finally {
             try {
                 if (connection != null) connection.close();
-            } catch (IOException e) {
+            } catch (IOException | RejectedExecutionException e) {
                 log.error(e.toString(), e.getCause());
             }
         }

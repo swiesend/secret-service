@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.concurrent.RejectedExecutionException;
 
 public class MessageHandler {
 
@@ -24,9 +25,14 @@ public class MessageHandler {
 
         if (this.connection != null) {
             this.connection.setWeakReferences(true);
-            Runtime.getRuntime().addShutdownHook(new Thread(() ->
-                this.connection.disconnect()
-            ));
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    this.connection.disconnect();
+                } catch (RejectedExecutionException e) {
+                    log.error(e.toString(), e.getCause());
+                    log.error("Could not disconnect properly from the D-Bus.");
+                }
+            }));
         }
     }
 

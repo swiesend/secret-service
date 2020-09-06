@@ -28,9 +28,7 @@ public class SignalHandler implements DBusSigHandler {
     private int count = 0;
 
     private SignalHandler() {
-        Runtime.getRuntime().addShutdownHook(new Thread(() ->
-                disconnect()
-        ));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> disconnect()));
     }
 
     public static SignalHandler getInstance() {
@@ -58,15 +56,16 @@ public class SignalHandler implements DBusSigHandler {
     public void disconnect() {
         if (connection != null) {
             try {
-                log.debug("remove signal handlers");
+                log.debug("Remove signal handlers");
                 for (Class sc : registered) {
                     if (connection.isConnected()) {
-                        log.trace("remove signal handler: " + sc.getName());
+                        log.debug("Remove signal handler: " + sc.getName());
                         connection.removeSigHandler(sc, this);
                     }
                 }
-            } catch (DBusException e) {
+            } catch (DBusException | RejectedExecutionException e) {
                 log.error(e.toString(), e.getCause());
+                log.error("Could not remove all signal handlers from the D-Bus.");
             }
         }
     }
@@ -74,7 +73,7 @@ public class SignalHandler implements DBusSigHandler {
     @Override
     public void handle(DBusSignal s) {
 
-        synchronized(handled) {
+        synchronized (handled) {
             Collections.rotate(Arrays.asList(handled), 1);
             handled[0] = s;
             count++;
@@ -91,7 +90,7 @@ public class SignalHandler implements DBusSigHandler {
             log.info("Received signal Collection.ItemDeleted: " + ic.item);
         } else if (s instanceof Prompt.Completed) {
             Prompt.Completed c = (Prompt.Completed) s;
-            log.info("Received signal Prompt.Completed (" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
+            log.info("Received signal Prompt.Completed(" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
         } else if (s instanceof Service.CollectionCreated) {
             Service.CollectionCreated cc = (Service.CollectionCreated) s;
             log.info("Received signal Service.CollectionCreated: " + cc.collection);
@@ -165,7 +164,7 @@ public class SignalHandler implements DBusSigHandler {
             int current = init;
             int last = init;
             List<S> signals = null;
-            while (true){
+            while (true) {
                 if (Thread.currentThread().isInterrupted()) return null;
                 Thread.currentThread().sleep(100L);
                 current = getCount();
