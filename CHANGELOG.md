@@ -1,14 +1,24 @@
 # Changelog
 
-The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/).
+The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
+
+## [1.2.0] - 2020-09-06
+
+- `Added`
+  - add `SimpleCollection.isAvailable()`, which checks if `org.freedesktop.secrets` is provided as D-Bus service.
+- `Changed`
+  - The `SimpleCollection` constructor checks the availability of the secret service by asking for the 
+    mere availability of the service rather than actually unlocking it.
+- `Fix`
+  - actually make `SimpleCollection.lock()` and `SimpleCollection.unlockWithUserPermission()` public, 
+    instead of protected.
 
 ## [1.1.0] - 2020-08-14
 
 - `Added`
- - add `SimpleCollection.setTimeout()`.
- - add `SimpleCollection.lock()`.
-
+  - add `SimpleCollection.setTimeout()`.
+  - add `SimpleCollection.lock()`.
 - `Changed`
   - improve signal handling by closing open prompts automatically after the timeout.
   - change the default timeout from 300 to 120 seconds and make it configurable.
