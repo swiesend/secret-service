@@ -361,7 +361,7 @@ public final class SimpleCollection implements AutoCloseable {
             throw new IllegalArgumentException("The object path of the item may not be null.");
         }
 
-        unlockWithUserPermission();
+        unlock();
 
         Item item = getItem(objectPath);
 
