@@ -2,14 +2,18 @@
 
 The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
-## [1.2.0] - 2020-09-06
+## [1.2.0-SNAPSHOT]
 
 - `Added`
   - add `SimpleCollection.isAvailable()`, which checks if `org.freedesktop.secrets` is provided as D-Bus service.
+    - NOTE: might lead to a RejectedExecutionException or a DBusExecutionException in 1/25 cases, see:
+      - https://github.com/swiesend/secret-service/issues/21
+      - https://github.com/swiesend/secret-service/issues/20  
 - `Changed`
-  - The `SimpleCollection` constructor checks the availability of the secret service by asking for the 
+  - the `SimpleCollection` constructor checks the availability of the secret service by asking for the 
     mere availability of the service, rather than actually unlocking it.
-  - synchronizes the access the handled signals for `SignalHandler.handle()`.
+  - synchronize the access the handled signals for `SignalHandler.handle()`.
+  - ask only once for user permission per session. This avoids multiple unlock prompts right after another.
 - `Fix`
   - make `SimpleCollection.lock()` and `SimpleCollection.unlockWithUserPermission()` actually public, instead of protected.
   - do not exit early on non expected signals for `SignalHandler.await()`.
@@ -17,12 +21,12 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 ## [1.1.0] - 2020-08-14
 
 - `Added`
-  - add `SimpleCollection.setTimeout()`.
-  - add `SimpleCollection.lock()`.
+  - add `SimpleCollection.setTimeout()`. In order to set a timeout for awaiting prompts.
+  - add `SimpleCollection.lock()`. In order to lock a given collection at any time.
 - `Changed`
   - improve signal handling by closing open prompts automatically after the timeout.
   - change the default timeout from 300 to 120 seconds and make it configurable.
-  - makes `SimpleCollection.unlockWithUserPermission()` public. 
+  - make `SimpleCollection.unlockWithUserPermission()` ~~public~~ protected.
 
 ## [1.0.1] - 2020-08-14
 
@@ -57,6 +61,7 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.2.0-SNAPSHOT]:  https://github.com/swiesend/secret-service/compare/v1.1.0...develop-1.0.0
 [1.2.0]:  https://github.com/swiesend/secret-service/compare/v1.1.0...v1.2.0
 [1.1.0]:  https://github.com/swiesend/secret-service/compare/v1.0.1...v1.1.0
 [1.0.1]:  https://github.com/swiesend/secret-service/compare/v1.0.0...v1.0.1
