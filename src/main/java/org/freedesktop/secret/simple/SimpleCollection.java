@@ -310,6 +310,7 @@ public final class SimpleCollection implements AutoCloseable {
         final Map<String, Variant> properties = Item.createProperties(label, attributes);
         try (final Secret secret = encryption.encrypt(password)) {
             Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
+            if (response == null) return null;
             item = response.a;
             if ("/".equals(item.getPath())) {
                 Completed completed = prompt.await(response.b);
