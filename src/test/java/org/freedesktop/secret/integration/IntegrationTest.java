@@ -88,7 +88,7 @@ public class IntegrationTest {
 
         Pair<ObjectPath, ObjectPath> createItemResponse = collection.createItem(properties, encrypted, true);
         log.info("await signal: Collection.ItemCreated");
-        Thread.sleep(50L);
+        Thread.currentThread().sleep(50L);
 
         ObjectPath itemPath = createItemResponse.a;
         Item item = new Item(itemPath, service);

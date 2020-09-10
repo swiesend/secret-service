@@ -43,7 +43,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     @AfterEach
     public void afterEach() throws InterruptedException {
         connection.disconnect();
-        Thread.sleep(100L);
+        Thread.currentThread().sleep(100L);
     }
 
     @Test
@@ -55,11 +55,11 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
             HashMap<String, Variant> properties = new HashMap();
             properties.put("org.freedesktop.Secret.Collection.Label", new Variant("test"));
             iugri.createWithMasterPassword(properties, original);
-            Thread.sleep(100L);
+            Thread.currentThread().sleep(100L);
         }
 
         iugri.changeWithMasterPassword(collection.getPath(), original, master);
-        Thread.sleep(100L);
+        Thread.currentThread().sleep(100L);
 
         List<ObjectPath> lock = new ArrayList();
         lock.add(collection.getPath());
@@ -74,7 +74,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     @Disabled
     public void changeWithPrompt() throws InterruptedException {
         assertDoesNotThrow(() -> iugri.changeWithPrompt(collection.getPath()));
-        Thread.sleep(1000L);
+        Thread.currentThread().sleep(1000L);
         // NOTE: no prompt popup. Is this to be expected?
     }
 
@@ -87,13 +87,13 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         if (cs.contains("/org/freedesktop/secrets/collection/test")) {
             ObjectPath deleted = collection.delete();
             assertEquals("/", deleted.getPath());
-            Thread.sleep(100L); // await signal: Service.CollectionDeleted
+            Thread.currentThread().sleep(100L); // await signal: Service.CollectionDeleted
         }
 
         HashMap<String, Variant> properties = new HashMap();
         properties.put("org.freedesktop.Secret.Collection.Label", new Variant("test"));
         iugri.createWithMasterPassword(properties, original);
-        Thread.sleep(100L); // await signal: Service.CollectionCreated
+        Thread.currentThread().sleep(100L); // await signal: Service.CollectionCreated
 
         collections = service.getCollections();
         cs = Static.Convert.toStrings(collections);
@@ -106,10 +106,10 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         List<ObjectPath> lock = new ArrayList();
         lock.add(collection.getPath());
         service.lock(lock);
-        Thread.sleep(100L); // await signal: Service.CollectionChanged
+        Thread.currentThread().sleep(100L); // await signal: Service.CollectionChanged
 
         assertDoesNotThrow(() -> iugri.unlockWithMasterPassword(collection.getPath(), original));
-        Thread.sleep(100L); // await signal: Service.CollectionChanged
+        Thread.currentThread().sleep(100L); // await signal: Service.CollectionChanged
     }
 
     @Test

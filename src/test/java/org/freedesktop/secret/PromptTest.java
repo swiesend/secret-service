@@ -66,9 +66,9 @@ public class PromptTest {
         ObjectPath prompt = response.b;
 
         context.prompt.prompt(prompt);
-        Thread.sleep(250L);
+        Thread.currentThread().sleep(250L);
         context.prompt.dismiss();
-        Thread.sleep(500L); // await signal
+        Thread.currentThread().sleep(500L); // await signal
 
         Prompt.Completed completed = context.service.getSignalHandler()
                 .getLastHandledSignal(Prompt.Completed.class, prompt.getPath());

@@ -108,7 +108,7 @@ public final class SimpleCollection implements AutoCloseable {
 
                 if (path == null) {
                     try {
-                        Thread.sleep(100L);
+                        Thread.currentThread().sleep(100L);
                     } catch (InterruptedException e) {
                         log.error(e.toString(), e.getCause());
                     }
@@ -141,8 +141,10 @@ public final class SimpleCollection implements AutoCloseable {
             return false;
         } finally {
             try {
+                Thread.currentThread().sleep(25L);
                 if (connection != null) connection.close();
-            } catch (IOException | RejectedExecutionException e) {
+                Thread.currentThread().sleep(25L);
+            } catch (IOException | RejectedExecutionException | InterruptedException e) {
                 log.error(e.toString(), e.getCause());
                 log.error("Could not disconnect properly from the D-Bus.");
             }
@@ -224,7 +226,7 @@ public final class SimpleCollection implements AutoCloseable {
         if (collection != null && !collection.isLocked()) {
             service.lock(lockable());
             try {
-                Thread.sleep(100L);
+                Thread.currentThread().sleep(100L);
             } catch (InterruptedException e) {
                 log.error(e.toString(), e.getCause());
             }

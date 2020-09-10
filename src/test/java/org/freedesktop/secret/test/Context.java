@@ -143,7 +143,7 @@ public class Context {
     public void after() {
         try {
             service.getConnection().disconnect();
-            Thread.sleep(150L);
+            Thread.currentThread().sleep(150L);
         } catch (InterruptedException e) {
             log.error(e.toString(), e.getCause());
         }
