@@ -40,6 +40,7 @@ public final class SimpleCollection implements AutoCloseable {
     private Collection collection;
     private Secret encrypted = null;
     private Duration timeout = DEFAULT_TIMEOUT;
+    private Boolean isUnlockedOnceWithUserPermission = false;
 
     /**
      * The default collection.
@@ -232,9 +233,12 @@ public final class SimpleCollection implements AutoCloseable {
 
     private void unlock() {
         if (collection != null && collection.isLocked()) {
-            if (encrypted == null) {
+            if (encrypted == null || isDefault()) {
                 Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable());
                 performPrompt(response.b);
+                if (!collection.isLocked()) {
+                    isUnlockedOnceWithUserPermission = true;
+                }
             } else {
                 withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
             }
@@ -242,7 +246,7 @@ public final class SimpleCollection implements AutoCloseable {
     }
 
     public void unlockWithUserPermission() throws AccessControlException {
-        if (isDefault()) lock();
+        if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
         unlock();
         if (collection.isLocked()) {
             throw new AccessControlException("The collection was not unlocked.");
