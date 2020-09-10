@@ -67,6 +67,8 @@ public class PromptTest {
 
         context.prompt.prompt(prompt);
         Thread.currentThread().sleep(250L);
+        // requires Dismiss() to be implemented from the secret service. Some older versions, like GDBus 2.56.3 do provide this method.
+        // org.freedesktop.dbus.exceptions.DBusException: org.freedesktop.DBus.Error.UnknownMethod: Method Dismiss is not implemented on interface org.freedesktop.Secret.Prompt
         context.prompt.dismiss();
         Thread.currentThread().sleep(500L); // await signal
 
