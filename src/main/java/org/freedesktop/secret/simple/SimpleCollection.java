@@ -32,6 +32,17 @@ import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
 public final class SimpleCollection implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
+    private static DBusConnection connection = null;
+
+    static {
+        try {
+            connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+        } catch (DBusException | RejectedExecutionException e) {
+            log.error(e.toString(), e.getCause());
+            log.error("Could not communicate properly with the D-Bus.");
+        }
+    }
+
     private TransportEncryption encryption = null;
     private Service service = null;
     private Session session = null;
@@ -49,8 +60,7 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection() throws IOException {
         try {
-            if (!isAvailable())
-                new IOException("Could not communicate properly with the secret service.");
+            if (!isAvailable()) new IOException("Could not communicate properly with the secret service.");
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
             this.collection = new Collection(path, service);
@@ -76,8 +86,7 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
-            if (!isAvailable())
-                new IOException("Could not communicate properly with the secret service.");
+            if (!isAvailable()) new IOException("Could not communicate properly with the secret service.");
             init();
             if (exists(label)) {
                 ObjectPath path = getCollectionPath(label);
@@ -126,10 +135,13 @@ public final class SimpleCollection implements AutoCloseable {
         }
     }
 
+    /**
+     * Checks if `org.freedesktop.secrets` is provided as D-Bus service.
+     *
+     * @return true if the secret service is available, otherwise false and will log an error message.
+     */
     public static boolean isAvailable() {
-        DBusConnection connection = null;
         try {
-            connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
             org.freedesktop.secret.interfaces.Service service = connection.getRemoteObject(
                     Static.Service.SECRETS,
                     Static.ObjectPaths.SECRETS,
@@ -140,20 +152,20 @@ public final class SimpleCollection implements AutoCloseable {
             log.error("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?");
             return false;
         } finally {
-            try {
-                Thread.currentThread().sleep(25L);
-                if (connection != null) connection.close();
-                Thread.currentThread().sleep(25L);
-            } catch (IOException | RejectedExecutionException | InterruptedException e) {
-                log.error(e.toString(), e.getCause());
-                log.error("Could not disconnect properly from the D-Bus.");
-            }
+            if (connection != null) Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    connection.close();
+                } catch (IOException | RejectedExecutionException e) {
+                    log.error(e.toString(), e.getCause());
+                    log.error("Could not disconnect properly from the D-Bus.");
+                }
+            }));
         }
     }
 
     private void init() throws IOException {
         try {
-            encryption = new TransportEncryption();
+            encryption = new TransportEncryption(connection);
             encryption.initialize();
             encryption.openSession();
             encryption.generateSessionKey();
@@ -161,8 +173,7 @@ public final class SimpleCollection implements AutoCloseable {
             session = service.getSession();
             prompt = new Prompt(service);
             withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
-        } catch (DBusException |
-                NoSuchAlgorithmException |
+        } catch (NoSuchAlgorithmException |
                 InvalidAlgorithmParameterException |
                 InvalidKeySpecException |
                 InvalidKeyException e) {
@@ -251,7 +262,7 @@ public final class SimpleCollection implements AutoCloseable {
         if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
         unlock();
         if (collection.isLocked()) {
-            throw new AccessControlException("The collection was not unlocked.");
+            throw new AccessControlException("The collection was not unlocked with user permission.");
         }
     }
 
