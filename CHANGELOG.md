@@ -2,21 +2,22 @@
 
 The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
-## [1.2.0-SNAPSHOT]
+## [1.2.0] - 2020-09-17
 
 - `Added`
   - add `SimpleCollection.isAvailable()`, which checks if `org.freedesktop.secrets` is provided as D-Bus service.
-    - NOTE: might lead to a RejectedExecutionException or a DBusExecutionException in 1/25 cases, see:
+    - NOTE: might lead to a `RejectedExecutionException` or a `DBusExecutionException` in 1/25 cases on 
+            `DBusConnection.disconnect()`, but should be handled all time.
+      See:
+      - https://github.com/swiesend/secret-service/issues/20
       - https://github.com/swiesend/secret-service/issues/21
-      - https://github.com/swiesend/secret-service/issues/20  
 - `Changed`
-  - the `SimpleCollection` constructor checks the availability of the secret service by asking for the 
-    mere availability of the service, rather than actually unlocking it.
-  - synchronize the access the handled signals for `SignalHandler.handle()`.
+  - the `SimpleCollection` constructor checks the availability of the secret service by using `SimpleCollection.isAvailable()`.
   - ask only once for user permission per session. This avoids multiple unlock prompts right after another.
+  - synchronize the access to the handled signals for `SignalHandler.handle()`.
 - `Fix`
   - make `SimpleCollection.lock()` and `SimpleCollection.unlockWithUserPermission()` actually public, instead of protected.
-  - do not exit early on non expected signals for `SignalHandler.await()`.
+  - do not exit early on unexpected signals for `SignalHandler.await()`.
 
 ## [1.1.0] - 2020-08-14
 
@@ -61,7 +62,6 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
-[1.2.0-SNAPSHOT]:  https://github.com/swiesend/secret-service/compare/v1.1.0...develop-1.0.0
 [1.2.0]:  https://github.com/swiesend/secret-service/compare/v1.1.0...v1.2.0
 [1.1.0]:  https://github.com/swiesend/secret-service/compare/v1.0.1...v1.1.0
 [1.0.1]:  https://github.com/swiesend/secret-service/compare/v1.0.0...v1.0.1
