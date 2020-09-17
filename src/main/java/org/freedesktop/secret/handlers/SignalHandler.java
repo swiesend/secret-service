@@ -81,13 +81,13 @@ public class SignalHandler implements DBusSigHandler {
 
         if (s instanceof Collection.ItemCreated) {
             Collection.ItemCreated ic = (Collection.ItemCreated) s;
-            log.debug("Received signal Collection.ItemCreated: " + ic.item);
+            log.info("Received signal Collection.ItemCreated: " + ic.item);
         } else if (s instanceof Collection.ItemChanged) {
             Collection.ItemChanged ic = (Collection.ItemChanged) s;
             log.debug("Received signal Collection.ItemChanged: " + ic.item);
         } else if (s instanceof Collection.ItemDeleted) {
             Collection.ItemDeleted ic = (Collection.ItemDeleted) s;
-            log.debug("Received signal Collection.ItemDeleted: " + ic.item);
+            log.info("Received signal Collection.ItemDeleted: " + ic.item);
         } else if (s instanceof Prompt.Completed) {
             Prompt.Completed c = (Prompt.Completed) s;
             log.info("Received signal Prompt.Completed(" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
