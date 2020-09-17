@@ -49,7 +49,7 @@ public class PromptTest {
         log.info(unlocked.toString());
         ObjectPath prompt = unlocked.b;
 
-        Duration timeout = Duration.ofSeconds(300);
+        Duration timeout = Duration.ofSeconds(120);
 
         Prompt.Completed completed = context.prompt.await(prompt, timeout);
         assertNotNull(completed);
@@ -67,7 +67,8 @@ public class PromptTest {
 
         context.prompt.prompt(prompt);
         Thread.currentThread().sleep(250L);
-        // requires Dismiss() to be implemented from the secret service. Some older versions, like GDBus 2.56.3 do provide this method.
+        // Requires `Dismiss` to be implemented from the secret service. Some secret service versions, like GDBus 2.56.3 do provide this method.
+        // But the following error can also occur, if the prompt was already closed or never provided by the system:
         // org.freedesktop.dbus.exceptions.DBusException: org.freedesktop.DBus.Error.UnknownMethod: Method Dismiss is not implemented on interface org.freedesktop.Secret.Prompt
         context.prompt.dismiss();
         Thread.currentThread().sleep(500L); // await signal

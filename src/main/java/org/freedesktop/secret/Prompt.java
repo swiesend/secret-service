@@ -71,7 +71,7 @@ public class Prompt extends Messaging implements org.freedesktop.secret.interfac
      * A prompt can either be dismissed or be completed successfully.
      *
      * @param path Objectpath of the prompt.
-     * @return Completed or null if user input exceeds the default timeout of 300 seconds.
+     * @return Completed or null if user input exceeds the default timeout.
      * @see Completed
      */
     public Completed await(ObjectPath path) {
