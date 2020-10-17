@@ -2,6 +2,12 @@
 
 The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
+## [1.2.1] - 2020-10-17
+
+- `Fixed`
+  - `#23` Already created non default collections with a master password will use the master password to unlock the collection silently.
+          Before the user was prompted for already created collections.
+
 ## [1.2.0] - 2020-09-17
 
 - `Added`
@@ -62,6 +68,7 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.2.1]:  https://github.com/swiesend/secret-service/compare/v1.2.0...v1.2.1
 [1.2.0]:  https://github.com/swiesend/secret-service/compare/v1.1.0...v1.2.0
 [1.1.0]:  https://github.com/swiesend/secret-service/compare/v1.0.1...v1.1.0
 [1.0.1]:  https://github.com/swiesend/secret-service/compare/v1.0.0...v1.0.1
