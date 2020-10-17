@@ -43,7 +43,7 @@ public final class SimpleCollection implements AutoCloseable {
         }
     }
 
-    private TransportEncryption encryption = null;
+    private TransportEncryption transport = null;
     private Service service = null;
     private Session session = null;
     private Prompt prompt = null;
@@ -63,7 +63,7 @@ public final class SimpleCollection implements AutoCloseable {
             if (!isAvailable()) new IOException("Could not communicate properly with the secret service.");
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-            this.collection = new Collection(path, service);
+            collection = new Collection(path, service);
         } catch (RuntimeException e) {
             log.error(e.toString(), e.getCause());
             throw new IOException(e.toString(), e.getCause());
@@ -76,11 +76,13 @@ public final class SimpleCollection implements AutoCloseable {
      * @param label    The displayable label of the collection
      *
      *                 <p>
-     *                 NOTE: The 'label' of a collection may differ from the 'id' of a collection. The 'id' is
-     *                 assigned by the Secret Service and used in the DBus object path of a collection or item.
+     *                 NOTE: The <code>label</code> of a collection may differ from the <code>id</code> of a collection.
+     *                 The <code>id</code> is assigned by the Secret Service and used in the DBus object path of a
+     *                 collection or item.
      *                 </p>
      *                 <p>
-     *                 A SimpleCollection can't handle collections with the same label, but different ids correctly.
+     *                 The SimpleCollection can't handle collections with the same label, but different ids correctly,
+     *                 as the <code>id</code> is inferred by the given label.
      * @param password Password of the collection
      * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
      */
@@ -88,9 +90,21 @@ public final class SimpleCollection implements AutoCloseable {
         try {
             if (!isAvailable()) new IOException("Could not communicate properly with the secret service.");
             init();
+            if (password != null) {
+                try {
+                    encrypted = transport.encrypt(password);
+                } catch (NoSuchAlgorithmException |
+                        NoSuchPaddingException |
+                        InvalidAlgorithmParameterException |
+                        InvalidKeyException |
+                        BadPaddingException |
+                        IllegalBlockSizeException e) {
+                    log.error(e.toString(), e.getCause());
+                }
+            }
             if (exists(label)) {
                 ObjectPath path = getCollectionPath(label);
-                this.collection = new Collection(path, service);
+                collection = new Collection(path, service);
             } else {
                 DBusPath path = null;
                 Map<String, Variant> properties = Collection.createProperties(label);
@@ -101,18 +115,8 @@ public final class SimpleCollection implements AutoCloseable {
                         path = response.a;
                     }
                     performPrompt(response.b);
-                } else {
-                    try {
-                        encrypted = encryption.encrypt(password);
-                        path = withoutPrompt.createWithMasterPassword(properties, encrypted);
-                    } catch (NoSuchAlgorithmException |
-                            NoSuchPaddingException |
-                            InvalidAlgorithmParameterException |
-                            InvalidKeyException |
-                            BadPaddingException |
-                            IllegalBlockSizeException e) {
-                        log.error(e.toString(), e.getCause());
-                    }
+                } else if (encrypted != null) {
+                    path = withoutPrompt.createWithMasterPassword(properties, encrypted);
                 }
 
                 if (path == null) {
@@ -127,7 +131,7 @@ public final class SimpleCollection implements AutoCloseable {
 
                 if (path == null) throw new IOException("Could not communicate properly with the secret-service.");
 
-                this.collection = new Collection(path, service);
+                collection = new Collection(path, service);
             }
         } catch (RuntimeException e) {
             log.error(e.toString(), e.getCause());
@@ -165,11 +169,11 @@ public final class SimpleCollection implements AutoCloseable {
 
     private void init() throws IOException {
         try {
-            encryption = new TransportEncryption(connection);
-            encryption.initialize();
-            encryption.openSession();
-            encryption.generateSessionKey();
-            service = encryption.getService();
+            transport = new TransportEncryption(connection);
+            transport.initialize();
+            transport.openSession();
+            transport.generateSessionKey();
+            service = transport.getService();
             session = service.getSession();
             prompt = new Prompt(service);
             withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
@@ -258,6 +262,24 @@ public final class SimpleCollection implements AutoCloseable {
         }
     }
 
+    /**
+     * Locks and unlocks the default collection explicitly.
+     * <p>
+     * The default collection gets only locked on the first call of a session.
+     * <p>
+     * Once the default collection is unlocked the user will not be prompted again
+     * as long as the default collection stays unlocked.
+     * <p>
+     * This method is used to enforce user interaction for:
+     * <p>
+     * {@link SimpleCollection#getSecrets()}
+     * <p>
+     * {@link SimpleCollection#deleteItem(String)}
+     * <p>
+     * {@link SimpleCollection#deleteItems(List)}
+     *
+     * @throws AccessControlException if the user does not provide the correct credentials.
+     */
     public void unlockWithUserPermission() throws AccessControlException {
         if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
         unlock();
@@ -270,8 +292,8 @@ public final class SimpleCollection implements AutoCloseable {
      * Clears the private key of the transport encryption and the passphrase of the collection.
      */
     public void clear() {
-        if (encryption != null) {
-            encryption.clear();
+        if (transport != null) {
+            transport.clear();
         }
         if (encrypted != null) {
             encrypted.clear();
@@ -284,8 +306,8 @@ public final class SimpleCollection implements AutoCloseable {
         if (session != null) {
             session.close();
         }
-        if (encryption != null) {
-            encryption.close();
+        if (transport != null) {
+            transport.close();
         }
     }
 
@@ -319,13 +341,13 @@ public final class SimpleCollection implements AutoCloseable {
             throw new IllegalArgumentException("The label of the password may not be null.");
         }
 
-        if (collection == null || encryption == null) return null;
+        if (collection == null || transport == null) return null;
 
         unlock();
 
         DBusPath item = null;
         final Map<String, Variant> properties = Item.createProperties(label, attributes);
-        try (final Secret secret = encryption.encrypt(password)) {
+        try (final Secret secret = transport.encrypt(password)) {
             Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
             if (response == null) return null;
             item = response.a;
@@ -391,7 +413,7 @@ public final class SimpleCollection implements AutoCloseable {
             item.setAttributes(attributes);
         }
 
-        if (password != null) try (Secret secret = encryption.encrypt(password)) {
+        if (password != null) try (Secret secret = transport.encrypt(password)) {
             item.setSecret(secret);
         } catch (NoSuchAlgorithmException |
                 NoSuchPaddingException |
@@ -418,7 +440,7 @@ public final class SimpleCollection implements AutoCloseable {
     /**
      * Get the user specified attributes of an item.
      * <p>
-     * NOTE: <p>The attributes can contain an additional 'xdg:schema' key-value pair.</p>
+     * The attributes can contain an additional <code>xdg:schema</code> key-value pair.
      *
      * @param objectPath The DBus object path of the item
      * @return item attributes
@@ -462,7 +484,7 @@ public final class SimpleCollection implements AutoCloseable {
 
         char[] decrypted = null;
         try (final Secret secret = item.getSecret(session.getPath())) {
-            decrypted = encryption.decrypt(secret);
+            decrypted = transport.decrypt(secret);
         } catch (NoSuchPaddingException |
                 NoSuchAlgorithmException |
                 InvalidAlgorithmParameterException |
@@ -477,7 +499,9 @@ public final class SimpleCollection implements AutoCloseable {
     /**
      * Get the secrets from this collection.
      * <p>
-     * NOTE: <p>Retrieving all passwords form a collection requires user permission.</p>
+     * Retrieving all passwords form the default collection requires user permission.
+     * <p>
+     * see: {@link SimpleCollection#unlockWithUserPermission()}
      *
      * @return Mapping of DBus object paths and plain chars
      */
@@ -498,6 +522,10 @@ public final class SimpleCollection implements AutoCloseable {
 
     /**
      * Delete an item from this collection.
+     * <p>
+     * Deleting a password form the default collection requires user permission.
+     * <p>
+     * see: {@link SimpleCollection#unlockWithUserPermission()}
      *
      * @param objectPath The DBus object path of the item
      */
@@ -512,7 +540,9 @@ public final class SimpleCollection implements AutoCloseable {
     /**
      * Delete specified items from this collection.
      * <p>
-     * NOTE: <p>Deleting passwords form a collection requires user permission.</p>
+     * Deleting passwords form the default collection requires user permission.
+     * <p>
+     * see: {@link SimpleCollection#unlockWithUserPermission()}
      *
      * @param objectPaths The DBus object paths of the items
      */

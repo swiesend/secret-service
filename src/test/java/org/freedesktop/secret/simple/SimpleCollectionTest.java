@@ -167,6 +167,24 @@ public class SimpleCollectionTest {
     }
 
     @Test
+    public void unlockNonDefaultCollectionSilently() throws IOException {
+        // before
+        SimpleCollection create = new SimpleCollection("test", "test");
+        String itemID = create.createItem("item", "secret");
+        create.lock();
+
+        // test
+        SimpleCollection collection = new SimpleCollection("test", "test");
+
+        char[] password = collection.getSecret(itemID);
+        assertEquals("secret", new String(password));
+
+        // after
+        collection.deleteItem(itemID);
+        collection.delete();
+    }
+
+    @Test
     @Disabled
     public void getPasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection();
