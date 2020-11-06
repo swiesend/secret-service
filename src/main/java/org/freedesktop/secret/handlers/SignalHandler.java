@@ -102,7 +102,7 @@ public class SignalHandler implements DBusSigHandler {
         } else try {
             log.warn("Received unexpected signal: " + s.getClass().toString() + " {" + s.toString() + "}");
         } catch (NullPointerException e) {
-            log.warn("Received unexpected signal.");
+            log.warn("Received unknown signal.");
         }
 
     }

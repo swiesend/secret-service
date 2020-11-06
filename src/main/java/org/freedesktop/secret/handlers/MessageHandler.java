@@ -46,7 +46,7 @@ public class MessageHandler {
             connection.sendMessage(message);
 
             org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(2000L);
-            log.trace(response.toString());
+            if (log.isTraceEnabled()) log.trace(String.valueOf(response));
 
             if (response instanceof org.freedesktop.dbus.errors.Error) {
                 switch (response.getName()) {
