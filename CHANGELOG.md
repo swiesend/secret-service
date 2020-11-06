@@ -2,6 +2,12 @@
 
 The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
+## [1.2.2] - 2020-11-06
+
+- `Fixed`
+  - [`#24`](https://github.com/swiesend/secret-service/issues/24) Provide better log messages and log root exceptions instead of causes only.
+  - [`#25`](https://github.com/swiesend/secret-service/issues/25) Avoid possible `NullPointerException`s during logging of empty D-Bus responses. 
+
 ## [1.2.1] - 2020-10-17
 
 - `Fixed`
