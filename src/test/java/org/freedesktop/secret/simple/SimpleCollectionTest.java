@@ -26,7 +26,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
     public void deleteDefaultCollection() throws IOException {
         SimpleCollection defaultCollection = new SimpleCollection();
         assertThrows(AccessControlException.class, defaultCollection::delete);
@@ -198,7 +198,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Danger Zone!  Be aware that this can lead to the loss of passwords if performed for other items.")
     public void deletePassword() throws IOException {
         SimpleCollection collection = new SimpleCollection();
         String item = collection.createItem("item", "secret");
@@ -208,7 +208,7 @@ public class SimpleCollectionTest {
     }
 
     /**
-     * NOTE: Be aware that this can lead to the loss of passwords if performed on the default collection.
+     * Potential Danger Zone! Be aware that this can lead to the loss of passwords if performed on the default collection.
      */
     @Test
     public void deletePasswords() throws IOException {
