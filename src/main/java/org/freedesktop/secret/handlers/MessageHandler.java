@@ -29,8 +29,7 @@ public class MessageHandler {
                 try {
                     this.connection.disconnect();
                 } catch (RejectedExecutionException e) {
-                    log.error(e.toString(), e.getCause());
-                    log.error("Could not disconnect properly from the D-Bus.");
+                    log.error("Could not disconnect properly from the D-Bus.", e);
                 }
             }));
         }
@@ -67,7 +66,7 @@ public class MessageHandler {
             return parameters;
 
         } catch (NoSession | NoSuchObject | IsLocked | DBusException e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Unexpected D-Bus response.", e);
         }
         return null;
     }

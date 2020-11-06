@@ -47,7 +47,7 @@ public class Context {
         try {
             connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
         } catch (DBusException e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Could not connect to the D-Bus", e);
             exit(-1);
         }
         service = new Service(connection);
@@ -68,7 +68,7 @@ public class Context {
                 service.openSession(Static.Algorithm.PLAIN, new Variant(""));
             }
         } catch (Exception e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Could not establish transport encryption.", e);
             exit(-2);
         }
 
@@ -115,7 +115,7 @@ public class Context {
                 secret = encryption.encrypt(plain);
                 attributes.put("TransportEncryption", "yes");
             } catch (Exception e) {
-                log.error(e.toString(), e.getCause());
+                log.error("Could not encrypt the secret.", e);
                 exit(-4);
             }
         } else {
@@ -145,7 +145,7 @@ public class Context {
             service.getConnection().disconnect();
             Thread.currentThread().sleep(150L);
         } catch (InterruptedException e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Could not disconnect properly from the D-Bus.", e);
         }
     }
 

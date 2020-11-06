@@ -48,7 +48,7 @@ public class SignalHandler implements DBusSigHandler {
                     }
                 }
             } catch (DBusException e) {
-                log.error(e.toString(), e.getCause());
+                log.error("Could not connect to the D-Bus.", e);
             }
         }
     }
@@ -64,8 +64,7 @@ public class SignalHandler implements DBusSigHandler {
                     }
                 }
             } catch (DBusException | RejectedExecutionException e) {
-                log.error(e.toString(), e.getCause());
-                log.error("Could not remove all signal handlers from the D-Bus.");
+                log.error("Could not remove all signal handlers from the D-Bus.", e);
             }
         }
     }
@@ -100,9 +99,12 @@ public class SignalHandler implements DBusSigHandler {
         } else if (s instanceof Service.CollectionDeleted) {
             Service.CollectionDeleted cc = (Service.CollectionDeleted) s;
             log.info("Received signal Service.CollectionDeleted: " + cc.collection);
-        } else {
+        } else try {
             log.warn("Received unexpected signal: " + s.getClass().toString() + " {" + s.toString() + "}");
+        } catch (NullPointerException e) {
+            log.warn("Received unexpected signal.");
         }
+
     }
 
     public DBusSignal[] getHandled() {
@@ -154,10 +156,14 @@ public class SignalHandler implements DBusSigHandler {
         try {
             prompt = action.call();
         } catch (Exception e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Cloud not acquire a prompt.", e);
         }
 
-        log.info("Await signal " + s.getName() + "(" + path + ") within " + timeout.getSeconds() + " seconds.");
+        try {
+            log.info("Await signal " + s.getName() + "(" + path + ") within " + timeout.getSeconds() + " seconds.");
+        } catch (NullPointerException e) {
+            log.error("Await signal for unknown class.");
+        }
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         final Future<S> handler = executor.submit((Callable) () -> {
@@ -181,7 +187,7 @@ public class SignalHandler implements DBusSigHandler {
         try {
             return handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException | InterruptedException | ExecutionException e) {
-            log.warn(e.toString(), e.getCause());
+            log.warn("Could not finish the prompt properly.", e);
             handler.cancel(true);
             if (prompt != null && prompt instanceof Prompt) {
                 ((Prompt) prompt).dismiss();

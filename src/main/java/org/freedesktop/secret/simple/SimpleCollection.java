@@ -38,8 +38,7 @@ public final class SimpleCollection implements AutoCloseable {
         try {
             connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
         } catch (DBusException | RejectedExecutionException e) {
-            log.error(e.toString(), e.getCause());
-            log.error("Could not communicate properly with the D-Bus.");
+            log.error("Could not communicate properly with the D-Bus.", e);
         }
     }
 
@@ -60,13 +59,13 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection() throws IOException {
         try {
-            if (!isAvailable()) new IOException("Could not communicate properly with the secret service.");
+            if (!isAvailable()) throw new IOException("The secret service is not available.");
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
             collection = new Collection(path, service);
         } catch (RuntimeException e) {
-            log.error(e.toString(), e.getCause());
-            throw new IOException(e.toString(), e.getCause());
+            log.error("Could not communicate properly with the secret service.", e);
+            throw new IOException("Could not communicate properly with the secret service.", e);
         }
     }
 
@@ -88,7 +87,7 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
-            if (!isAvailable()) new IOException("Could not communicate properly with the secret service.");
+            if (!isAvailable()) throw new IOException("The secret service is not available.");
             init();
             if (password != null) {
                 try {
@@ -99,7 +98,7 @@ public final class SimpleCollection implements AutoCloseable {
                         InvalidKeyException |
                         BadPaddingException |
                         IllegalBlockSizeException e) {
-                    log.error(e.toString(), e.getCause());
+                    log.error("Could not establish transport encryption.", e);
                 }
             }
             if (exists(label)) {
@@ -123,19 +122,19 @@ public final class SimpleCollection implements AutoCloseable {
                     try {
                         Thread.currentThread().sleep(100L);
                     } catch (InterruptedException e) {
-                        log.error(e.toString(), e.getCause());
+                        log.error("Unexpected interrupt while waiting for a CollectionCreated signal.", e);
                     }
                     Service.CollectionCreated cc = service.getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class);
                     path = cc.collection;
                 }
 
-                if (path == null) throw new IOException("Could not communicate properly with the secret-service.");
+                if (path == null) throw new IOException("Could not acquire a path for the prompt.");
 
                 collection = new Collection(path, service);
             }
         } catch (RuntimeException e) {
-            log.error(e.toString(), e.getCause());
-            throw new IOException(e.toString(), e.getCause());
+            log.error("Could not communicate properly with the secret service.", e);
+            throw new IOException("Could not communicate properly with the secret service.", e);
         }
     }
 
@@ -152,16 +151,14 @@ public final class SimpleCollection implements AutoCloseable {
                     org.freedesktop.secret.interfaces.Service.class);
             return service.isRemote();
         } catch (DBusException e) {
-            log.error(e.toString(), e.getCause());
-            log.error("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?");
+            log.error("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?", e);
             return false;
         } finally {
             if (connection != null) Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
                     connection.close();
                 } catch (IOException | RejectedExecutionException e) {
-                    log.error(e.toString(), e.getCause());
-                    log.error("Could not disconnect properly from the D-Bus.");
+                    log.error("Could not disconnect properly from the D-Bus.", e);
                 }
             }));
         }
@@ -181,8 +178,8 @@ public final class SimpleCollection implements AutoCloseable {
                 InvalidAlgorithmParameterException |
                 InvalidKeySpecException |
                 InvalidKeyException e) {
-            log.error(e.toString(), e.getCause());
-            throw new IOException(e.toString(), e.getCause());
+            log.error("Cloud not initiate transport encryption.", e);
+            throw new IOException("Cloud not initiate transport encryption.", e);
         }
     }
 
@@ -243,7 +240,7 @@ public final class SimpleCollection implements AutoCloseable {
             try {
                 Thread.currentThread().sleep(100L);
             } catch (InterruptedException e) {
-                log.error(e.toString(), e.getCause());
+                log.error("Unexpected interrupt while waiting for a collection to lock.", e);
             }
         }
     }
@@ -364,7 +361,7 @@ public final class SimpleCollection implements AutoCloseable {
                 InvalidKeyException |
                 BadPaddingException |
                 IllegalBlockSizeException e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Cloud not encrypt the secret.", e);
         }
 
         if (null != item) {
@@ -421,7 +418,7 @@ public final class SimpleCollection implements AutoCloseable {
                 InvalidKeyException |
                 BadPaddingException |
                 IllegalBlockSizeException e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Cloud not encrypt the secret.", e);
         }
     }
 
@@ -491,7 +488,7 @@ public final class SimpleCollection implements AutoCloseable {
                 InvalidKeyException |
                 BadPaddingException |
                 IllegalBlockSizeException e) {
-            log.error(e.toString(), e.getCause());
+            log.error("Could not decrypt the secret.", e);
         }
         return decrypted;
     }
