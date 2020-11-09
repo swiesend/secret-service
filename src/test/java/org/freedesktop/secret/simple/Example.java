@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.security.AccessControlException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +17,7 @@ public class Example {
     @Test
     @Disabled
     @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
-    public void createPasswordInDefaultCollection() throws IOException {
+    public void createPasswordInDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection()) {
             String item = collection.createItem("My Item", "secret");
 
@@ -30,7 +31,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxx').")
-    public void createPasswordInNonDefaultCollection() throws IOException {
+    public void createPasswordInNonDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
             String item = collection.createItem("My Item", "secret");
 
@@ -45,7 +46,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password with additional attributes.")
-    public void createPasswordWithAttributes() throws IOException {
+    public void createPasswordWithAttributes() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
             // define unique attributes
             Map<String, String> attributes = new HashMap();

@@ -48,44 +48,32 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 ### High-Level API
 
 ```java
-package org.freedesktop.secret.simple;
-
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 public class Example {
 
     @Test
     @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
-    public void createPasswordInDefaultCollection() throws IOException {
+    public void createPasswordInDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection()) {
             String item = collection.createItem("My Item", "secret");
-            
+
             char[] actual = collection.getSecret(item);
             assertEquals("secret", new String(actual));
             assertEquals("My Item", collection.getLabel(item));
-            
+
             collection.deleteItem(item);
         } // clears automatically all session secrets in memory
     }
 
     @Test
     @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxx').")
-    public void createPasswordInNonDefaultCollection() throws IOException {
+    public void createPasswordInNonDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
             String item = collection.createItem("My Item", "secret");
-            
+
             char[] actual = collection.getSecret(item);
             assertEquals("secret", new String(actual));
             assertEquals("My Item", collection.getLabel(item));
-            
+
             collection.deleteItem(item);
             collection.delete();
         } // clears automatically all session secrets in memory
@@ -93,7 +81,7 @@ public class Example {
 
     @Test
     @DisplayName("Create a password with additional attributes.")
-    public void createPasswordWithAttributes() throws IOException {
+    public void createPasswordWithAttributes() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
             // define unique attributes
             Map<String, String> attributes = new HashMap();
@@ -106,7 +94,7 @@ public class Example {
             List<String> items = collection.getItems(attributes);
             assertEquals(1, items.size());
             String item = items.get(0);
-            
+
             char[] actual = collection.getSecret(item);
             assertEquals("secret", new String(actual));
             assertEquals("My Item", collection.getLabel(item));
