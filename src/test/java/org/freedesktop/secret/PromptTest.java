@@ -1,7 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
-import org.freedesktop.secret.errors.NoSuchObject;
+import org.freedesktop.secret.handlers.SignalHandler;
 import org.freedesktop.secret.interfaces.Prompt;
 import org.freedesktop.secret.test.Context;
 import org.junit.jupiter.api.*;
@@ -34,8 +34,7 @@ public class PromptTest {
 
     @Test
     @Disabled
-    public void prompt() throws InterruptedException, NoSuchObject {
-
+    public void prompt() {
         ObjectPath defaultCollection = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         ArrayList<ObjectPath> cs = new ArrayList();
         cs.add(defaultCollection);
@@ -56,8 +55,8 @@ public class PromptTest {
     }
 
     @Test
-    @Disabled
-    public void dismissPrompt() throws InterruptedException, NoSuchObject {
+    @Disabled("Depends much on timing.")
+    public void dismissPrompt() throws InterruptedException  {
         ArrayList<ObjectPath> cs = new ArrayList();
         cs.add(context.collection.getPath());
         context.service.lock(cs);
@@ -65,16 +64,17 @@ public class PromptTest {
         Pair<List<ObjectPath>, ObjectPath> response = context.service.unlock(cs);
         ObjectPath prompt = response.b;
 
-        context.prompt.prompt(prompt);
-        Thread.currentThread().sleep(250L);
+        // Does not throw NoSuchObject
+        assertDoesNotThrow(() ->context.prompt.prompt(prompt));
+        Thread.currentThread().sleep(500L);
         // Requires `Dismiss` to be implemented from the secret service. Some secret service versions, like GDBus 2.56.3 do provide this method.
         // But the following error can also occur, if the prompt was already closed or never provided by the system:
-        // org.freedesktop.dbus.exceptions.DBusException: org.freedesktop.DBus.Error.UnknownMethod: Method Dismiss is not implemented on interface org.freedesktop.Secret.Prompt
+        // org.freedesktop.DBus.Error.UnknownMethod: Method Dismiss is not implemented on interface org.freedesktop.Secret.Prompt
         context.prompt.dismiss();
         Thread.currentThread().sleep(500L); // await signal
 
-        Prompt.Completed completed = context.service.getSignalHandler()
-                .getLastHandledSignal(Prompt.Completed.class, prompt.getPath());
+        SignalHandler handler = context.service.getSignalHandler();
+        Prompt.Completed completed = handler.getLastHandledSignal(Prompt.Completed.class, prompt.getPath());
         assertTrue(completed.dismissed);
     }
 
