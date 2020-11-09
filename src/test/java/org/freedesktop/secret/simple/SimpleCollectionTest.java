@@ -204,8 +204,11 @@ public class SimpleCollectionTest {
     @Test
     public void deletePasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
-        String item = collection.createItem("item", "secret");
-        assertDoesNotThrow(() -> collection.deleteItems(Arrays.asList(item)));
+        List<String> items = Arrays.asList(
+                collection.createItem("item-1", "secret"),
+                collection.createItem("item-2", "secret")
+        );
+        assertDoesNotThrow(() -> collection.deleteItems(items));
         collection.delete();
     }
 
