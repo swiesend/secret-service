@@ -2,6 +2,17 @@
 
 The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
+## [1.2.3] - 2020-11-09
+
+- `Added`
+  - Add possible `RuntimeException`s: `AccessControlException`, `IllegalArgumentException` to the SimpleCollection example.
+  - Add an interface `org.freedesktop.secret.simple.interfaces.SimpleCollection` for the high-level api. 
+- `Fixed`
+  - Overhaul of the disconnect logic for the signal handlers and the D-Bus connection.
+    One has to disconnect the signal handlers manually using the low-level api.
+    The new introduced changes should avoid race conditions during the `disconnect()` phase and thus hopefully:
+    - Fix [`#20`](https://github.com/swiesend/secret-service/issues/20)
+
 ## [1.2.2] - 2020-11-06
 
 - `Fixed`
