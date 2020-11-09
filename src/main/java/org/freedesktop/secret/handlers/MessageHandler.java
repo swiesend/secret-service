@@ -66,7 +66,7 @@ public class MessageHandler {
             return parameters;
 
         } catch (NoSession | NoSuchObject | IsLocked | DBusException e) {
-            log.error("Unexpected D-Bus response.", e);
+            log.error("D-Bus response:", e);
         }
         return null;
     }

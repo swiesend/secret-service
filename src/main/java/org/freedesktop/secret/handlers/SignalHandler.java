@@ -187,11 +187,12 @@ public class SignalHandler implements DBusSigHandler {
         try {
             return handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException | InterruptedException | ExecutionException e) {
-            log.warn("Could not finish the prompt properly.", e);
             handler.cancel(true);
             if (prompt != null && prompt instanceof Prompt) {
                 ((Prompt) prompt).dismiss();
                 log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
+            } else {
+                log.warn("Cancelled the action, but could not dismiss the prompt.", e);
             }
         } finally {
             executor.shutdownNow();

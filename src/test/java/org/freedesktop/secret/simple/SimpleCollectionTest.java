@@ -228,21 +228,27 @@ public class SimpleCollectionTest {
 
     @Test
     @Disabled
-    public void setTimeout() throws IOException, InterruptedException {
+    public void setTimeout() throws IOException {
         SimpleCollection collection = new SimpleCollection();
         String item = collection.createItem("item", "secret");
 
         // wait 3 seconds before cancelling the prompt manually
         try {
-            Duration kurz = Duration.ofSeconds(3);
-            collection.setTimeout(kurz);
+            Duration briefly = Duration.ofSeconds(3);
+            collection.setTimeout(briefly);
+            @SuppressWarnings("unused")
             Map<String, char[]> ignored = collection.getSecrets();
         } catch (AccessControlException e) {
-            log.info(e.getMessage());
+            log.info("Expected AccessControlException:", e);
         }
 
-        Duration lang = Duration.ofSeconds(120);
-        collection.setTimeout(lang);
-        collection.deleteItem(item);
+        // clean within 120 seconds
+        try {
+            Duration longish = Duration.ofSeconds(120);
+            collection.setTimeout(longish);
+            collection.deleteItem(item);
+        } catch (AccessControlException e) {
+            log.info("Unexpected AccessControlException:", e);
+        }
     }
 }
