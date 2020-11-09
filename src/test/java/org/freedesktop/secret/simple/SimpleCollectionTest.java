@@ -227,9 +227,9 @@ public class SimpleCollectionTest {
         String item = collection.createItem("item", "secret");
 
         // wait 3 seconds before cancelling the prompt manually
+        Duration briefly = Duration.ofSeconds(3);
+        collection.setTimeout(briefly);
         try {
-            Duration briefly = Duration.ofSeconds(3);
-            collection.setTimeout(briefly);
             @SuppressWarnings("unused")
             Map<String, char[]> ignored = collection.getSecrets();
         } catch (AccessControlException e) {

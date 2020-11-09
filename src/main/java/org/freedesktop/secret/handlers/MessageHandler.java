@@ -56,6 +56,9 @@ public class MessageHandler {
                         throw new NoSuchObject((String) response.getParameters()[0]);
                     case "org.freedesktop.Secret.Error.IsLocked":
                         throw new IsLocked((String) response.getParameters()[0]);
+                    case "org.freedesktop.DBus.Error.NoReply":
+                        log.warn("org.freedesktop.DBus.Error.NoReply");
+                        break;
                     default:
                         throw new DBusException(response.getName() + ": " + response.getParameters()[0]);
                 }
