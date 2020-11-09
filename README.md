@@ -77,7 +77,7 @@ public class Example {
     }
 
     @Test
-    @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxxx').")
+    @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxx').")
     public void createPasswordInNonDefaultCollection() throws IOException {
         try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
             String item = collection.createItem("My Item", "secret");
