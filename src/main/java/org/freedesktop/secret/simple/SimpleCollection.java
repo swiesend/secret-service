@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
 
+import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
 import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
 
 public final class SimpleCollection implements AutoCloseable {
@@ -120,7 +121,7 @@ public final class SimpleCollection implements AutoCloseable {
 
                 if (path == null) {
                     try {
-                        Thread.currentThread().sleep(100L);
+                        Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
                     } catch (InterruptedException e) {
                         log.error("Unexpected interrupt while waiting for a CollectionCreated signal.", e);
                     }
@@ -238,7 +239,7 @@ public final class SimpleCollection implements AutoCloseable {
         if (collection != null && !collection.isLocked()) {
             service.lock(lockable());
             try {
-                Thread.currentThread().sleep(100L);
+                Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
             } catch (InterruptedException e) {
                 log.error("Unexpected interrupt while waiting for a collection to lock.", e);
             }
