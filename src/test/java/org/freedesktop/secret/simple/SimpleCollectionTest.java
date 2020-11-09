@@ -16,15 +16,6 @@ public class SimpleCollectionTest {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollectionTest.class);
 
-    private String getRandomHexString(int length) {
-        Random r = new Random();
-        StringBuilder sb = new StringBuilder();
-        while (sb.length() < length) {
-            sb.append(Integer.toHexString(r.nextInt()));
-        }
-        return sb.toString();
-    }
-
     @Test
     @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
     public void deleteDefaultCollection() throws IOException {
@@ -64,7 +55,7 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         Map<String, String> attributes = new HashMap();
-        attributes.put("uuid", getRandomHexString(32));
+        attributes.put("uuid", UUID.randomUUID().toString());
 
         String item = collection.createItem("item", "secret", attributes);
         assertEquals("item", collection.getLabel(item));
@@ -87,7 +78,7 @@ public class SimpleCollectionTest {
         Map<String, String> attributes = new HashMap();
 
         // create password
-        attributes.put("uuid", getRandomHexString(32));
+        attributes.put("uuid", UUID.randomUUID().toString());
         log.info("attributes: " + attributes);
 
         String item = collection.createItem("item", "secret", attributes);
@@ -100,7 +91,7 @@ public class SimpleCollectionTest {
         }
 
         // update password
-        attributes.put("uuid", getRandomHexString(32));
+        attributes.put("uuid", UUID.randomUUID().toString());
         log.info("attributes: " + attributes);
         collection.updateItem(item, "updated item", "updated secret", attributes);
         assertEquals("updated item", collection.getLabel(item));
@@ -123,7 +114,7 @@ public class SimpleCollectionTest {
 
         // create password
         Map<String, String> attributes = new HashMap();
-        attributes.put("uuid", getRandomHexString(32));
+        attributes.put("uuid", UUID.randomUUID().toString());
         log.info("attributes: " + attributes);
         String item = collection.createItem("item", "secret", attributes);
 
@@ -243,9 +234,9 @@ public class SimpleCollectionTest {
         }
 
         // clean within 120 seconds
+        Duration longish = Duration.ofSeconds(120);
+        collection.setTimeout(longish);
         try {
-            Duration longish = Duration.ofSeconds(120);
-            collection.setTimeout(longish);
             collection.deleteItem(item);
         } catch (AccessControlException e) {
             log.info("Unexpected AccessControlException:", e);
