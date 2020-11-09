@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
+import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
+
 public class SignalHandler implements DBusSigHandler {
 
     private final int bufferSize = 1024;
@@ -26,10 +28,6 @@ public class SignalHandler implements DBusSigHandler {
     private List<Class<? extends DBusSignal>> registered = new ArrayList();
     private DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
-
-    private SignalHandler() {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> disconnect()));
-    }
 
     public static SignalHandler getInstance() {
         return SingletonHelper.INSTANCE;
@@ -54,7 +52,7 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public void disconnect() {
-        if (connection != null) {
+        if (connection != null && connection.isConnected()) {
             try {
                 log.debug("Remove signal handlers");
                 for (Class sc : registered) {
@@ -64,7 +62,7 @@ public class SignalHandler implements DBusSigHandler {
                     }
                 }
             } catch (DBusException | RejectedExecutionException e) {
-                log.error("Could not remove all signal handlers from the D-Bus.", e);
+                log.error("Could not remove all signal handlers from the D-Bus:", e);
             }
         }
     }
@@ -137,11 +135,21 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public <S extends DBusSignal> S getLastHandledSignal(Class<S> s) {
-        return getHandledSignals(s).get(0);
+        List<S> signals = getHandledSignals(s);
+        if (signals != null && !signals.isEmpty()) {
+            return signals.get(0);
+        } else {
+            return null;
+        }
     }
 
     public <S extends DBusSignal> S getLastHandledSignal(Class<S> s, String path) {
-        return getHandledSignals(s, path).get(0);
+        List<S> signals = getHandledSignals(s, path);
+        if (signals != null && !signals.isEmpty()) {
+            return signals.get(0);
+        } else {
+            return null;
+        }
     }
 
     public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
@@ -172,11 +180,11 @@ public class SignalHandler implements DBusSigHandler {
             List<S> signals = null;
             while (true) {
                 if (Thread.currentThread().isInterrupted()) return null;
-                Thread.currentThread().sleep(100L);
+                Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
                 current = getCount();
                 if (current != last) {
                     signals = getHandledSignals(s, path);
-                    if (!signals.isEmpty()) {
+                    if (signals != null && !signals.isEmpty()) {
                         return signals.get(0);
                     }
                     last = current;

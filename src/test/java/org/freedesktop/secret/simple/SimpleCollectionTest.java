@@ -242,4 +242,11 @@ public class SimpleCollectionTest {
             log.info("Unexpected AccessControlException:", e);
         }
     }
+
+    @Test
+    public void close() throws IOException {
+        SimpleCollection collection = new SimpleCollection();
+        collection.close();
+    }
+
 }

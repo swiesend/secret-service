@@ -142,6 +142,7 @@ public class Context {
 
     public void after() {
         try {
+            service.getSignalHandler().disconnect();
             service.getConnection().disconnect();
             Thread.currentThread().sleep(150L);
         } catch (InterruptedException e) {

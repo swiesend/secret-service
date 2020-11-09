@@ -60,7 +60,6 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection() throws IOException {
         try {
-            if (!isAvailable()) throw new IOException("The secret service is not available.");
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
             collection = new Collection(path, service);
@@ -88,7 +87,7 @@ public final class SimpleCollection implements AutoCloseable {
      */
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
-            if (!isAvailable()) throw new IOException("The secret service is not available.");
+
             init();
             if (password != null) {
                 try {
@@ -155,17 +154,12 @@ public final class SimpleCollection implements AutoCloseable {
             log.error("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?", e);
             return false;
         } finally {
-            if (connection != null) Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                try {
-                    connection.close();
-                } catch (IOException | RejectedExecutionException e) {
-                    log.error("Could not disconnect properly from the D-Bus.", e);
-                }
-            }));
+            disconnect();
         }
     }
 
     private void init() throws IOException {
+        if (!isAvailable()) throw new IOException("The secret service is not available.");
         try {
             transport = new TransportEncryption(connection);
             transport.initialize();
@@ -228,7 +222,11 @@ public final class SimpleCollection implements AutoCloseable {
     }
 
     private Item getItem(String path) {
-        return new Item(Static.Convert.toObjectPath(path), service);
+        if (path != null) {
+            return new Item(Static.Convert.toObjectPath(path), service);
+        } else {
+            return null;
+        }
     }
 
     private List<ObjectPath> lockable() {
@@ -298,14 +296,30 @@ public final class SimpleCollection implements AutoCloseable {
         }
     }
 
+    static private void disconnect() {
+        if (connection != null && connection.isConnected()) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    connection.close();
+                    log.debug("Disconnected properly from the D-Bus.");
+                } catch (IOException | RejectedExecutionException e) {
+                    log.error("Could not disconnect properly from the D-Bus.", e);
+                }
+            }));
+        }
+    }
+
     @Override
     public void close() {
         clear();
+        log.debug("Cleared secrets properly.");
         if (session != null) {
             session.close();
+            log.debug("Closed session properly.");
         }
-        if (transport != null) {
-            transport.close();
+        if (service != null) {
+            service.getSignalHandler().disconnect();
+            log.debug("Removed signal handlers properly.");
         }
     }
 
@@ -528,6 +542,8 @@ public final class SimpleCollection implements AutoCloseable {
      * @param objectPath The DBus object path of the item
      */
     public void deleteItem(String objectPath) throws AccessControlException {
+        if (objectPath == null) throw new AccessControlException("Cannot delete an unknown item.");
+
         unlockWithUserPermission();
 
         Item item = getItem(objectPath);

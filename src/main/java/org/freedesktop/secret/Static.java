@@ -14,7 +14,7 @@ public class Static {
 
     public static class DBus {
 
-        public static final Long DEFAULT_DELAY_MILLIS = 20L;
+        public static final Long DEFAULT_DELAY_MILLIS = 100L;
 
         public static class Service {
             public static final String DBUS = "org.freedesktop.DBus";
