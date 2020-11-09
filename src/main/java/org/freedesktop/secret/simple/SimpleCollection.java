@@ -30,7 +30,7 @@ import java.util.concurrent.RejectedExecutionException;
 import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
 import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
 
-public final class SimpleCollection implements AutoCloseable {
+public final class SimpleCollection extends org.freedesktop.secret.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
     private static DBusConnection connection = null;
@@ -233,6 +233,7 @@ public final class SimpleCollection implements AutoCloseable {
         return Arrays.asList(collection.getPath());
     }
 
+    @Override
     public void lock() {
         if (collection != null && !collection.isLocked()) {
             service.lock(lockable());
@@ -276,6 +277,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @throws AccessControlException if the user does not provide the correct credentials.
      */
+    @Override
     public void unlockWithUserPermission() throws AccessControlException {
         if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
         unlock();
@@ -287,6 +289,7 @@ public final class SimpleCollection implements AutoCloseable {
     /**
      * Clears the private key of the transport encryption and the passphrase of the collection.
      */
+    @Override
     public void clear() {
         if (transport != null) {
             transport.clear();
@@ -326,6 +329,7 @@ public final class SimpleCollection implements AutoCloseable {
     /**
      * Delete this collection.
      */
+    @Override
     public void delete() throws AccessControlException {
         if (!isDefault()) {
             ObjectPath promptPath = collection.delete();
@@ -344,6 +348,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @return DBus object path or null
      * @throws IllegalArgumentException The label and password are non nullable.
      */
+    @Override
     public String createItem(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
         if (password == null) {
@@ -394,6 +399,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @return DBus object path
      * @throws IllegalArgumentException The label and password are non nullable.
      */
+    @Override
     public String createItem(String label, CharSequence password) throws IllegalArgumentException {
         return createItem(label, password, null);
     }
@@ -407,6 +413,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @param attributes The attributes of the new item
      * @throws IllegalArgumentException The object path, label and password are non nullable.
      */
+    @Override
     public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
         if (objectPath == null) {
@@ -443,6 +450,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @param objectPath The DBus object path of the item
      * @return label
      */
+    @Override
     public String getLabel(String objectPath) {
         if (objectPath == null) return null;
         unlock();
@@ -457,6 +465,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @param objectPath The DBus object path of the item
      * @return item attributes
      */
+    @Override
     public Map<String, String> getAttributes(String objectPath) {
         if (objectPath == null) return null;
         unlock();
@@ -469,6 +478,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @param attributes The attributes of the secret
      * @return object paths
      */
+    @Override
     public List<String> getItems(Map<String, String> attributes) {
         if (attributes == null) return null;
         unlock();
@@ -488,6 +498,7 @@ public final class SimpleCollection implements AutoCloseable {
      * @param objectPath The DBus object path of the item
      * @return plain chars
      */
+    @Override
     public char[] getSecret(String objectPath) {
         if (objectPath == null) return null;
         unlock();
@@ -517,6 +528,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @return Mapping of DBus object paths and plain chars
      */
+    @Override
     public Map<String, char[]> getSecrets() throws AccessControlException {
         unlockWithUserPermission();
 
@@ -541,6 +553,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @param objectPath The DBus object path of the item
      */
+    @Override
     public void deleteItem(String objectPath) throws AccessControlException {
         if (objectPath == null) throw new AccessControlException("Cannot delete an unknown item.");
 
@@ -560,6 +573,7 @@ public final class SimpleCollection implements AutoCloseable {
      *
      * @param objectPaths The DBus object paths of the items
      */
+    @Override
     public void deleteItems(List<String> objectPaths) throws AccessControlException {
         unlockWithUserPermission();
         for (String item : objectPaths) {
@@ -567,10 +581,12 @@ public final class SimpleCollection implements AutoCloseable {
         }
     }
 
+    @Override
     public Duration getTimeout() {
         return timeout;
     }
 
+    @Override
     public void setTimeout(Duration timeout) {
         this.timeout = timeout;
     }
