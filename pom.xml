@@ -10,7 +10,7 @@
     <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-RC.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH} -->
-    <version>1.2.3</version>
+    <version>1.2.4-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>
@@ -59,7 +59,7 @@
 
         <!-- 3rd party dependencies -->
         <hkdf.version>1.1.0</hkdf.version>
-        <dbus-java.version>3.2.3</dbus-java.version>
+        <dbus-java.version>3.2.4-SNAPSHOT</dbus-java.version>
         <slf4j.version>1.7.30</slf4j.version>
 
         <!-- test dependencies -->

@@ -2,6 +2,12 @@
 
 The secret-service library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
+## Unreleased
+
+- `Fixed`
+  - Fix [`#21`](https://github.com/swiesend/secret-service/issues/21), which lead to a race condition when closing the connection like 1/25 times.
+    Was very kindly investigated by @infeo and fixed by @hypfvieh in [`dbus-java`](https://github.com/hypfvieh/dbus-java/issues/123).
+
 ## [1.2.3] - 2020-11-09
 
 - `Added`
