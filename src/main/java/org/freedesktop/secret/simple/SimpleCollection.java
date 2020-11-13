@@ -158,24 +158,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         }
     }
 
-    static private void disconnect() {
-        if (connection != null && connection.isConnected()) {
-            Thread daemonThread = new Thread(() -> {
-                try {
-                    if (connection != null && connection.isConnected()) {
-                        connection.close();
-                    }
-                    log.debug("Disconnected properly from the D-Bus.");
-                } catch (IOException | RejectedExecutionException e) {
-                    log.error("Could not disconnect properly from the D-Bus.", e);
-                }
-            });
-            daemonThread.setName("SimpleCollection.disconnect.shutdownHook");
-            daemonThread.setDaemon(true);
-            Runtime.getRuntime().addShutdownHook(daemonThread);
-        }
-    }
-
     private void init() throws IOException {
         if (!isAvailable()) throw new IOException("The secret service is not available.");
         try {
@@ -314,6 +296,24 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         }
         if (encrypted != null) {
             encrypted.clear();
+        }
+    }
+
+    static private void disconnect() {
+        if (connection != null && connection.isConnected()) {
+            Thread daemonThread = new Thread(() -> {
+                try {
+                    if (connection != null && connection.isConnected()) {
+                        connection.close();
+                    }
+                    log.debug("Disconnected properly from the D-Bus.");
+                } catch (IOException | RejectedExecutionException e) {
+                    log.error("Could not disconnect properly from the D-Bus.", e);
+                }
+            });
+            daemonThread.setName("SimpleCollection.disconnect.shutdownHook");
+            daemonThread.setDaemon(true);
+            Runtime.getRuntime().addShutdownHook(daemonThread);
         }
     }
 
