@@ -40,6 +40,8 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
         } catch (DBusException | RejectedExecutionException e) {
             log.error("Could not communicate properly with the D-Bus.", e);
+        } finally {
+            disconnect();
         }
     }
 
@@ -153,8 +155,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         } catch (DBusException e) {
             log.error("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?", e);
             return false;
-        } finally {
-            disconnect();
         }
     }
 
