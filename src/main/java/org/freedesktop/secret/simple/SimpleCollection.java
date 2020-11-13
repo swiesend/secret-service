@@ -325,10 +325,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             session.close();
             log.debug("Closed session properly.");
         }
-        if (service != null) {
-            service.getSignalHandler().disconnect();
-            log.debug("Removed signal handlers properly.");
-        }
     }
 
     /**

@@ -51,22 +51,6 @@ public class SignalHandler implements DBusSigHandler {
         }
     }
 
-    public void disconnect() {
-        if (connection != null && connection.isConnected()) {
-            try {
-                log.debug("Remove signal handlers");
-                for (Class sc : registered) {
-                    if (connection.isConnected()) {
-                        log.debug("Remove signal handler: " + sc.getName());
-                        connection.removeSigHandler(sc, this);
-                    }
-                }
-            } catch (DBusException | RejectedExecutionException e) {
-                log.error("Could not remove all signal handlers from the D-Bus:", e);
-            }
-        }
-    }
-
     @Override
     public void handle(DBusSignal s) {
 
