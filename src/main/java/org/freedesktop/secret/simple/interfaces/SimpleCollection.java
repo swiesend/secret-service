@@ -38,9 +38,9 @@ public abstract class SimpleCollection implements AutoCloseable {
 
     public abstract char[] getSecret(String objectPath);
 
-    public abstract Duration getTimeout();
-
     public abstract Map<String, char[]> getSecrets() throws AccessControlException;
+
+    public abstract Duration getTimeout();
 
     public abstract void lock();
 
