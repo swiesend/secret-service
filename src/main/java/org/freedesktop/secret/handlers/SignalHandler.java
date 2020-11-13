@@ -22,7 +22,7 @@ import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
 
 public class SignalHandler implements DBusSigHandler {
 
-    private final int bufferSize = 1024;
+    private final static int bufferSize = 1024;
     private Logger log = LoggerFactory.getLogger(getClass());
     private DBusConnection connection = null;
     private List<Class<? extends DBusSignal>> registered = new ArrayList();
