@@ -22,23 +22,6 @@ public class MessageHandler {
 
     public MessageHandler(DBusConnection connection) {
         this.connection = connection;
-
-        if (this.connection != null) {
-            this.connection.setWeakReferences(true);
-            Thread daemonThread = new Thread(() -> {
-                try {
-                    if (this.connection != null && this.connection.isConnected()) {
-                        this.connection.setWeakReferences(false);
-                        this.connection.disconnect();
-                    }
-                } catch (RejectedExecutionException e) {
-                    log.error("Could not disconnect properly from the D-Bus.", e);
-                }
-            });
-            daemonThread.setName("MessageHandler.shutdownHook");
-            daemonThread.setDaemon(true);
-            Runtime.getRuntime().addShutdownHook(daemonThread);
-        }
     }
 
     public Object[] send(String service, String path, String iface, String method, String signature, Object... args) {
