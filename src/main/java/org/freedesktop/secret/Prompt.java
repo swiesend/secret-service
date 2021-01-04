@@ -9,7 +9,8 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
+import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
+import static org.freedesktop.secret.Static.ObjectPaths.PROMPT;
 
 public class Prompt extends Messaging implements org.freedesktop.secret.interfaces.Prompt {
 
@@ -75,7 +76,7 @@ public class Prompt extends Messaging implements org.freedesktop.secret.interfac
      * @see Completed
      */
     public Completed await(ObjectPath path) {
-        return await(path, DEFAULT_TIMEOUT);
+        return await(path, DEFAULT_PROMPT_TIMEOUT);
     }
 
 

@@ -10,11 +10,12 @@ import java.util.List;
 
 public class Static {
 
-    public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+    public static final Duration DEFAULT_PROMPT_TIMEOUT = Duration.ofSeconds(120);
 
     public static class DBus {
 
         public static final Long DEFAULT_DELAY_MILLIS = 100L;
+        public static final Long MAX_DELAY_MILLIS = 2000L;
 
         public static class Service {
             public static final String DBUS = "org.freedesktop.DBus";

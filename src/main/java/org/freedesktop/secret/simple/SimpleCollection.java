@@ -28,7 +28,7 @@ import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
 
 import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
-import static org.freedesktop.secret.Static.DEFAULT_TIMEOUT;
+import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
 
 public final class SimpleCollection extends org.freedesktop.secret.simple.interfaces.SimpleCollection {
 
@@ -52,7 +52,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
     private Collection collection;
     private Secret encrypted = null;
-    private Duration timeout = DEFAULT_TIMEOUT;
+    private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
     private Boolean isUnlockedOnceWithUserPermission = false;
 
     /**

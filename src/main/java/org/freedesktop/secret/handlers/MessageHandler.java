@@ -12,7 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
-import java.util.concurrent.RejectedExecutionException;
+
+import static org.freedesktop.secret.Static.DBus.MAX_DELAY_MILLIS;
 
 public class MessageHandler {
 
@@ -34,7 +35,7 @@ public class MessageHandler {
 
             connection.sendMessage(message);
 
-            org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(2000L);
+            org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(MAX_DELAY_MILLIS);
             if (log.isTraceEnabled()) log.trace(String.valueOf(response));
 
             if (response instanceof org.freedesktop.dbus.errors.Error) {
@@ -56,7 +57,6 @@ public class MessageHandler {
             Object[] parameters = response.getParameters();
             log.debug(Arrays.deepToString(parameters));
             return parameters;
-
         } catch (NoSession | NoSuchObject | IsLocked | DBusException e) {
             log.error("D-Bus response:", e);
         }
