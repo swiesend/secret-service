@@ -136,11 +136,6 @@ public class SignalHandler implements DBusSigHandler {
         }
     }
 
-    public <S extends DBusSignal> S await(Class<S> s, String path, Callable action) {
-        final Duration timeout = Duration.ofSeconds(120);
-        return await(s, path, action, timeout);
-    }
-
     public <S extends DBusSignal> S await(Class<S> s, String path, Callable action, Duration timeout) {
         final int init = count;
 
