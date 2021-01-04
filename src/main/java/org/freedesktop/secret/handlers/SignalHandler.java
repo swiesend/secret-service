@@ -157,7 +157,12 @@ public class SignalHandler implements DBusSigHandler {
             log.error("Await signal for unknown class.");
         }
 
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ExecutorService executor = Executors.newCachedThreadPool(runnable -> {
+            Thread thread = new Thread(runnable, "secret-service:signal-handler");
+            thread.setDaemon(true);
+            return thread;
+        });
+
         final Future<S> handler = executor.submit((Callable) () -> {
             int current = init;
             int last = init;
@@ -177,9 +182,17 @@ public class SignalHandler implements DBusSigHandler {
         });
 
         try {
-            return handler.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException | InterruptedException | ExecutionException e) {
-            handler.cancel(true);
+            long start = System.nanoTime();
+            long nanos = timeout.toNanos();
+            while(!Thread.currentThread().isInterrupted()) {
+                long now = System.nanoTime();
+                if (handler.isDone()) {
+                    return handler.get();
+                } else if (now - start > nanos) {
+                    throw new TimeoutException();
+                }
+            }
+        } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
             if (prompt != null && prompt instanceof Prompt) {
                 ((Prompt) prompt).dismiss();
                 log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
@@ -187,6 +200,7 @@ public class SignalHandler implements DBusSigHandler {
                 log.warn("Cancelled the action, but could not dismiss the prompt.", e);
             }
         } finally {
+            handler.cancel(true);
             executor.shutdownNow();
         }
 

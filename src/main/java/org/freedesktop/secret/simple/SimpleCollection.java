@@ -311,7 +311,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                     log.error("Could not disconnect properly from the D-Bus.", e);
                 }
             });
-            daemonThread.setName("SimpleCollection.disconnect.shutdownHook");
+            daemonThread.setName("secret-service:disconnect");
             daemonThread.setDaemon(true);
             Runtime.getRuntime().addShutdownHook(daemonThread);
         }
