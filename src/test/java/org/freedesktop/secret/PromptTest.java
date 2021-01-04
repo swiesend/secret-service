@@ -1,6 +1,7 @@
 package org.freedesktop.secret;
 
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.secret.handlers.SignalHandler;
 import org.freedesktop.secret.interfaces.Prompt;
 import org.freedesktop.secret.test.Context;
@@ -10,8 +11,10 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+import static org.freedesktop.secret.Static.ObjectPaths.DEFAULT_COLLECTION;
 import static org.junit.jupiter.api.Assertions.*;
 
 
@@ -35,7 +38,7 @@ public class PromptTest {
     @Test
     @Disabled
     public void prompt() {
-        ObjectPath defaultCollection = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
+        ObjectPath defaultCollection = Static.Convert.toObjectPath(DEFAULT_COLLECTION);
         ArrayList<ObjectPath> cs = new ArrayList();
         cs.add(defaultCollection);
 
@@ -55,27 +58,27 @@ public class PromptTest {
     }
 
     @Test
-    @Disabled("Depends much on timing.")
-    public void dismissPrompt() throws InterruptedException  {
-        ArrayList<ObjectPath> cs = new ArrayList();
-        cs.add(context.collection.getPath());
+    @Disabled("Depends on timing and default collection lock.")
+    public void dismissPrompt() throws InterruptedException {
+        List<ObjectPath> cs = Arrays.asList(context.collection.getPath());
         context.service.lock(cs);
+        SignalHandler handler = context.service.getSignalHandler();
+        Collection defaultCollection = new Collection("login", context.service);
+        boolean expected = defaultCollection.isLocked();
+        Thread.currentThread().sleep(500L);
 
         Pair<List<ObjectPath>, ObjectPath> response = context.service.unlock(cs);
         ObjectPath prompt = response.b;
-
-        // Does not throw NoSuchObject
-        assertDoesNotThrow(() ->context.prompt.prompt(prompt));
+        assertDoesNotThrow(() ->context.prompt.prompt(prompt)); // Should not throw NoSuchObject
+        DBusSignal signal = handler.getLastHandledSignal();
         Thread.currentThread().sleep(500L);
-        // Requires `Dismiss` to be implemented from the secret service. Some secret service versions, like GDBus 2.56.3 do provide this method.
-        // But the following error can also occur, if the prompt was already closed or never provided by the system:
-        // org.freedesktop.DBus.Error.UnknownMethod: Method Dismiss is not implemented on interface org.freedesktop.Secret.Prompt
+        assertFalse(signal instanceof Prompt.Completed);
+
         context.prompt.dismiss();
         Thread.currentThread().sleep(500L); // await signal
-
-        SignalHandler handler = context.service.getSignalHandler();
         Prompt.Completed completed = handler.getLastHandledSignal(Prompt.Completed.class, prompt.getPath());
-        assertTrue(completed.dismissed);
+        assertNotNull(completed);
+        assertEquals(expected, completed.dismissed);
     }
 
     @Test

@@ -85,8 +85,8 @@ public class Context {
 
         collections = Static.Convert.toStrings(service.getCollections());
         if (collections.contains(Static.ObjectPaths.collection("test"))) {
-            ObjectPath deletePromt = collection.delete();
-            if (!deletePromt.getPath().equals("/")) {
+            ObjectPath deletePrompt = collection.delete();
+            if (!deletePrompt.getPath().equals("/")) {
                 log.error("won't wait for prompt in automated test context.");
                 exit(-3);
             }
