@@ -46,7 +46,7 @@ public class Context {
         DBusConnection connection = null;
         try {
             connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
-        } catch (DBusException e) {
+        } catch (DBusException | RuntimeException e) {
             log.error("Could not connect to the D-Bus", e);
             exit(-1);
         }
