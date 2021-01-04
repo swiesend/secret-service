@@ -38,29 +38,32 @@ public class MessageHandler {
             org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(MAX_DELAY_MILLIS);
             if (log.isTraceEnabled()) log.trace(String.valueOf(response));
 
+            Object[] parameters = null;
+            if (response != null) {
+                parameters = response.getParameters();
+                log.debug(Arrays.deepToString(parameters));
+            }
+
             if (response instanceof org.freedesktop.dbus.errors.Error) {
                 String error = response.getName();
                 switch (error) {
                     case "org.freedesktop.Secret.Error.NoSession":
-                        throw new NoSession((String) response.getParameters()[0]);
                     case "org.freedesktop.Secret.Error.NoSuchObject":
-                        throw new NoSuchObject((String) response.getParameters()[0]);
                     case "org.freedesktop.Secret.Error.IsLocked":
-                        throw new IsLocked((String) response.getParameters()[0]);
+                        log.warn(error + ": " + parameters[0]);
+                        return null;
                     case "org.freedesktop.DBus.Error.NoReply":
                     case "org.freedesktop.DBus.Error.UnknownMethod":
                         log.warn(error);
-                        break;
+                        return null;
                     default:
                         throw new DBusException(error);
                 }
             }
 
-            Object[] parameters = response.getParameters();
-            log.debug(Arrays.deepToString(parameters));
             return parameters;
-        } catch (NoSession | NoSuchObject | IsLocked | DBusException e) {
-            log.error("D-Bus response:", e);
+        } catch (DBusException e) {
+            log.error("Unexpected D-Bus response:", e);
         }
         return null;
     }
