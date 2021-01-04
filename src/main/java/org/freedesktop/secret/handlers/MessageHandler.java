@@ -39,7 +39,8 @@ public class MessageHandler {
             if (log.isTraceEnabled()) log.trace(String.valueOf(response));
 
             if (response instanceof org.freedesktop.dbus.errors.Error) {
-                switch (response.getName()) {
+                String error = response.getName();
+                switch (error) {
                     case "org.freedesktop.Secret.Error.NoSession":
                         throw new NoSession((String) response.getParameters()[0]);
                     case "org.freedesktop.Secret.Error.NoSuchObject":
@@ -47,10 +48,11 @@ public class MessageHandler {
                     case "org.freedesktop.Secret.Error.IsLocked":
                         throw new IsLocked((String) response.getParameters()[0]);
                     case "org.freedesktop.DBus.Error.NoReply":
-                        log.warn("org.freedesktop.DBus.Error.NoReply");
+                    case "org.freedesktop.DBus.Error.UnknownMethod":
+                        log.warn(error);
                         break;
                     default:
-                        throw new DBusException(response.getName() + ": " + response.getParameters()[0]);
+                        throw new DBusException(error);
                 }
             }
 
