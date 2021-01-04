@@ -9,11 +9,11 @@ import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
 import static org.freedesktop.secret.Static.ObjectPaths.DEFAULT_COLLECTION;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -51,9 +51,7 @@ public class PromptTest {
         log.info(unlocked.toString());
         ObjectPath prompt = unlocked.b;
 
-        Duration timeout = Duration.ofSeconds(120);
-
-        Prompt.Completed completed = context.prompt.await(prompt, timeout);
+        Prompt.Completed completed = context.prompt.await(prompt, DEFAULT_PROMPT_TIMEOUT);
         assertNotNull(completed);
     }
 
