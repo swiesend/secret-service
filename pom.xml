@@ -10,7 +10,7 @@
     <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-RC.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH} -->
-    <version>1.2.4-SNAPSHOT</version>
+    <version>1.3.0</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>

@@ -36,7 +36,7 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>1.2.4-SNAPSHOT</version>
+    <version>1.3.0</version>
     <exclusions>
         <exclusion>
             <groupId>org.slf4j</groupId>
@@ -133,7 +133,7 @@ For the usage of the low-level API see the tests:
 
 The underlying introspected XML D-Bus interfaces are available as [resources](src/test/resources).
 
-## Contribution
+## Contributing
 
 You are welcome to point out issues, file PRs and comment on the project.
 

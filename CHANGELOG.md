@@ -4,9 +4,19 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## Unreleased
 
+## [1.3.0] - 2021-01-05
+- `Added`
+  - Add `isLocked()` method to the SimpleCollection interface.
 - `Fixed`
   - Fix [`#21`](https://github.com/swiesend/secret-service/issues/21), which lead to a race condition when closing the connection like 1/25 times.
-    Was very kindly investigated by @infeo and fixed by @hypfvieh in [`dbus-java`](https://github.com/hypfvieh/dbus-java/issues/123).
+    The problem was very kindly investigated by [@infeo](https://github.com/infeo) and fixed by [@hypfvieh](https://github.com/hypfvieh) in [`dbus-java`](https://github.com/hypfvieh/dbus-java/issues/123) in version [`3.2.4`](https://github.com/hypfvieh/dbus-java/tree/dbus-java-parent-3.2.4).
+  - Fix problems of [integrations-linux/pull/1](https://github.com/cryptomator/integrations-linux/pull/1), thanks goes to [@purejava](https://github.com/purejava) for pointing out the issues:
+    - Make main thread interruptible for better signal handling and ui integrations
+    - Handle `org.freedesktop.DBus.Error.UnknownMethod` for better prompt handling and warn only.
+    - Warn on `org.freedesktop.Secret.Error.NoSession`, `org.freedesktop.Secret.Error.NoSuchObject`, `org.freedesktop.Secret.Error.IsLocked` with a short message, instead of writing a whole stacktrace.
+  - Fix a `ClassCastException` for locked keyrings for the SimpleCollection interface.
+  - Fix problems of [integrations-linux/pull/4](https://github.com/cryptomator/integrations-linux/pull/4), thanks to [@Liboicl](https://github.com/Liboicl) for reporting and PRs:
+    - Handle unexpected `RuntimeException` if no D-Bus session can be initiated.
 
 ## [1.2.3] - 2020-11-09
 
@@ -91,6 +101,9 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.3.0]:  https://github.com/swiesend/secret-service/compare/v1.2.3...v1.3.0
+[1.2.3]:  https://github.com/swiesend/secret-service/compare/v1.2.2...v1.2.3
+[1.2.2]:  https://github.com/swiesend/secret-service/compare/v1.2.1...v1.2.2
 [1.2.1]:  https://github.com/swiesend/secret-service/compare/v1.2.0...v1.2.1
 [1.2.0]:  https://github.com/swiesend/secret-service/compare/v1.1.0...v1.2.0
 [1.1.0]:  https://github.com/swiesend/secret-service/compare/v1.0.1...v1.1.0
