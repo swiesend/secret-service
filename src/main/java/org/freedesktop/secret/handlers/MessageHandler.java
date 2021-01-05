@@ -41,7 +41,7 @@ public class MessageHandler {
             Object[] parameters = null;
             if (response != null) {
                 parameters = response.getParameters();
-                log.debug(Arrays.deepToString(parameters));
+                if (log.isDebugEnabled()) log.debug(Arrays.deepToString(parameters));
             }
 
             if (response instanceof org.freedesktop.dbus.errors.Error) {
