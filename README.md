@@ -6,13 +6,15 @@
 A Java library for storing secrets in a keyring over the D-Bus.
 
 The library is conform to the freedesktop.org
-[Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with gnome linux systems.
+[Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with Gnome linux systems.
 
 The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon).
 
 This library can be seen as the functional equivalent to the [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C client library.
 
-see: [Secret Storage Specification](https://www.freedesktop.org/wiki/Specifications/secret-storage-spec/)
+## Related
+
+For KDE systems there is [`kdewallet`](https://github.com/purejava/kdewallet), kindly provided by [@purejava](https://github.com/purejava).
 
 ## Security Issues
 
@@ -28,7 +30,7 @@ The library provides a simplified high-level API, which sends only transport enc
 
 ### Dependency
 
-Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use another version.
+Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version.
 
 ```xml
 <dependency>
@@ -129,4 +131,20 @@ For the usage of the low-level API see the tests:
 
 #### D-Bus Interfaces
 
-The underlying introspected XML D-Bus interfaces are available at the [test/resources](src/test/resources) directory.
+The underlying introspected XML D-Bus interfaces are available as [resources](src/test/resources).
+
+## Contribution
+
+You are welcome to point out issues, file PRs and comment on the project.
+
+Please keep in mind that this is a non-profit effort in my spare time and thus it may take some time until issues are addressed.
+
+## Thank You
+
+Special thanks goes out to
+* [@purejava](https://github.com/purejava) for all the help!
+* [@hypfvieh](https://github.com/hypfvieh) for providing and maintaining the [`dbus-java`](https://github.com/hypfvieh/dbus-java) library.
+* [@infeo](https://github.com/infeo) for bug tracking like a king.
+* [@overheadhunter](https://github.com/overheadhunter) for providing enhancements all over the place.
+* [@jmehrens](https://github.com/jmehrens) for pointing out several issues and explaining them.
+* [@aanno](https://github.com/aanno) for pointing out multiple issues.
