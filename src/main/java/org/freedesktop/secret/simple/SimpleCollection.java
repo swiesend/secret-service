@@ -54,6 +54,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     private Secret encrypted = null;
     private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
     private Boolean isUnlockedOnceWithUserPermission = false;
+    private String collectionLabel = "";
 
     /**
      * The default collection.
@@ -585,6 +586,11 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     @Override
     public Duration getTimeout() {
         return timeout;
+    }
+
+    @Override
+    public boolean isLocked() {
+        return collection.isLocked();
     }
 
     @Override

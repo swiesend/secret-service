@@ -42,6 +42,8 @@ public abstract class SimpleCollection implements AutoCloseable {
 
     public abstract Duration getTimeout();
 
+    public abstract boolean isLocked();
+
     public abstract void lock();
 
     public abstract void setTimeout(Duration timeout);
