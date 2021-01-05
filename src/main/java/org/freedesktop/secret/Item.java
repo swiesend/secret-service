@@ -93,23 +93,27 @@ public class Item extends Messaging implements org.freedesktop.secret.interfaces
     public Secret getSecret(ObjectPath session) {
         Object[] response = send("GetSecret", "o", session);
         if (response == null) return null;
-        Object[] inner = (Object[]) response[0];
+        try {
+            Object[] inner = (Object[]) response[0];
 
-        ObjectPath session_path = (ObjectPath) inner[0];
-        byte[] parameters = Static.Convert.toByteArray((ArrayList<Byte>) inner[1]);
-        byte[] value = Static.Convert.toByteArray((ArrayList<Byte>) inner[2]);
-        String contentType = (String) inner[3];
+            ObjectPath session_path = (ObjectPath) inner[0];
+            byte[] parameters = Static.Convert.toByteArray((ArrayList<Byte>) inner[1]);
+            byte[] value = Static.Convert.toByteArray((ArrayList<Byte>) inner[2]);
+            String contentType = (String) inner[3];
 
-        Secret secret;
-        if (contentType.equals(Secret.TEXT_PLAIN) || contentType.equals(Secret.TEXT_PLAIN_CHARSET_UTF_8)) {
-            // replace the content-type "text/plain" with default "text/plain; charset=utf8"
-            secret = new Secret(session_path, parameters, value);
-        } else {
-            // use given non default content-type
-            secret = new Secret(session_path, parameters, value, contentType);
+            Secret secret;
+            if (contentType.equals(Secret.TEXT_PLAIN) || contentType.equals(Secret.TEXT_PLAIN_CHARSET_UTF_8)) {
+                // replace the content-type "text/plain" with default "text/plain; charset=utf8"
+                secret = new Secret(session_path, parameters, value);
+            } else {
+                // use given non default content-type
+                secret = new Secret(session_path, parameters, value, contentType);
+            }
+
+            return secret;
+        } catch (ClassCastException | IndexOutOfBoundsException e) {
+            return null;
         }
-
-        return secret;
     }
 
     @Override
