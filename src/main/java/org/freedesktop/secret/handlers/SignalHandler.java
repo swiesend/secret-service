@@ -186,6 +186,7 @@ public class SignalHandler implements DBusSigHandler {
                 } else if (now - start > nanos) {
                     throw new TimeoutException();
                 }
+                Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
             }
         } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
             if (prompt != null && prompt instanceof Prompt) {
