@@ -154,9 +154,22 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                         Static.Service.SECRETS,
                         Static.ObjectPaths.SECRETS,
                         org.freedesktop.secret.interfaces.Service.class);
+
+                // Intent to open a session without actually generating a session.
+                // Necessary in order to check if the secret service is a known service and supports the expected
+                // transport encryption algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
+                // "org.freedesktop.dbus.exceptions.DBusException: org.freedesktop.DBus.Error.ServiceUnknown"
+                TransportEncryption transport = new TransportEncryption(connection);
+                transport.initialize();
+                transport.openSession();
+                transport.close();
+
                 return service.isRemote();
             } catch (DBusException | RuntimeException e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?", e);
+                return false;
+            } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
+                log.error("The secret service could not be initialized.", e);
                 return false;
             }
         } else {
@@ -178,8 +191,8 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         } catch (NoSuchAlgorithmException |
                 InvalidAlgorithmParameterException |
                 InvalidKeySpecException |
-                InvalidKeyException e) {
-            log.error("Cloud not initiate transport encryption.", e);
+                InvalidKeyException |
+                DBusException e) {
             throw new IOException("Cloud not initiate transport encryption.", e);
         }
     }

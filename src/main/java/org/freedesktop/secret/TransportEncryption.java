@@ -67,7 +67,7 @@ public class TransportEncryption implements AutoCloseable {
         privateKey = keypair.getPrivate();
     }
 
-    public void openSession() {
+    public void openSession() throws DBusException {
         if (keypair == null) {
             throw new IllegalStateException("Missing own keypair. Call initialize() first.");
         }
@@ -172,12 +172,12 @@ public class TransportEncryption implements AutoCloseable {
     }
 
     public void clear() {
-        try {
+        if (privateKey != null) try {
             privateKey.destroy();
         } catch (DestroyFailedException e) {
             Secret.clear(privateKey.getEncoded());
         }
-        try {
+        if (sessionKey != null) try {
             sessionKey.destroy();
         } catch (DestroyFailedException e) {
             Secret.clear(sessionKey.getEncoded());
