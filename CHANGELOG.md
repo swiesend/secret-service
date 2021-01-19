@@ -4,6 +4,13 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## Unreleased
 
+## [1.3.1] - 2021-01-19
+
+- `Changed`
+  - Warn with a short message instead of logging the whole stack trace, when there is a problem with the D-Bus connection.
+- `Fixed`
+  - Fix a `NullPointerException` for the static `isAvailable()` method, when there is no D-Bus connection available. This happened, when [`dbus-java`](https://github.com/hypfvieh/dbus-java) raises a `RuntimeException: Cannot Resolve Session Bus Address` and the connection kept being uninitialized, which was not checked by the `isAvailable()` method. 
+
 ## [1.3.0] - 2021-01-05
 - `Added`
   - Add `isLocked()` method to the SimpleCollection interface.
@@ -101,6 +108,7 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.3.1]:  https://github.com/swiesend/secret-service/compare/v1.3.0...v1.3.1
 [1.3.0]:  https://github.com/swiesend/secret-service/compare/v1.2.3...v1.3.0
 [1.2.3]:  https://github.com/swiesend/secret-service/compare/v1.2.2...v1.2.3
 [1.2.2]:  https://github.com/swiesend/secret-service/compare/v1.2.1...v1.2.2
