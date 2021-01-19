@@ -4,6 +4,11 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## Unreleased
 
+## [1.4.0] - 2021-01-19
+
+- `Fixed`
+  - Fix the static `isAvailable()` method by checking if the secret service is actually provided by the D-Bus and supports the expected transport encryption algorithm. 
+
 ## [1.3.1] - 2021-01-19
 
 - `Changed`
@@ -108,6 +113,7 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.4.0]:  https://github.com/swiesend/secret-service/compare/v1.3.1...v1.4.0
 [1.3.1]:  https://github.com/swiesend/secret-service/compare/v1.3.0...v1.3.1
 [1.3.0]:  https://github.com/swiesend/secret-service/compare/v1.2.3...v1.3.0
 [1.2.3]:  https://github.com/swiesend/secret-service/compare/v1.2.2...v1.2.3
