@@ -39,7 +39,11 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         try {
             connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
         } catch (DBusException | RuntimeException e) {
-            log.error("Could not communicate properly with the D-Bus.", e);
+            if (e == null) {
+                log.warn("Could not communicate properly with the D-Bus.");
+            } else {
+                log.warn("Could not communicate properly with the D-Bus: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")");
+            }
         } finally {
             disconnect();
         }
@@ -67,7 +71,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
             collection = new Collection(path, service);
         } catch (RuntimeException e) {
-            log.error("Could not communicate properly with the secret service.", e);
             throw new IOException("Could not communicate properly with the secret service.", e);
         }
     }
@@ -90,7 +93,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      */
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
-
             init();
             if (password != null) {
                 try {
@@ -136,7 +138,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                 collection = new Collection(path, service);
             }
         } catch (RuntimeException e) {
-            log.error("Could not communicate properly with the secret service.", e);
             throw new IOException("Could not communicate properly with the secret service.", e);
         }
     }
@@ -147,14 +148,18 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * @return true if the secret service is available, otherwise false and will log an error message.
      */
     public static boolean isAvailable() {
-        try {
-            org.freedesktop.secret.interfaces.Service service = connection.getRemoteObject(
-                    Static.Service.SECRETS,
-                    Static.ObjectPaths.SECRETS,
-                    org.freedesktop.secret.interfaces.Service.class);
-            return service.isRemote();
-        } catch (DBusException | RuntimeException e) {
-            log.error("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?", e);
+        if (connection != null && connection.isConnected()) {
+            try {
+                org.freedesktop.secret.interfaces.Service service = connection.getRemoteObject(
+                        Static.Service.SECRETS,
+                        Static.ObjectPaths.SECRETS,
+                        org.freedesktop.secret.interfaces.Service.class);
+                return service.isRemote();
+            } catch (DBusException | RuntimeException e) {
+                log.warn("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?", e);
+                return false;
+            }
+        } else {
             return false;
         }
     }
