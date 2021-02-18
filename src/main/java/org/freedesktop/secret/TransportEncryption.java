@@ -67,7 +67,7 @@ public class TransportEncryption implements AutoCloseable {
         privateKey = keypair.getPrivate();
     }
 
-    public void openSession() throws DBusException {
+    public boolean openSession() throws DBusException {
         if (keypair == null) {
             throw new IllegalStateException("Missing own keypair. Call initialize() first.");
         }
@@ -81,7 +81,12 @@ public class TransportEncryption implements AutoCloseable {
                 Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant(ya.toByteArray()));
 
         // transform peer's raw Y to a public key
-        yb = osResponse.a.getValue();
+        if (osResponse != null) {
+            yb = osResponse.a.getValue();
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public void generateSessionKey() throws NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
