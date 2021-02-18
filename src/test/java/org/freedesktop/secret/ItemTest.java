@@ -66,7 +66,6 @@ public class ItemTest {
     @Test
     @Disabled
     public void getForeignSecret() {
-
         //
         // NOTE: This is considered by NIST as a security vulnerability, but apparently it is not easy to solve with the
         //       current design of the gnome-keyring library and gnome-seahorse application.
@@ -84,7 +83,6 @@ public class ItemTest {
 
     @Test
     public void setSecret() {
-
         Secret secret = new Secret(context.session.getPath(), "new secret".getBytes());
         context.item.setSecret(secret);
 
@@ -95,7 +93,6 @@ public class ItemTest {
 
     @Test
     public void isLocked() {
-
         boolean locked = context.item.isLocked();
         log.info(String.valueOf(locked));
         assertFalse(locked);
@@ -103,7 +100,6 @@ public class ItemTest {
 
     @Test
     public void getAttributes() {
-
         Map<String, String> attributes = context.item.getAttributes();
         log.info(attributes.toString());
         assertTrue(attributes.size() > 0);
@@ -119,7 +115,6 @@ public class ItemTest {
 
     @Test
     public void setAttributes() {
-
         Map<String, String> attributes = context.item.getAttributes();
         log.info(context.item.getId());
         log.info(attributes.toString());
@@ -187,7 +182,6 @@ public class ItemTest {
     @Test
     @DisplayName("created at unixtime")
     public void created() {
-
         UInt64 created = context.item.created();
         log.info(String.valueOf(created));
         assertTrue(created.longValue() > 0L);
@@ -196,7 +190,6 @@ public class ItemTest {
     @Test
     @DisplayName("modified at unixtime")
     public void modified() {
-
         UInt64 modified = context.item.created();
         log.info(String.valueOf(modified));
         assertTrue(modified.longValue() >= 0L);
