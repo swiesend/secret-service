@@ -1,5 +1,6 @@
 package org.freedesktop.secret.simple;
 
+import org.freedesktop.DBus;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
@@ -150,30 +151,51 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     public static boolean isAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
-                org.freedesktop.secret.interfaces.Service service = connection.getRemoteObject(
-                        Static.Service.SECRETS,
-                        Static.ObjectPaths.SECRETS,
-                        org.freedesktop.secret.interfaces.Service.class);
+                    DBus bus = connection.getRemoteObject(
+                        Static.DBus.Service.DBUS,
+                        Static.DBus.ObjectPaths.DBUS,
+                        DBus.class);
+                if (!Arrays.asList(bus.ListActivatableNames()).contains(Static.DBus.Service.DBUS)) {
+                    return false;
+                }
 
-                // Intent to open a session without actually generating a session.
-                // Necessary in order to check if the secret service is a known service and supports the expected
-                // transport encryption algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
-                // "org.freedesktop.dbus.exceptions.DBusException: org.freedesktop.DBus.Error.ServiceUnknown"
+                // The following calls intent to open a session without actually generating a session.
+                // Necessary in order to check if the secret service supports the expected transport encryption
+                // algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
+                // "org.freedesktop.DBus.Error.ServiceUnknown <: org.freedesktop.dbus.exceptions.DBusException"
                 TransportEncryption transport = new TransportEncryption(connection);
                 transport.initialize();
-                transport.openSession();
+                boolean isSessionSupported = transport.openSession();
                 transport.close();
 
-                return service.isRemote();
-            } catch (DBusException | RuntimeException e) {
-                log.warn("The secret service is not available. You may want to install the `gnome-keyring`. Is the `gnome-keyring-daemon` running?", e);
+                return isSessionSupported;
+            } catch (DBusException | ExceptionInInitializerError | RuntimeException e) {
+                log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
             } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
-                log.error("The secret service could not be initialized.", e);
+                log.error("The secret service could not be initialized as the service does not provide the expected transport encryption algorithm.", e);
                 return false;
             }
         } else {
             return false;
+        }
+    }
+
+    static private void disconnect() {
+        if (connection != null && connection.isConnected()) {
+            Thread daemonThread = new Thread(() -> {
+                try {
+                    if (connection != null && connection.isConnected()) {
+                        connection.close();
+                    }
+                    log.debug("Disconnected properly from the D-Bus.");
+                } catch (IOException | RejectedExecutionException e) {
+                    log.error("Could not disconnect properly from the D-Bus.", e);
+                }
+            });
+            daemonThread.setName("secret-service:disconnect");
+            daemonThread.setDaemon(true);
+            Runtime.getRuntime().addShutdownHook(daemonThread);
         }
     }
 
@@ -230,8 +252,12 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     }
 
     private boolean isDefault() {
-        List<String> defaults = Arrays.asList(null, "login", "session", "default");
-        return defaults.contains(collection.getId());
+        if (connection != null && connection.isConnected()) {
+            List<String> defaults = Arrays.asList(null, "login", "session", "default");
+            return defaults.contains(collection.getId());
+        } else {
+            return false;
+        }
     }
 
     private void performPrompt(ObjectPath path) {
@@ -315,24 +341,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         }
         if (encrypted != null) {
             encrypted.clear();
-        }
-    }
-
-    static private void disconnect() {
-        if (connection != null && connection.isConnected()) {
-            Thread daemonThread = new Thread(() -> {
-                try {
-                    if (connection != null && connection.isConnected()) {
-                        connection.close();
-                    }
-                    log.debug("Disconnected properly from the D-Bus.");
-                } catch (IOException | RejectedExecutionException e) {
-                    log.error("Could not disconnect properly from the D-Bus.", e);
-                }
-            });
-            daemonThread.setName("secret-service:disconnect");
-            daemonThread.setDaemon(true);
-            Runtime.getRuntime().addShutdownHook(daemonThread);
         }
     }
 
@@ -607,13 +615,17 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     }
 
     @Override
-    public boolean isLocked() {
-        return collection.isLocked();
+    public void setTimeout(Duration timeout) {
+        this.timeout = timeout;
     }
 
     @Override
-    public void setTimeout(Duration timeout) {
-        this.timeout = timeout;
+    public boolean isLocked() {
+        if (connection != null && connection.isConnected()) {
+            return collection.isLocked();
+        } else {
+            return true;
+        }
     }
 
 }
