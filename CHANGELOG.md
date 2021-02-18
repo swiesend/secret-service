@@ -4,6 +4,16 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## Unreleased
 
+## [1.5.0] - 2021-02-18
+
+- `Fixed`
+  - Fix the static `isAvailable()` method by also checking if the D-Bus service `org.freedesktop.DBus` is provided by the system and can open a session.
+  - Handle `org.freedesktop.DBus.Error.ServiceUnknown` D-Bus errors.
+- `Changed`
+  - Change the low-level `TransportEncryption.openSession()` return type from `void` to `boolean`.
+  - Log expected `org.freedesktop.DBus.Error.*` just in `debug` mode (`MessageHandler`).
+  - Log expected `org.freedesktop.Secret.Error.*` in `warn` or `info` mode (`MessageHandler`).
+
 ## [1.4.0] - 2021-01-19
 
 - `Fixed`
@@ -18,7 +28,7 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## [1.3.0] - 2021-01-05
 - `Added`
-  - Add `isLocked()` method to the SimpleCollection interface.
+  - Add `isLocked()` method to the `SimpleCollection` interface.
 - `Fixed`
   - Fix [`#21`](https://github.com/swiesend/secret-service/issues/21), which lead to a race condition when closing the connection like 1/25 times.
     The problem was very kindly investigated by [@infeo](https://github.com/infeo) and fixed by [@hypfvieh](https://github.com/hypfvieh) in [`dbus-java`](https://github.com/hypfvieh/dbus-java/issues/123) in version [`3.2.4`](https://github.com/hypfvieh/dbus-java/tree/dbus-java-parent-3.2.4).
