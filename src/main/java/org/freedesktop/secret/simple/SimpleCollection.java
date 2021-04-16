@@ -55,7 +55,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      *
      * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
      */
-    public SimpleCollection() throws IOException {
+    SimpleCollection() throws IOException {
         try {
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
@@ -518,7 +518,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * Get the displayable label of an item.
      *
      * @param objectPath The DBus object path of the item
-     * @return label
+     * @return label or null
      */
     @Override
     public String getLabel(String objectPath) {
@@ -533,7 +533,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * The attributes can contain an additional <code>xdg:schema</code> key-value pair.
      *
      * @param objectPath The DBus object path of the item
-     * @return item attributes
+     * @return item attributes or null
      */
     @Override
     public Map<String, String> getAttributes(String objectPath) {
@@ -546,7 +546,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * Get the object paths of items with given attributes.
      *
      * @param attributes The attributes of the secret
-     * @return object paths
+     * @return object paths or null
      */
     @Override
     public List<String> getItems(Map<String, String> attributes) {
@@ -566,7 +566,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * Get the secret of the item.
      *
      * @param objectPath The DBus object path of the item
-     * @return plain chars
+     * @return plain chars or null
      */
     @Override
     public char[] getSecret(String objectPath) {
@@ -596,7 +596,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * <p>
      * see: {@link SimpleCollection#unlockWithUserPermission()}
      *
-     * @return Mapping of DBus object paths and plain chars
+     * @return Mapping of DBus object paths and plain chars or null
      */
     @Override
     public Map<String, char[]> getSecrets() throws AccessControlException {
