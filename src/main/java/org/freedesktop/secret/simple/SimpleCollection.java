@@ -55,7 +55,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      *
      * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
      */
-    SimpleCollection() throws IOException {
+    public SimpleCollection() throws IOException {
         try {
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
