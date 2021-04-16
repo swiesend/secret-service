@@ -51,12 +51,14 @@ public class MessageHandler {
                     case "org.freedesktop.Secret.Error.NoSuchObject":
                         log.warn(error + ": " + parameters[0]);
                         return null;
+                    case "org.gnome.keyring.Error.Denied":
                     case "org.freedesktop.Secret.Error.IsLocked":
                         log.info(error + ": " + parameters[0]);
                         return null;
                     case "org.freedesktop.DBus.Error.NoReply":
                     case "org.freedesktop.DBus.Error.UnknownMethod":
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
+                    case "org.freedesktop.dbus.exceptions.NotConnected":
                         log.debug(error);
                         return null;
                     default:
