@@ -1,7 +1,6 @@
 package org.freedesktop.secret.simple;
 
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +14,16 @@ import static org.junit.jupiter.api.Assertions.*;
 public class SimpleCollectionTest {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollectionTest.class);
+
+    @BeforeAll
+    public static void startTesting() {
+        SimpleCollection.setTesting(true);
+    }
+
+    @AfterAll
+    public static void endTesting() {
+        SimpleCollection.setTesting(false);
+    }
 
     @Test
     @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
@@ -247,9 +256,12 @@ public class SimpleCollectionTest {
     }
 
     @Test
+    @Disabled
     public void close() throws IOException {
+        SimpleCollection.setTesting(false);
         SimpleCollection collection = new SimpleCollection();
         collection.close();
+        SimpleCollection.setTesting(true);
     }
 
 }

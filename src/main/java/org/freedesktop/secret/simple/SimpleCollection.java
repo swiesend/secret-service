@@ -27,6 +27,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
 import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
@@ -34,6 +36,8 @@ import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
 public final class SimpleCollection extends org.freedesktop.secret.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
+    private static boolean testing = false;
+    private static Lock disconnectLock = new ReentrantLock();
     private static DBusConnection connection = getConnection();
     private TransportEncryption transport = null;
     private Service service = null;
@@ -144,7 +148,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                 log.warn("Could not communicate properly with the D-Bus: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")");
             }
         } finally {
-            disconnect();
+            disconnect(false);
         }
         return null;
     }
@@ -187,22 +191,53 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         }
     }
 
-    static private void disconnect() {
-        if (connection != null && connection.isConnected()) {
-            Thread daemonThread = new Thread(() -> {
-                try {
-                    if (connection != null && connection.isConnected()) {
-                        connection.close();
-                    }
-                    log.debug("Disconnected properly from the D-Bus.");
-                } catch (IOException | RejectedExecutionException e) {
-                    log.error("Could not disconnect properly from the D-Bus.", e);
+    /**
+     * Acquire a lock and close and close the D-Bus connection.
+     * Waits until the connection is closed.
+     */
+    static private void disconnectSynchronized() {
+        disconnectLock.lock();
+        try {
+            if (connection != null && connection.isConnected()) {
+                connection.close();
+                while (connection.isConnected()) {
+                    Thread.sleep(DEFAULT_DELAY_MILLIS);
                 }
-            });
-            daemonThread.setName("secret-service:disconnect");
-            daemonThread.setDaemon(true);
-            Runtime.getRuntime().addShutdownHook(daemonThread);
+                connection = null;
+                log.debug("Disconnected properly from the D-Bus.");
+            }
+        } catch (IOException | RejectedExecutionException | InterruptedException e) {
+            log.error("Could not disconnect properly from the D-Bus.", e);
+        } finally {
+            disconnectLock.unlock();
         }
+    }
+
+    /**
+     * Close the global D-Bus connection.
+     *
+     * @param now Either close the connection immediately or set up a shutdown hook.
+     */
+    static private void disconnect(boolean now) {
+        if (connection != null && connection.isConnected()) {
+            if (now && !testing) {
+                disconnectSynchronized();
+            } else {
+                Thread daemonThread = new Thread(() -> disconnectSynchronized());
+                daemonThread.setName("secret-service:disconnect-shutdown");
+                daemonThread.setDaemon(true);
+                Runtime.getRuntime().addShutdownHook(daemonThread);
+            }
+        }
+    }
+
+    /**
+     * This is an ugly helper method in order to easily test some private static scope.
+     *
+     * @param testing if true then the D-Bus connection will be closed with a shutdown hook otherwise auto-close will close the connection immediately.
+     */
+    public static void setTesting(boolean testing) {
+        SimpleCollection.testing = testing;
     }
 
     private void init() throws IOException {
@@ -358,6 +393,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             session.close();
             log.debug("Closed session properly.");
         }
+        disconnect(true);
     }
 
     /**

@@ -1,8 +1,6 @@
 package org.freedesktop.secret.simple;
 
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.security.AccessControlException;
@@ -13,6 +11,16 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class Example {
+
+    @BeforeAll
+    public static void startTesting() {
+        SimpleCollection.setTesting(true);
+    }
+
+    @AfterAll
+    public static void endTesting() {
+        SimpleCollection.setTesting(false);
+    }
 
     @Test
     @Disabled
