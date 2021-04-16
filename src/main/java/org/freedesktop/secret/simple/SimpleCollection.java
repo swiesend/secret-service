@@ -1,10 +1,10 @@
 package org.freedesktop.secret.simple;
 
-import org.freedesktop.DBus;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.*;
 import org.freedesktop.secret.interfaces.Prompt.Completed;
@@ -34,22 +34,7 @@ import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
 public final class SimpleCollection extends org.freedesktop.secret.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
-    private static DBusConnection connection = null;
-
-    static {
-        try {
-            connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
-        } catch (DBusException | RuntimeException e) {
-            if (e == null) {
-                log.warn("Could not communicate properly with the D-Bus.");
-            } else {
-                log.warn("Could not communicate properly with the D-Bus: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")");
-            }
-        } finally {
-            disconnect();
-        }
-    }
-
+    private static DBusConnection connection = getConnection();
     private TransportEncryption transport = null;
     private Service service = null;
     private Session session = null;
@@ -72,7 +57,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
             collection = new Collection(path, service);
         } catch (RuntimeException e) {
-            throw new IOException("Could not communicate properly with the secret service.", e);
+            throw new IOException("Could not initialize the secret service.", e);
         }
     }
 
@@ -139,8 +124,29 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                 collection = new Collection(path, service);
             }
         } catch (RuntimeException e) {
-            throw new IOException("Could not communicate properly with the secret service.", e);
+            throw new IOException("Could not initialize the secret service.", e);
         }
+    }
+
+    /**
+     * Try to get a D-Bus connection.
+     * Sets up a shutdown hook to close the connection at the end of the static lifetime.
+     *
+     * @return a DBusConnection or null
+     */
+    private static final DBusConnection getConnection() {
+        try {
+            return DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+        } catch (DBusException e) {
+            if (e == null) {
+                log.warn("Could not communicate properly with the D-Bus.");
+            } else {
+                log.warn("Could not communicate properly with the D-Bus: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")");
+            }
+        } finally {
+            disconnect();
+        }
+        return null;
     }
 
     /**
@@ -151,7 +157,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     public static boolean isAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
-                    DBus bus = connection.getRemoteObject(
+                DBus bus = connection.getRemoteObject(
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
@@ -169,7 +175,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                 transport.close();
 
                 return isSessionSupported;
-            } catch (DBusException | ExceptionInInitializerError | RuntimeException e) {
+            } catch (DBusException | ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
             } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
