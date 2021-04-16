@@ -4,6 +4,14 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## Unreleased
 
+## [1.6.0] - 2021-04-16
+
+- `Fixed`
+  - Fix [cryptomator/integrations-linux/issues/5](https://github.com/cryptomator/integrations-linux/issues/5) by using `dbus-java` `3.3.0`, which solves [dbus-java/issues/128](https://github.com/hypfvieh/dbus-java/issues/128).
+  - Fix [#26](https://github.com/swiesend/secret-service/issues/26) by closing `DBusConnection` on the auto close of the `SimpleCollection`. The D-Bus connection closes now immediately on calling `SimpleCollection.close()` or at the end of the lifetime of the static scope from `SimpleCollection`.  
+  - Handle `org.gnome.keyring.Error.Denied` as `info` log message (`MessageHandler`). E.g. if the password of a collection is wrong.
+  - Handle `org.freedesktop.dbus.exceptions.NotConnected` as `debug` log message (`MessageHandler`).
+
 ## [1.5.0] - 2021-02-18
 
 - `Fixed`
@@ -11,8 +19,8 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
   - Handle `org.freedesktop.DBus.Error.ServiceUnknown` D-Bus errors.
 - `Changed`
   - Change the low-level `TransportEncryption.openSession()` return type from `void` to `boolean`.
-  - Log expected `org.freedesktop.DBus.Error.*` just in `debug` mode (`MessageHandler`).
-  - Log expected `org.freedesktop.Secret.Error.*` in `warn` or `info` mode (`MessageHandler`).
+  - Handle `org.freedesktop.DBus.Error.*` as `debug` log message (`MessageHandler`).
+  - Handle `org.freedesktop.Secret.Error.*` as `warn` or `info` log message (`MessageHandler`).
 
 ## [1.4.0] - 2021-01-19
 
