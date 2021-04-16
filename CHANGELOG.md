@@ -4,6 +4,11 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## Unreleased
 
+## [1.6.1] - 2021-04-16
+
+- `Fixed`
+  - Fix 'SimpleCollection()' is not public in 'org.freedesktop.secret.simple.SimpleCollection'. Could not be accessed from outside package.
+
 ## [1.6.0] - 2021-04-16
 
 - `Fixed`
