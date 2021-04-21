@@ -4,10 +4,18 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 ## Unreleased
 
+## [1.6.2] - 2021-04-22
+
+- `Fixed`
+  - `Hotfix`: Check for all necessary services on the system:
+    - `org.freedesktop.DBus`,
+    - `org.freedesktop.secrets`,
+    - `org.gnome.keyring`
+
 ## [1.6.1] - 2021-04-16
 
 - `Fixed`
-  - Fix 'SimpleCollection()' is not public in 'org.freedesktop.secret.simple.SimpleCollection'. Could not be accessed from outside package.
+  - `Hotfix`: 'SimpleCollection()' is not public in 'org.freedesktop.secret.simple.SimpleCollection'. Could not be accessed from outside package.
 
 ## [1.6.0] - 2021-04-16
 
@@ -136,6 +144,10 @@ The secret-service library implements the [Secret Service API 0.2](https://speci
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.6.2]:  https://github.com/swiesend/secret-service/compare/v1.6.1...v1.6.2
+[1.6.1]:  https://github.com/swiesend/secret-service/compare/v1.6.0...v1.6.1
+[1.6.0]:  https://github.com/swiesend/secret-service/compare/v1.5.0...v1.6.0
+[1.5.0]:  https://github.com/swiesend/secret-service/compare/v1.4.0...v1.5.0
 [1.4.0]:  https://github.com/swiesend/secret-service/compare/v1.3.1...v1.4.0
 [1.3.1]:  https://github.com/swiesend/secret-service/compare/v1.3.0...v1.3.1
 [1.3.0]:  https://github.com/swiesend/secret-service/compare/v1.2.3...v1.3.0
