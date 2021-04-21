@@ -154,7 +154,8 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     }
 
     /**
-     * Checks if `org.freedesktop.secrets` is provided as D-Bus service.
+     * Checks if all of the following services are provided by the system:
+     * <code>org.freedesktop.DBus</code>, <code>org.freedesktop.secrets</code>, <code>org.gnome.keyring</code>
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
      */
@@ -165,7 +166,11 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
-                if (!Arrays.asList(bus.ListActivatableNames()).contains(Static.DBus.Service.DBUS)) {
+                List<String> names = Arrays.asList(bus.ListActivatableNames());
+                if (!(names.containsAll(Arrays.asList(
+                        Static.DBus.Service.DBUS,
+                        Static.Service.SECRETS,
+                        org.gnome.keyring.Static.Service.KEYRING)))) {
                     return false;
                 }
 
