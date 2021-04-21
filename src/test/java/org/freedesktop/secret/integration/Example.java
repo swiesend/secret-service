@@ -1,5 +1,6 @@
-package org.freedesktop.secret.simple;
+package org.freedesktop.secret.integration;
 
+import org.freedesktop.secret.simple.SimpleCollection;
 import org.junit.jupiter.api.*;
 
 import java.io.IOException;
