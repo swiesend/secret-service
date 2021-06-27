@@ -14,7 +14,7 @@ This library can be seen as the functional equivalent to the [`libsecret`](https
 
 ## Related
 
-For KDE systems there is [`kdewallet`](https://github.com/purejava/kdewallet), kindly provided by [@purejava](https://github.com/purejava).
+For KDE systems there is the [`kdewallet`](https://github.com/purejava/kdewallet) client library, kindly provided by [@purejava](https://github.com/purejava).
 
 ## Security Issues
 
