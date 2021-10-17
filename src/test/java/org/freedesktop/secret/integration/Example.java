@@ -13,19 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class Example {
 
-    @BeforeAll
-    public static void startTesting() {
-        SimpleCollection.setTesting(true);
-    }
-
-    @AfterAll
-    public static void endTesting() {
-        SimpleCollection.setTesting(false);
-    }
-
     @Test
     @Disabled
-    @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
+    @DisplayName("Create a password in the user's default collection (/org/freedesktop/secrets/aliases/default).")
     public void createPasswordInDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection()) {
             String item = collection.createItem("My Item", "secret");
@@ -35,11 +25,11 @@ public class Example {
             assertEquals("My Item", collection.getLabel(item));
 
             collection.deleteItem(item);
-        } // clears automatically all session secrets in memory
+        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
     }
 
     @Test
-    @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxx').")
+    @DisplayName("Create a password in a non-default collection (/org/freedesktop/secrets/collection/xxx).")
     public void createPasswordInNonDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
             String item = collection.createItem("My Item", "secret");
@@ -50,7 +40,7 @@ public class Example {
 
             collection.deleteItem(item);
             collection.delete();
-        } // clears automatically all session secrets in memory
+        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
     }
 
     @Test
@@ -76,7 +66,9 @@ public class Example {
 
             collection.deleteItem(item);
             collection.delete();
-        } // clears automatically all session secrets in memory
+        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
     }
+
+    // The D-Bus connection gets closed at the end of the static lifetime of `SimpleCollection` by a shutdown hook.
 
 }
