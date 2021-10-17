@@ -12,6 +12,14 @@ public class Static {
 
     public static final Duration DEFAULT_PROMPT_TIMEOUT = Duration.ofSeconds(120);
 
+    public static boolean isNullOrEmpty(final CharSequence cs) {
+        return cs == null || cs.toString().trim().isEmpty();
+    }
+
+    public static boolean isNullOrEmpty(final String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
     public static class DBus {
 
         public static final Long DEFAULT_DELAY_MILLIS = 100L;
@@ -57,11 +65,10 @@ public class Static {
          * initial label of the collection.
          *
          * @param name the encoded name of the collection
-         *
          * @return path of the collection
          *
          * <code>
-         *   /org/freedesktop/secrets/collection/xxxx
+         * /org/freedesktop/secrets/collection/xxxx
          * </code>
          */
         public static String collection(String name) {
@@ -72,13 +79,12 @@ public class Static {
          * The object path for an item, where xxxx is the collection (above) and iiii is an auto-generated item
          * specific identifier.
          *
-         * @param collection    the encoded name of the collection
-         * @param item_id       the encoded name of the item
-         *
+         * @param collection the encoded name of the collection
+         * @param item_id    the encoded name of the item
          * @return path of the item
          *
          * <code>
-         *   /org/freedesktop/secrets/collection/xxxx/iiii
+         * /org/freedesktop/secrets/collection/xxxx/iiii
          * </code>
          */
         public static String item(String collection, String item_id) {
@@ -89,11 +95,10 @@ public class Static {
          * The object path for a session, where ssss is an auto-generated session specific identifier.
          *
          * @param session_id the current id of the session
-         *
          * @return path of the session
          *
          * <code>
-         *   /org/freedesktop/secrets/session/ssss
+         * /org/freedesktop/secrets/session/ssss
          * </code>
          */
         public static String session(String session_id) {
@@ -104,11 +109,10 @@ public class Static {
          * The object path for a prompt, where pppp is the window_id.
          *
          * @param window_id id of the current prompt's window
-         *
          * @return path of the prompt
          *
          * <code>
-         *   /org/freedesktop/secrets/prompt/pppp
+         * /org/freedesktop/secrets/prompt/pppp
          * </code>
          */
         public static String prompt(String window_id) {

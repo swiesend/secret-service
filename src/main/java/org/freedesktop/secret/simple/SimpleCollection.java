@@ -421,16 +421,16 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * @param password   The password of the new item
      * @param attributes The attributes of the new item
      * @return DBus object path or null
-     * @throws IllegalArgumentException The label and password are non nullable.
+     * @throws IllegalArgumentException The label and password are non-nullable.
      */
     @Override
     public String createItem(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
-        if (password == null) {
-            throw new IllegalArgumentException("The password may not be null.");
+        if (Static.isNullOrEmpty(password)) {
+            throw new IllegalArgumentException("The password may not be null or empty.");
         }
         if (label == null) {
-            throw new IllegalArgumentException("The label of the password may not be null.");
+            throw new IllegalArgumentException("The label of the item may not be null.");
         }
 
         if (collection == null || transport == null) return null;
@@ -472,7 +472,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * @param label    The displayable label of the new item
      * @param password The password of the new item
      * @return DBus object path
-     * @throws IllegalArgumentException The label and password are non nullable.
+     * @throws IllegalArgumentException The label and password are non-nullable.
      */
     @Override
     public String createItem(String label, CharSequence password) throws IllegalArgumentException {
@@ -486,13 +486,13 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      * @param label      The displayable label of the new item
      * @param password   The password of the new item
      * @param attributes The attributes of the new item
-     * @throws IllegalArgumentException The object path, label and password are non nullable.
+     * @throws IllegalArgumentException The object path, label and password are non-nullable.
      */
     @Override
     public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
-        if (objectPath == null) {
-            throw new IllegalArgumentException("The object path of the item may not be null.");
+        if (Static.isNullOrEmpty(objectPath)) {
+            throw new IllegalArgumentException("The object path of the item may not be null or empty.");
         }
 
         unlock();
@@ -527,7 +527,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      */
     @Override
     public String getLabel(String objectPath) {
-        if (objectPath == null) return null;
+        if (Static.isNullOrEmpty(objectPath)) return null;
         unlock();
         return getItem(objectPath).getLabel();
     }
@@ -542,7 +542,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      */
     @Override
     public Map<String, String> getAttributes(String objectPath) {
-        if (objectPath == null) return null;
+        if (Static.isNullOrEmpty(objectPath)) return null;
         unlock();
         return getItem(objectPath).getAttributes();
     }
@@ -575,7 +575,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      */
     @Override
     public char[] getSecret(String objectPath) {
-        if (objectPath == null) return null;
+        if (Static.isNullOrEmpty(objectPath)) return null;
         unlock();
 
         final Item item = getItem(objectPath);
@@ -630,7 +630,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      */
     @Override
     public void deleteItem(String objectPath) throws AccessControlException {
-        if (objectPath == null) throw new AccessControlException("Cannot delete an unknown item.");
+        if (Static.isNullOrEmpty(objectPath)) throw new AccessControlException("Cannot delete an unspecified item.");
 
         unlockWithUserPermission();
 

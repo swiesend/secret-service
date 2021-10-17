@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class StaticTest {
 
@@ -26,6 +26,30 @@ public class StaticTest {
 
         assertEquals(expectedPrime, prime.toString(16).toUpperCase());
         assertEquals(expectedGenerator, generator.toString(16).toUpperCase());
+    }
+
+    @Test
+    public void isNullOrEmptyCharSeq() {
+        CharSequence nullCharSeq = null;
+        assertTrue(Static.isNullOrEmpty(nullCharSeq));
+        CharSequence emptyCharSeq = "";
+        assertTrue(Static.isNullOrEmpty(emptyCharSeq));
+        CharSequence blankCharSeq = " ";
+        assertTrue(Static.isNullOrEmpty(blankCharSeq));
+        CharSequence nonEmptyCharSeq = "not empty";
+        assertFalse(Static.isNullOrEmpty(nonEmptyCharSeq));
+    }
+
+    @Test
+    public void isNullOrEmptyStr() {
+        String nullStr = null;
+        assertTrue(Static.isNullOrEmpty(nullStr));
+        String emptyStr = "";
+        assertTrue(Static.isNullOrEmpty(emptyStr));
+        String blankStr = " ";
+        assertTrue(Static.isNullOrEmpty(blankStr));
+        String nonEmptyStr = "not empty";
+        assertFalse(Static.isNullOrEmpty(nonEmptyStr));
     }
 
 }
