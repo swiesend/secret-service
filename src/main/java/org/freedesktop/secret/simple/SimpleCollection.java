@@ -27,17 +27,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
+import static org.freedesktop.secret.Static.DBus.MAX_DELAY_MILLIS;
 import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
 
 public final class SimpleCollection extends org.freedesktop.secret.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
-    private static boolean testing = false;
-    private static Lock disconnectLock = new ReentrantLock();
+    private static Thread shutdownHook = setupShutdownHook();
     private static DBusConnection connection = getConnection();
     private TransportEncryption transport = null;
     private Service service = null;
@@ -48,12 +46,11 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     private Secret encrypted = null;
     private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
     private Boolean isUnlockedOnceWithUserPermission = false;
-    private String collectionLabel = "";
 
     /**
      * The default collection.
      *
-     * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
+     * @throws IOException Could not communicate properly with the DBus. Check the logs.
      */
     public SimpleCollection() throws IOException {
         try {
@@ -79,7 +76,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      *                 The SimpleCollection can't handle collections with the same label, but different ids correctly,
      *                 as the <code>id</code> is inferred by the given label.
      * @param password Password of the collection
-     * @throws IOException Could not communicate properly with the D-Bus. Check the logs.
+     * @throws IOException Could not communicate properly with the DBus. Check the logs.
      */
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
@@ -133,29 +130,41 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     }
 
     /**
-     * Try to get a D-Bus connection.
-     * Sets up a shutdown hook to close the connection at the end of the static lifetime.
+     * Try to get a new DBus connection.
      *
-     * @return a DBusConnection or null
+     * @return a new DBusConnection or null
      */
-    private static final DBusConnection getConnection() {
+    private static DBusConnection getConnection() {
         try {
-            return DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+            return DBusConnection.newConnection(DBusConnection.DBusBusType.SESSION);
         } catch (DBusException e) {
             if (e == null) {
                 log.warn("Could not communicate properly with the D-Bus.");
             } else {
                 log.warn("Could not communicate properly with the D-Bus: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")");
             }
-        } finally {
-            disconnect(false);
         }
         return null;
     }
 
     /**
-     * Checks if all of the following services are provided by the system:
-     * <code>org.freedesktop.DBus</code>, <code>org.freedesktop.secrets</code>, <code>org.gnome.keyring</code>
+     * Checks the D-Bus connection status.
+     *
+     * @return true if connected to the D-Bus, otherwise false
+     */
+    public static boolean isConnected() {
+        if (connection != null) {
+            return connection.isConnected();
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Checks if all services are provided by the system:<br>
+     * <code>org.freedesktop.DBus</code><br>
+     * <code>org.freedesktop.secrets</code><br>
+     * <code>org.gnome.keyring</code>
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
      */
@@ -192,57 +201,47 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                 return false;
             }
         } else {
+            log.error("No D-Bus connection: Cannot check if all needed services are available.");
             return false;
         }
     }
 
     /**
-     * Acquire a lock and close and close the D-Bus connection.
-     * Waits until the connection is closed.
+     * Close the DBus connection immediately. Waits for the DBus connection to close within 2 seconds.
      */
-    static private void disconnectSynchronized() {
-        disconnectLock.lock();
+    synchronized public static boolean disconnect() {
         try {
             if (connection != null && connection.isConnected()) {
                 connection.close();
-                while (connection.isConnected()) {
+                long count = 0L;
+                while (count < MAX_DELAY_MILLIS && connection.isConnected()) {
                     Thread.sleep(DEFAULT_DELAY_MILLIS);
+                    count += DEFAULT_DELAY_MILLIS;
                 }
-                connection = null;
-                log.debug("Disconnected properly from the D-Bus.");
+                if (connection.isConnected()) {
+                    log.warn("Failed to disconnect properly from the D-Bus. There are probably one or more connections left open.");
+                    return false;
+                } else {
+                    log.debug("Disconnected properly from the D-Bus.");
+                    return true;
+                }
             }
         } catch (IOException | RejectedExecutionException | InterruptedException e) {
-            log.error("Could not disconnect properly from the D-Bus.", e);
-        } finally {
-            disconnectLock.unlock();
+            log.error("Failed to disconnect properly from the D-Bus.", e);
+            return false;
         }
+        return false;
     }
 
     /**
-     * Close the global D-Bus connection.
-     *
-     * @param now Either close the connection immediately or set up a shutdown hook.
+     * Sets up a shutdown hook to close the global D-Bus connection eventually at the end of the static lifetime.
      */
-    static private void disconnect(boolean now) {
-        if (connection != null && connection.isConnected()) {
-            if (now && !testing) {
-                disconnectSynchronized();
-            } else {
-                Thread daemonThread = new Thread(() -> disconnectSynchronized());
-                daemonThread.setName("secret-service:disconnect-shutdown");
-                daemonThread.setDaemon(true);
-                Runtime.getRuntime().addShutdownHook(daemonThread);
-            }
-        }
-    }
-
-    /**
-     * This is an ugly helper method in order to easily test some private static scope.
-     *
-     * @param testing if true then the D-Bus connection will be closed with a shutdown hook otherwise auto-close will close the connection immediately.
-     */
-    public static void setTesting(boolean testing) {
-        SimpleCollection.testing = testing;
+    private static Thread setupShutdownHook() {
+        Thread daemonThread = new Thread(() -> disconnect());
+        daemonThread.setName("secret-service:disconnect-shutdown");
+        daemonThread.setDaemon(true);
+        Runtime.getRuntime().addShutdownHook(daemonThread);
+        return daemonThread;
     }
 
     private void init() throws IOException {
@@ -302,6 +301,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             List<String> defaults = Arrays.asList(null, "login", "session", "default");
             return defaults.contains(collection.getId());
         } else {
+            log.error("No D-Bus connection: Cannot check if the collection is the default collection.");
             return false;
         }
     }
@@ -328,6 +328,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
     public void lock() {
         if (collection != null && !collection.isLocked()) {
             service.lock(lockable());
+            log.info("Locked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
             try {
                 Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
             } catch (InterruptedException e) {
@@ -343,9 +344,11 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                 performPrompt(response.b);
                 if (!collection.isLocked()) {
                     isUnlockedOnceWithUserPermission = true;
+                    log.info("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
                 }
             } else {
                 withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
+                log.debug("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
             }
         }
     }
@@ -398,7 +401,6 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             session.close();
             log.debug("Closed session properly.");
         }
-        disconnect(true);
     }
 
     /**
@@ -671,6 +673,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
         if (connection != null && connection.isConnected()) {
             return collection.isLocked();
         } else {
+            log.error("No D-Bus connection: Cannot check if the collection is locked.");
             return true;
         }
     }

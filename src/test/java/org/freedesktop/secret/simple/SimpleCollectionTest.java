@@ -15,16 +15,6 @@ public class SimpleCollectionTest {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollectionTest.class);
 
-    @BeforeAll
-    public static void startTesting() {
-        SimpleCollection.setTesting(true);
-    }
-
-    @AfterAll
-    public static void endTesting() {
-        SimpleCollection.setTesting(false);
-    }
-
     @Test
     @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
     public void deleteDefaultCollection() throws IOException {
@@ -256,12 +246,33 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
     public void close() throws IOException {
-        SimpleCollection.setTesting(false);
         SimpleCollection collection = new SimpleCollection();
-        collection.close();
-        SimpleCollection.setTesting(true);
+        assertDoesNotThrow(() -> collection.close());
+    }
+
+    @Test
+    public void isLocked() throws IOException {
+        SimpleCollection collection = new SimpleCollection();
+        assertFalse(collection.isLocked());
+    }
+
+    @Test
+    @Disabled
+    public void disconnect() throws IOException {
+        SimpleCollection collection = new SimpleCollection("test", "test");
+        assertTrue(collection.isConnected());
+        assertTrue(org.freedesktop.secret.simple.SimpleCollection.isConnected());
+        // FIXME: in order to test this private method one needs to uncomment the `SimpleCollection.disconnect()`
+        //        statement. But this affects the global DBus-Connection and cannot be undo within in the static
+        //        lifetime. If one wants to run all tests together it is highly recommended remove all
+        //        `SimpleCollection.disconnect()` statements in order to avoid unexpected behavior.
+        // SimpleCollection.disconnect();
+        // assertFalse(collection.isConnected());
+        // assertFalse(org.freedesktop.secret.simple.SimpleCollection.isConnected());
+
+        // always false, as static methods cannot override interfaces.
+        assertFalse(org.freedesktop.secret.simple.interfaces.SimpleCollection.isConnected());
     }
 
 }

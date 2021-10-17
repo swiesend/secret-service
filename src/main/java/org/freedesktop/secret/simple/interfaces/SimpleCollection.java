@@ -1,5 +1,8 @@
 package org.freedesktop.secret.simple.interfaces;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.security.AccessControlException;
 import java.time.Duration;
@@ -8,9 +11,21 @@ import java.util.Map;
 
 public abstract class SimpleCollection implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(org.freedesktop.secret.simple.interfaces.SimpleCollection.class);
+
     public static boolean isAvailable() {
+        log.warn("Do not call the interface's method, but the implementation.");
         return false;
     }
+
+    public static boolean isConnected() {
+        log.warn("Do not call the interface's method, but the implementation.");
+        return false;
+    }
+
+    synchronized public static boolean disconnect() {
+        log.warn("Do not call the interface's method, but the implementation.");
+        return false; }
 
     public SimpleCollection() throws IOException {};
 
