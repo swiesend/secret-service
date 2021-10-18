@@ -36,7 +36,7 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>1.6.2</version>
+    <version>1.7.0</version>
     <exclusions>
         <exclusion>
             <groupId>org.slf4j</groupId>
@@ -52,7 +52,7 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 public class Example {
 
     @Test
-    @DisplayName("Create a password in the user's default collection ('/org/freedesktop/secrets/aliases/default').")
+    @DisplayName("Create a password in the user's default collection (/org/freedesktop/secrets/aliases/default).")
     public void createPasswordInDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection()) {
             String item = collection.createItem("My Item", "secret");
@@ -62,11 +62,11 @@ public class Example {
             assertEquals("My Item", collection.getLabel(item));
 
             collection.deleteItem(item);
-        } // clears automatically all session secrets in memory
+        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
     }
 
     @Test
-    @DisplayName("Create a password in a non-default collection ('/org/freedesktop/secrets/collection/xxx').")
+    @DisplayName("Create a password in a non-default collection (/org/freedesktop/secrets/collection/xxx).")
     public void createPasswordInNonDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
             String item = collection.createItem("My Item", "secret");
@@ -77,7 +77,7 @@ public class Example {
 
             collection.deleteItem(item);
             collection.delete();
-        } // clears automatically all session secrets in memory
+        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
     }
 
     @Test
@@ -103,10 +103,23 @@ public class Example {
 
             collection.deleteItem(item);
             collection.delete();
-        } // clears automatically all session secrets in memory
+        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
     }
+
+    // The D-Bus connection gets closed at the end of the static lifetime of `SimpleCollection` by a shutdown hook.
+
 }
 ```
+
+__Closing the D-Bus connection:__
+
+The D-Bus connection is closed eventually at end of the static lifetime of `SimpleCollection` with a shutdown hook and not by auto-close. One can also close the D-Bus connection manually by calling `SimpleCollection.disconnect()`, but once disconnected it is not possible to reconnect.
+
+__SimpleCollection-Interface:__
+
+For Further methods and attributes checkout the [SimpleCollection-Interface](src/main/java/org/freedesktop/secret/simple/interfaces/SimpleCollection.java).
+
+__Transport Encryption:__
 
 For the details of the transport encryption see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
 [Transport Encryption Example](src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)

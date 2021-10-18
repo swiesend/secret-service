@@ -4,6 +4,20 @@ The [secret-service](https://github.com/swiesend/secret-service) library impleme
 
 ## Unreleased
 
+The 2.0 interface design is to be found on the `develop-2.0.0` branch and has to be merged with the `2.0.0` branch approach.
+
+## [1.7.0] - 2021-10-18
+
+- `Fixed`
+  - Fix [#30](https://github.com/swiesend/secret-service/issues/30) by removing the auto-close disconnect of `SimpleCollection` instances, which were introduced for [#26](https://github.com/swiesend/secret-service/issues/26). One has to call `SimpleCollection.disconnect()` manually in order to close the D-Bus connection or wait for the shutdown hook of `SimpleCollection`, which eventually will close the D-Bus connection. The shutdown hook is always set-up with the static lifetime of `SimpleCollection`.
+  - Fix dead-lock of [cryptomator/integrations-linux#12]https://github.com/cryptomator/integrations-linux/issues/12 with the new `SimpleCollection.disconnect()` method. Waits only for 2 seconds to close the connection properly and logs otherwise.
+- `Changed`
+  - Removes the `ReentrantLock` from `SimpleCollection.disconnect` and changes the method signature to `synchronized`.
+- `Added`
+  - Add a regression test for [#30](https://github.com/swiesend/secret-service/issues/30) that checks if multiple instances of the `SimpleCollection` can be used one after the other.
+  - Add `SimpleCollection.isConnected()` to the public interface as static method.
+  - Add `SimpleCollection.disconnect()` to the public interface as static method.
+
 ## [1.6.2] - 2021-04-22
 
 - `Fixed`
@@ -144,6 +158,7 @@ The [secret-service](https://github.com/swiesend/secret-service) library impleme
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.7.0]:  https://github.com/swiesend/secret-service/compare/v1.6.2...v1.7.0
 [1.6.2]:  https://github.com/swiesend/secret-service/compare/v1.6.1...v1.6.2
 [1.6.1]:  https://github.com/swiesend/secret-service/compare/v1.6.0...v1.6.1
 [1.6.0]:  https://github.com/swiesend/secret-service/compare/v1.5.0...v1.6.0
