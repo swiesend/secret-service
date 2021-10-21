@@ -145,6 +145,7 @@
     </profiles>
 
     <build>
+        <!-- What is pluginManagement in Maven's pom.xml? https://stackoverflow.com/questions/10483180/what-is-pluginmanagement-in-mavens-pom-xml -->
         <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
             <plugins>
                 <!-- clean lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#clean_Lifecycle -->
@@ -196,6 +197,11 @@
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
                     <version>0.8.2</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>versions-maven-plugin</artifactId>
+                    <version>2.8.1</version>
                 </plugin>
             </plugins>
         </pluginManagement>
@@ -278,6 +284,17 @@
                         <version>5.6.1</version>
                     </dependency>
                 </dependencies>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>versions-maven-plugin</artifactId>
+                <configuration>
+                    <allowAnyUpdates>false</allowAnyUpdates>
+                    <allowMajorUpdates>false</allowMajorUpdates>
+                    <allowMinorUpdates>true</allowMinorUpdates>
+                    <!--<allowIncrementalUpdates>true</allowIncrementalUpdates>-->
+                    <verbose>true</verbose>
+                </configuration>
             </plugin>
         </plugins>
     </build>
