@@ -10,7 +10,7 @@
     <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-RC.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH} -->
-    <version>1.7.0</version>
+    <version>1.8.0</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>
@@ -55,15 +55,15 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>8</maven.compiler.release>
+        <maven.compiler.release>17</maven.compiler.release>
 
         <!-- 3rd party dependencies -->
         <hkdf.version>1.1.0</hkdf.version>
-        <dbus-java.version>3.3.0</dbus-java.version>
-        <slf4j.version>1.7.30</slf4j.version>
+        <dbus-java.version>4.0.0</dbus-java.version>
+        <slf4j.version>1.7.36</slf4j.version>
 
         <!-- test dependencies -->
-        <junit-jupiter.version>5.6.3</junit-jupiter.version>
+        <junit-jupiter.version>5.8.2</junit-jupiter.version>
     </properties>
 
     <dependencies>
@@ -75,10 +75,17 @@
             <version>${hkdf.version}</version>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java -->
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java till `3.3.1` -->
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-core since `4.0.0`-->
         <dependency>
             <groupId>com.github.hypfvieh</groupId>
-            <artifactId>dbus-java</artifactId>
+            <artifactId>dbus-java-core</artifactId>
+            <version>${dbus-java.version}</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-transport-native-unixsocket requires JDK 16+-->
+        <dependency>
+            <groupId>com.github.hypfvieh</groupId>
+            <artifactId>dbus-java-transport-native-unixsocket</artifactId>
             <version>${dbus-java.version}</version>
         </dependency>
 
@@ -281,7 +288,7 @@
                     <dependency>
                         <groupId>org.junit.jupiter</groupId>
                         <artifactId>junit-jupiter-engine</artifactId>
-                        <version>5.6.1</version>
+                        <version>${junit-jupiter.version}</version>
                     </dependency>
                 </dependencies>
             </plugin>
