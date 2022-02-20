@@ -76,7 +76,8 @@
             <version>${hkdf.version}</version>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-core -->
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java till `3.3.1` -->
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-core since `4.0.0`-->
         <dependency>
             <groupId>com.github.hypfvieh</groupId>
             <artifactId>dbus-java-core</artifactId>
