@@ -46,8 +46,11 @@ public class SignalHandler implements DBusSigHandler {
                     }
                 }
             } catch (DBusException e) {
-                log.error("Could not connect to the D-Bus.", e);
+                log.error("Could not connect to the D-Bus: ", e);
+            } catch (ClassCastException e) {
+                log.error("Could not cast a signal: ", e);
             }
+
         }
     }
 
