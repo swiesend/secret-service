@@ -7,6 +7,7 @@ import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.Static;
 
 import java.util.List;
+import java.util.Optional;
 
 public abstract class Messaging {
 
@@ -29,24 +30,24 @@ public abstract class Messaging {
         this.interfaceName = interfaceName;
     }
 
-    protected Object[] send(String method) {
+    protected Optional<Object[]> send(String method) {
         return msg.send(serviceName, objectPath, interfaceName, method, "");
     }
 
-    protected Object[] send(String method, String signature, Object... arguments) {
+    protected Optional<Object[]> send(String method, String signature, Object... arguments) {
         return msg.send(serviceName, objectPath, interfaceName, method, signature, arguments);
     }
 
-    protected Variant getProperty(String property) {
+    protected Optional<Variant> getProperty(String property) {
         return msg.getProperty(serviceName, objectPath, interfaceName, property);
     }
 
-    protected Variant getAllProperties() {
+    protected Optional<Variant> getAllProperties() {
         return msg.getAllProperties(serviceName, objectPath, interfaceName);
     }
 
-    protected void setProperty(String property, Variant value) {
-        msg.setProperty(serviceName, objectPath, interfaceName, property, value);
+    protected boolean setProperty(String property, Variant value) {
+        return msg.setProperty(serviceName, objectPath, interfaceName, property, value);
     }
 
     public String getServiceName() {

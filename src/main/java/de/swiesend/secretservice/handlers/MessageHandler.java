@@ -1,5 +1,6 @@
 package de.swiesend.secretservice.handlers;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.MethodCall;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.Optional;
 
 import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
 
@@ -22,7 +24,7 @@ public class MessageHandler {
         this.connection = connection;
     }
 
-    public Object[] send(String service, String path, String iface, String method, String signature, Object... args) {
+    public Optional<Object[]> send(String service, String path, String iface, String method, String signature, Object... args) {
         try {
             org.freedesktop.dbus.messages.Message message = new MethodCall(
                     service,
@@ -46,53 +48,60 @@ public class MessageHandler {
                 switch (error) {
                     case "org.freedesktop.Secret.Error.NoSession":
                     case "org.freedesktop.Secret.Error.NoSuchObject":
-                        log.warn(error + ": " + parameters[0]);
-                        return null;
+                        if (ArrayUtils.isEmpty(parameters)) {
+                            log.warn(error);
+                        } else {
+                            log.warn(error + ": " + parameters[0]);
+                        }
+                        return Optional.empty();
                     case "org.gnome.keyring.Error.Denied":
                     case "org.freedesktop.Secret.Error.IsLocked":
-                        log.info(error + ": " + parameters[0]);
-                        return null;
+                        if (ArrayUtils.isEmpty(parameters)) {
+                            log.info(error);
+                        } else {
+                            log.info(error + ": " + parameters[0]);
+                        }
+                        return Optional.empty();
                     case "org.freedesktop.DBus.Error.NoReply":
                     case "org.freedesktop.DBus.Error.UnknownMethod":
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
                     case "org.freedesktop.dbus.exceptions.NotConnected":
                     case "org.freedesktop.DBus.Local.Disconnected":
                     case "org.freedesktop.dbus.exceptions.FatalDBusException":
-                        log.debug(error);
-                        return null;
+                        if (log.isDebugEnabled()) log.debug(error);
+                        return Optional.empty();
                     default:
-                        throw new DBusException(error);
+                        log.error(error);
+                        return Optional.empty();
                 }
             }
 
-            return parameters;
+            return Optional.ofNullable(parameters);
         } catch (DBusException e) {
             log.error("Unexpected D-Bus response:", e);
         }
-        return null;
+        return Optional.empty();
     }
 
-    public Variant getProperty(String service, String path, String iface, String property) {
-        Object[] response = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
+    public Optional<Variant> getProperty(String service, String path, String iface, String property) {
+        Optional<Object[]> maybeResponse = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
                 "Get", "ss", iface, property);
-        if (response == null) return null;
-        return (Variant) response[0];
+        if (!maybeResponse.isPresent()) return Optional.empty();
+        Object[] response = maybeResponse.get();
+        return ArrayUtils.isEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
     }
 
-    public Variant getAllProperties(String service, String path, String iface) {
-        Object[] response = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
+    public Optional<Variant> getAllProperties(String service, String path, String iface) {
+        Optional<Object[]> maybeResponse = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
                 "GetAll", "ss", iface);
-        if (response == null) return null;
-        return (Variant) response[0];
+        if (!maybeResponse.isPresent()) return Optional.empty();
+        Object[] response = maybeResponse.get();
+        return ArrayUtils.isEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
     }
 
-    public void setProperty(String service, String path, String iface, String property, Variant value) {
-        send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
-                "Set", "ssv", iface, property, value);
-    }
-
-    public DBusConnection getConnection() {
-        return connection;
+    public boolean setProperty(String service, String path, String iface, String property, Variant value) {
+        Optional<Object[]> maybeResponse = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES, "Set", "ssv", iface, property, value);
+        return maybeResponse.isPresent();
     }
 
 }
