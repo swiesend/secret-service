@@ -71,14 +71,16 @@ public class MessageHandler {
                         if (log.isDebugEnabled()) log.debug(error);
                         return Optional.empty();
                     default:
-                        log.error(error);
+                        log.error("Unexpected org.freedesktop.dbus.errors.Error: ", error);
                         return Optional.empty();
                 }
             }
 
             return Optional.ofNullable(parameters);
         } catch (DBusException e) {
-            log.error("Unexpected D-Bus response:", e);
+            log.error("Unexpected D-Bus response: ", e);
+        } catch (RuntimeException e) {
+            log.error("Unexpected: ", e);
         }
         return Optional.empty();
     }
