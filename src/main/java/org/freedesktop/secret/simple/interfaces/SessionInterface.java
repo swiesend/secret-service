@@ -4,7 +4,7 @@ import java.util.Optional;
 
 public interface SessionInterface extends AutoCloseable {
 
-    Optional<Boolean> clear();
+    boolean clear();
 
     Optional<CollectionInterface> collection(String label, CharSequence password);
 

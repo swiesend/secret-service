@@ -6,17 +6,17 @@ import java.util.Optional;
 
 public interface CollectionInterface extends AutoCloseable {
 
-    Optional<Boolean> clear();
+    boolean clear();
 
     Optional<String> createItem(String label, CharSequence password);
 
     Optional<String> createItem(String label, CharSequence password, Map<String, String> attributes);
 
-    Optional<Boolean> delete();
+    boolean delete();
 
-    Optional<Boolean> deleteItem(String objectPath);
+    boolean deleteItem(String objectPath);
 
-    Optional<Boolean> deleteItems(List<String> objectPaths);
+    boolean deleteItems(List<String> objectPaths);
 
     Optional<Map<String, String>> getAttributes(String objectPath);
 
@@ -30,12 +30,12 @@ public interface CollectionInterface extends AutoCloseable {
 
     Optional<Map<String, char[]>> getSecrets();
 
-    Optional<Boolean> isLocked();
+    boolean isLocked();
 
-    Optional<Boolean> lock();
+    boolean lock();
 
-    Optional<Boolean> unlockWithUserPermission();
+    boolean unlockWithUserPermission();
 
-    Optional<Boolean> updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes);
+    boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes);
 
 }

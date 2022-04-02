@@ -11,16 +11,14 @@ public abstract class ServiceInterface implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceInterface.class);
 
-    public abstract Optional<Boolean> clear();
-
     public static Optional<ServiceInterface> create() {
         log.warn("Do not call the interface method, but the implementation.");
         return Optional.empty();
     }
 
-    synchronized public static Optional<Boolean> disconnect() {
+    synchronized public static boolean disconnect() {
         log.warn("Do not call the interface method, but the implementation.");
-        return Optional.of(false);
+        return false;
     }
 
     private static Optional<DBusConnection> getConnection() {
@@ -28,22 +26,24 @@ public abstract class ServiceInterface implements AutoCloseable {
         return Optional.empty();
     }
 
-    public static Optional<Boolean> isAvailable() {
+    public static boolean isAvailable() {
         log.warn("Do not call the interface method, but the implementation.");
-        return Optional.of(false);
+        return false;
     }
 
-    public static Optional<Boolean> isConnected() {
+    public static boolean isConnected() {
         log.warn("Do not call the interface method, but the implementation.");
-        return Optional.of(false);
+        return false;
     }
-
-    abstract Optional<SessionInterface> session();
 
     private static Optional<Thread> setupShutdownHook() {
         log.warn("Do not call the interface method, but the implementation.");
         return Optional.empty();
     }
+
+    public abstract boolean clear();
+
+    public abstract Optional<SessionInterface> getSession();
 
     public abstract Duration getTimeout();
 
