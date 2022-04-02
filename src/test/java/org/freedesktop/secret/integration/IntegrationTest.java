@@ -60,14 +60,14 @@ public class IntegrationTest {
         InternalUnsupportedGuiltRiddenInterface noPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
         Secret master = transportEncryption.encrypt("test");
         Collection collection = new Collection("test", service);
-        List<String> collections = Static.Convert.toStrings(service.getCollections());
+        List<String> collections = Static.Convert.toStrings(service.getCollections().get());
 
         if (collections.contains(collection.getObjectPath())) {
             noPrompt.unlockWithMasterPassword(collection.getPath(), master);
         } else {
             HashMap<String, Variant> properties = new HashMap();
             properties.put("org.freedesktop.Secret.Collection.Label", new Variant("test"));
-            ObjectPath collectionPath = noPrompt.createWithMasterPassword(properties, master);
+            ObjectPath collectionPath = noPrompt.createWithMasterPassword(properties, master).get();
             log.info("created collection: " + collectionPath.getPath());
         }
 
@@ -86,13 +86,13 @@ public class IntegrationTest {
             noPrompt.unlockWithMasterPassword(collection.getPath(), master);
         }
 
-        Pair<ObjectPath, ObjectPath> createItemResponse = collection.createItem(properties, encrypted, true);
+        Pair<ObjectPath, ObjectPath> createItemResponse = collection.createItem(properties, encrypted, true).get();
         log.info("await signal: Collection.ItemCreated");
         Thread.currentThread().sleep(50L);
 
         ObjectPath itemPath = createItemResponse.a;
         Item item = new Item(itemPath, service);
-        Secret actual = item.getSecret(session.getPath());
+        Secret actual = item.getSecret(session.getPath()).get();
 
         assertEquals(encrypted.getSession(), actual.getSession());
         assertEquals(encrypted.getContentType(), actual.getContentType());

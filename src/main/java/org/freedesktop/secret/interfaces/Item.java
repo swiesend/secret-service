@@ -8,6 +8,7 @@ import org.freedesktop.secret.Secret;
 import org.freedesktop.secret.Static;
 
 import java.util.Map;
+import java.util.Optional;
 
 @DBusInterfaceName(Static.Interfaces.ITEM)
 public interface Item extends DBusInterface {
@@ -15,19 +16,19 @@ public interface Item extends DBusInterface {
     /**
      * The key of of the D-Bus properties for the label of an item.
      */
-    public static final String LABEL = "org.freedesktop.Secret.Item.Label";
+    String LABEL = "org.freedesktop.Secret.Item.Label";
 
     /**
      * The key of the D-Bus properties for the attributes of an item.
      */
-    public static final String ATTRIBUTES = "org.freedesktop.Secret.Item.Attributes";
+    String ATTRIBUTES = "org.freedesktop.Secret.Item.Attributes";
 
     /**
      * Delete this item.
      *
      * @return Prompt   &mdash; A prompt objectpath, or the special value '/' if no prompt is necessary.
      */
-    abstract public ObjectPath delete();
+    Optional<ObjectPath> delete();
 
     /**
      * Retrieve the secret for this item.
@@ -35,19 +36,20 @@ public interface Item extends DBusInterface {
      * @param session The session to use to encode the secret.
      * @return secret   &mdash; The secret retrieved.
      */
-    abstract public Secret getSecret(ObjectPath session);
+    Optional<Secret> getSecret(ObjectPath session);
 
     /**
      * Set the secret for this item.
      *
      * @param secret The secret to set, encoded for the included session.
+     * @return
      */
-    abstract public void setSecret(Secret secret);
+    boolean setSecret(Secret secret);
 
     /**
      * @return Whether the item is locked and requires authentication, or not.
      */
-    abstract public boolean isLocked();
+    boolean isLocked();
 
     /**
      * The lookup attributes for this item.
@@ -58,7 +60,7 @@ public interface Item extends DBusInterface {
      *
      * @return The attributes of the item.
      */
-    abstract public Map<String, String> getAttributes();
+    Optional<Map<String, String>> getAttributes();
 
 
     /**
@@ -69,8 +71,9 @@ public interface Item extends DBusInterface {
      * <p>It is managed by using the <code>org.freedesktop.DBus.Properties</code> interface.</p>
      *
      * @param attributes The attributes of the item.
+     * @return
      */
-    abstract public void setAttributes(Map<String, String> attributes);
+    boolean setAttributes(Map<String, String> attributes);
 
     /**
      * <b>Label</b> is a D-Bus Property.
@@ -84,7 +87,7 @@ public interface Item extends DBusInterface {
      * The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
      * </p>
      */
-    abstract public String getLabel();
+    Optional<String> getLabel();
 
 
     /**
@@ -98,22 +101,23 @@ public interface Item extends DBusInterface {
      *              <b>Note:</b>
      *              The displayable <code>label</code> can differ from the actual <code>name</code> of a collection.
      *              </p>
+     * @return
      */
-    abstract public void setLabel(String label);
+    boolean setLabel(String label);
 
     /**
      * @return The "xdg:schema" of the item attributes.
      */
-    abstract public String getType();
+    Optional<String> getType();
 
     /**
      * @return The unix time when the item was created.
      */
-    abstract public UInt64 created();
+    Optional<UInt64> created();
 
     /**
      * @return The unix time when the item was last modified.
      */
-    abstract public UInt64 modified();
+    Optional<UInt64> modified();
 
 }

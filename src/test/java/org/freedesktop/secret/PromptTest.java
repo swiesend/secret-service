@@ -43,11 +43,11 @@ public class PromptTest {
         cs.add(defaultCollection);
 
         log.info("lock default collection");
-        Pair<List<ObjectPath>, ObjectPath> locked = context.service.lock(cs);
+        Pair<List<ObjectPath>, ObjectPath> locked = context.service.lock(cs).get();
         log.info(locked.toString());
 
         log.info("unlock default collection");
-        Pair<List<ObjectPath>, ObjectPath> unlocked = context.service.unlock(cs);
+        Pair<List<ObjectPath>, ObjectPath> unlocked = context.service.unlock(cs).get();
         log.info(unlocked.toString());
         ObjectPath prompt = unlocked.b;
 
@@ -65,7 +65,7 @@ public class PromptTest {
         boolean expected = defaultCollection.isLocked();
         Thread.currentThread().sleep(500L);
 
-        Pair<List<ObjectPath>, ObjectPath> response = context.service.unlock(cs);
+        Pair<List<ObjectPath>, ObjectPath> response = context.service.unlock(cs).get();
         ObjectPath prompt = response.b;
         assertDoesNotThrow(() ->context.prompt.prompt(prompt)); // Should not throw NoSuchObject
         DBusSignal signal = handler.getLastHandledSignal();

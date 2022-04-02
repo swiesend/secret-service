@@ -36,20 +36,20 @@ public class ItemTest {
     @Test
     @DisplayName("delete item")
     public void delete() {
-        List<ObjectPath> items = context.collection.getItems();
+        List<ObjectPath> items = context.collection.getItems().get();
         assertEquals(1, items.size());
 
-        ObjectPath prompt = context.item.delete();
+        ObjectPath prompt = context.item.delete().get();
         // expect: no prompt
         assertEquals("/", prompt.getPath());
 
-        items = context.collection.getItems();
+        items = context.collection.getItems().get();
         assertEquals(0, items.size());
     }
 
     @Test
     public void getSecret() {
-        Secret secret = context.item.getSecret(context.session.getPath());
+        Secret secret = context.item.getSecret(context.session.getPath()).get();
         log.info(label("secret", secret.toString()));
         assertTrue(secret.getSession().getPath().startsWith("/org/freedesktop/secrets/session/s"));
         assertTrue(secret.getContentType().startsWith("text/plain"));
@@ -75,9 +75,9 @@ public class ItemTest {
 
         DBusPath alias = new DBusPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         Collection login = new Collection(alias, context.service);
-        List<ObjectPath> items = login.getItems();
+        List<ObjectPath> items = login.getItems().get();
         Item item = new Item(items.get(0), context.service);
-        Secret secret = item.getSecret(context.service.getSession().getPath());
+        Secret secret = item.getSecret(context.service.getSession().getPath()).get();
         log.info(new String(secret.getSecretValue()));
     }
 
@@ -86,7 +86,7 @@ public class ItemTest {
         Secret secret = new Secret(context.session.getPath(), "new secret".getBytes());
         context.item.setSecret(secret);
 
-        Secret result = context.item.getSecret(context.session.getPath());
+        Secret result = context.item.getSecret(context.session.getPath()).get();
         log.info(label("secret", result.toString()));
         assertEquals("new secret", Static.Convert.toString(result.getSecretValue()));
     }
@@ -100,7 +100,7 @@ public class ItemTest {
 
     @Test
     public void getAttributes() {
-        Map<String, String> attributes = context.item.getAttributes();
+        Map<String, String> attributes = context.item.getAttributes().get();
         log.info(attributes.toString());
         assertTrue(attributes.size() > 0);
         assertEquals("Value1", attributes.get("Attribute1"));
@@ -115,7 +115,7 @@ public class ItemTest {
 
     @Test
     public void setAttributes() {
-        Map<String, String> attributes = context.item.getAttributes();
+        Map<String, String> attributes = context.item.getAttributes().get();
         log.info(context.item.getId());
         log.info(attributes.toString());
         assertTrue(attributes.size() == 3 || attributes.size() == 4);
@@ -132,7 +132,7 @@ public class ItemTest {
 
         context.item.setAttributes(attributes);
 
-        attributes = context.item.getAttributes();
+        attributes = context.item.getAttributes().get();
         log.info(context.item.getId());
         log.info(attributes.toString());
 
@@ -147,7 +147,7 @@ public class ItemTest {
 
         attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
-        Pair<List<ObjectPath>, List<ObjectPath>> result = context.service.searchItems(attributes);
+        Pair<List<ObjectPath>, List<ObjectPath>> result = context.service.searchItems(attributes).get();
         log.info(result.toString());
         assertEquals(1, result.a.size());
     }
@@ -157,7 +157,7 @@ public class ItemTest {
      */
     @Test
     public void getLabel() {
-        String label = context.item.getLabel();
+        String label = context.item.getLabel().get();
         log.info(label("label", label));
         assertEquals("TestItem", label);
     }
@@ -165,14 +165,14 @@ public class ItemTest {
     @Test
     public void setLabel() {
         context.item.setLabel("RelabeledItem");
-        String label = context.item.getLabel();
+        String label = context.item.getLabel().get();
         log.info(label("label", label));
         assertEquals("RelabeledItem", label);
     }
 
     @Test
     public void getType() {
-        String type = context.item.getType();
+        String type = context.item.getType().get();
         log.info(type);
         if (!type.isEmpty()) {
             assertEquals("org.freedesktop.Secret.Generic", type);
@@ -182,7 +182,7 @@ public class ItemTest {
     @Test
     @DisplayName("created at unixtime")
     public void created() {
-        UInt64 created = context.item.created();
+        UInt64 created = context.item.created().get();
         log.info(String.valueOf(created));
         assertTrue(created.longValue() > 0L);
     }
@@ -190,7 +190,7 @@ public class ItemTest {
     @Test
     @DisplayName("modified at unixtime")
     public void modified() {
-        UInt64 modified = context.item.created();
+        UInt64 modified = context.item.created().get();
         log.info(String.valueOf(modified));
         assertTrue(modified.longValue() >= 0L);
     }

@@ -18,6 +18,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Optional;
 
 public class TransportEncryption implements AutoCloseable {
 
@@ -77,12 +78,12 @@ public class TransportEncryption implements AutoCloseable {
         BigInteger ya = ((DHPublicKey) publicKey).getY();
 
         // open session with "Client DH pub key as an array of bytes" without prime or generator
-        Pair<Variant<byte[]>, ObjectPath> osResponse = service.openSession(
+        Optional<Pair<Variant<byte[]>, ObjectPath>> osResponse = service.openSession(
                 Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant(ya.toByteArray()));
 
         // transform peer's raw Y to a public key
-        if (osResponse != null) {
-            yb = osResponse.a.getValue();
+        if (osResponse.isPresent()) {
+            yb = osResponse.get().a.getValue();
             return true;
         } else {
             return false;

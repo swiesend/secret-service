@@ -18,8 +18,8 @@ public class Session extends Messaging implements org.freedesktop.secret.interfa
     }
 
     @Override
-    public void close() {
-        send("Close");
+    public boolean close() {
+        return send("Close").isPresent();
     }
 
     @Override
