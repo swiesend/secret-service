@@ -62,10 +62,10 @@
         <!-- 3rd party dependencies -->
         <hkdf.version>2.0.0</hkdf.version>
         <dbus-java.version>4.3.0</dbus-java.version>
-        <slf4j.version>2.0.9</slf4j.version>
+        <slf4j.version>2.0.7</slf4j.version>
 
         <!-- test dependencies -->
-        <junit-jupiter.version>5.10.0</junit-jupiter.version>
+        <junit-jupiter.version>5.9.3</junit-jupiter.version>
     </properties>
 
     <dependencies>
