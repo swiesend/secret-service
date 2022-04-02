@@ -8,14 +8,14 @@
     <artifactId>secret-service</artifactId>
     <!-- Semantic Versioning - see https://semver.org/spec/v2.0.0.html -->
     <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
-    <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-RC.{INC} -->
+    <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-rc.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH} -->
-    <version>17.0.1</version>
+    <version>2.0.0-rc.1</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>
     <description>
-        A Java library for storing secrets in the gnome-keyring over the DBus.
+        A Java library to store secrets in the gnome-keyring over the DBus.
         Simply set and get passwords in a gnome linux system.
     </description>
     <url>https://github.com/swiesend/secret-service</url>
@@ -56,6 +56,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>17</maven.compiler.release>
+        <java.version>17</java.version>
 
         <!-- 3rd party dependencies -->
         <hkdf.version>1.1.0</hkdf.version>
@@ -118,12 +119,6 @@
             <artifactId>junit-jupiter-engine</artifactId>
             <version>${junit-jupiter.version}</version>
             <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>3.12.0</version>
         </dependency>
 
     </dependencies>
@@ -224,9 +219,9 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.8.0</version>
                 <configuration>
-                    <release>8</release>
-                    <source>11</source>
-                    <target>11</target>
+                    <release>${java.version}</release>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
                 </configuration>
             </plugin>
             <plugin>
