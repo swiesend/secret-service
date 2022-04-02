@@ -32,12 +32,13 @@ import java.util.concurrent.RejectedExecutionException;
 import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
+import static de.swiesend.secretservice.Static.Utils;
 
 public final class SimpleCollection extends de.swiesend.secretservice.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
-    private static Thread shutdownHook = setupShutdownHook();
-    private static DBusConnection connection = getConnection();
+    private static final DBusConnection connection = getConnection();
+    private static final Thread shutdownHook = setupShutdownHook();
     private TransportEncryption transport = null;
     private Service service = null;
     private Session session = null;
@@ -102,13 +103,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 Map<String, Variant> properties = Collection.createProperties(label);
 
                 if (password == null) {
-                    Pair<ObjectPath, ObjectPath> response = service.createCollection(properties);
+                    Pair<ObjectPath, ObjectPath> response = service.createCollection(properties).get();
                     if (!"/".equals(response.a.getPath())) {
                         path = response.a;
                     }
                     performPrompt(response.b);
-                } else if (encrypted != null && withoutPrompt != null) {
-                    path = withoutPrompt.createWithMasterPassword(properties, encrypted);
+                } else if (encrypted != null) {
+                    path = withoutPrompt.createWithMasterPassword(properties, encrypted).get();
                 }
 
                 if (path == null) {
@@ -179,7 +180,8 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 List<String> names = Arrays.asList(bus.ListNames());
                 if (!(names.containsAll(Arrays.asList(
                         Static.DBus.Service.DBUS,
-                        Static.Service.SECRETS)))) {
+                        Static.Service.SECRETS,
+                        de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)))) {
                     return false;
                 }
 
@@ -297,12 +299,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     private Map<ObjectPath, String> getLabels() {
-        List<ObjectPath> collections = service.getCollections();
+        List<ObjectPath> collections = service.getCollections().get();
 
         Map<ObjectPath, String> labels = new HashMap();
         for (ObjectPath path : collections) {
             Collection c = new Collection(path, service, null);
-            labels.put(path, c.getLabel());
+            labels.put(path, c.getLabel().get());
         }
 
         return labels;
@@ -375,7 +377,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
                 log.debug("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
             } else {
-                Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable());
+                Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable()).get();
                 performPrompt(response.b);
                 if (!collection.isLocked()) {
                     isUnlockedOnceWithUserPermission = true;
@@ -441,7 +443,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public void delete() throws AccessControlException {
         if (!isDefault()) {
-            ObjectPath promptPath = collection.delete();
+            ObjectPath promptPath = collection.delete().get();
             performPrompt(promptPath);
         } else {
             throw new AccessControlException("Default collections may not be deleted with the simple API.");
@@ -460,7 +462,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public String createItem(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
-        if (Static.isNullOrEmpty(password)) {
+        if (Utils.isNullOrEmpty(password)) {
             throw new IllegalArgumentException("The password may not be null or empty.");
         }
         if (label == null) {
@@ -474,7 +476,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         DBusPath item = null;
         final Map<String, Variant> properties = Item.createProperties(label, attributes);
         try (final Secret secret = transport.encrypt(password)) {
-            Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
+            Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false).get();
             if (response == null) return null;
             item = response.a;
             if ("/".equals(item.getPath())) {
@@ -525,7 +527,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
 
-        if (Static.isNullOrEmpty(objectPath)) {
+        if (Utils.isNullOrEmpty(objectPath)) {
             throw new IllegalArgumentException("The object path of the item may not be null or empty.");
         }
 
@@ -561,9 +563,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public String getLabel(String objectPath) {
-        if (Static.isNullOrEmpty(objectPath)) return null;
+        if (Utils.isNullOrEmpty(objectPath)) return null;
         unlock();
-        return getItem(objectPath).getLabel();
+        return getItem(objectPath).getLabel().get();
     }
 
     /**
@@ -576,9 +578,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public Map<String, String> getAttributes(String objectPath) {
-        if (Static.isNullOrEmpty(objectPath)) return null;
+        if (Utils.isNullOrEmpty(objectPath)) return null;
         unlock();
-        return getItem(objectPath).getAttributes();
+        return getItem(objectPath).getAttributes().get();
     }
 
     /**
@@ -592,7 +594,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         if (attributes == null) return null;
         unlock();
 
-        List<ObjectPath> objects = collection.searchItems(attributes);
+        List<ObjectPath> objects = collection.searchItems(attributes).get();
 
         if (objects != null && !objects.isEmpty()) {
             return Static.Convert.toStrings(objects);
@@ -609,13 +611,15 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public char[] getSecret(String objectPath) {
-        if (Static.isNullOrEmpty(objectPath)) return null;
+        if (Utils.isNullOrEmpty(objectPath)) return null;
         unlock();
 
         final Item item = getItem(objectPath);
 
         char[] decrypted = null;
-        try (final Secret secret = item.getSecret(session.getPath())) {
+        ObjectPath sessionPath = session.getPath();
+        log.info(sessionPath.getPath());
+        try (final Secret secret = item.getSecret(sessionPath).orElseGet(() -> new Secret(sessionPath, null))) {
             decrypted = transport.decrypt(secret);
         } catch (NoSuchPaddingException |
                 NoSuchAlgorithmException |
@@ -641,7 +645,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     public Map<String, char[]> getSecrets() throws AccessControlException {
         unlockWithUserPermission();
 
-        List<ObjectPath> items = collection.getItems();
+        List<ObjectPath> items = collection.getItems().get();
         if (items == null) return null;
 
         Map<String, char[]> passwords = new HashMap();
@@ -664,12 +668,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public void deleteItem(String objectPath) throws AccessControlException {
-        if (Static.isNullOrEmpty(objectPath)) throw new AccessControlException("Cannot delete an unspecified item.");
+        if (Utils.isNullOrEmpty(objectPath)) throw new AccessControlException("Cannot delete an unspecified item.");
 
         unlockWithUserPermission();
 
         Item item = getItem(objectPath);
-        ObjectPath promptPath = item.delete();
+        ObjectPath promptPath = item.delete().get();
         performPrompt(promptPath);
     }
 

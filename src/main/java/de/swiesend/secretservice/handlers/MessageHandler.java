@@ -1,6 +1,5 @@
 package de.swiesend.secretservice.handlers;
 
-import org.apache.commons.lang3.ArrayUtils;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.MethodCall;
@@ -19,6 +18,7 @@ public class MessageHandler {
     private Logger log = LoggerFactory.getLogger(getClass());
 
     private DBusConnection connection;
+    private boolean fireAndForget = true;
 
     public MessageHandler(DBusConnection connection) {
         this.connection = connection;
@@ -48,7 +48,7 @@ public class MessageHandler {
                 switch (error) {
                     case "org.freedesktop.Secret.Error.NoSession":
                     case "org.freedesktop.Secret.Error.NoSuchObject":
-                        if (ArrayUtils.isEmpty(parameters)) {
+                        if (Static.Utils.isNullOrEmpty(parameters)) {
                             log.warn(error);
                         } else {
                             log.warn(error + ": " + parameters[0]);
@@ -56,7 +56,7 @@ public class MessageHandler {
                         return Optional.empty();
                     case "org.gnome.keyring.Error.Denied":
                     case "org.freedesktop.Secret.Error.IsLocked":
-                        if (ArrayUtils.isEmpty(parameters)) {
+                        if (Static.Utils.isNullOrEmpty(parameters)) {
                             log.info(error);
                         } else {
                             log.info(error + ": " + parameters[0]);
@@ -75,7 +75,6 @@ public class MessageHandler {
                         return Optional.empty();
                 }
             }
-
             return Optional.ofNullable(parameters);
         } catch (DBusException e) {
             log.error("Unexpected D-Bus response: ", e);
@@ -90,7 +89,7 @@ public class MessageHandler {
                 "Get", "ss", iface, property);
         if (!maybeResponse.isPresent()) return Optional.empty();
         Object[] response = maybeResponse.get();
-        return ArrayUtils.isEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
+        return Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
     }
 
     public Optional<Variant> getAllProperties(String service, String path, String iface) {
@@ -98,11 +97,28 @@ public class MessageHandler {
                 "GetAll", "ss", iface);
         if (!maybeResponse.isPresent()) return Optional.empty();
         Object[] response = maybeResponse.get();
-        return ArrayUtils.isEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
+        return Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
     }
 
     public boolean setProperty(String service, String path, String iface, String property, Variant value) {
         Optional<Object[]> maybeResponse = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES, "Set", "ssv", iface, property, value);
+        // TODO: resolve return value
+//        if (maybeResponse.isPresent() && !fireAndForget) {
+//            Optional<Variant> maybeValue = getProperty(service, path, iface, property);
+//            if (maybeValue.isPresent()) {
+//                Variant result = maybeValue.get();
+//                if (result == null) return false;
+//                boolean valueCond = value.getValue() == result.getValue();
+//                boolean signatureCond = value.getSig() == result.getSig();
+//                boolean typeCond = value.getType() == result.getType();
+//                return valueCond && signatureCond && typeCond;
+//            } else {
+//                return false;
+//            }
+//        } else {
+//            return maybeResponse.isPresent();
+//        }
+        //return true;
         return maybeResponse.isPresent();
     }
 

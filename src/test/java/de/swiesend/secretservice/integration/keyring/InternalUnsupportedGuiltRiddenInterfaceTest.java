@@ -51,7 +51,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     @Test
     public void changeWithMasterPassword() throws InterruptedException {
 
-        List<ObjectPath> collections = service.getCollections();
+        List<ObjectPath> collections = service.getCollections().get();
         List<String> cs = Static.Convert.toStrings(collections);
         if (!cs.contains("/org/freedesktop/secrets/collection/test")) {
             HashMap<String, Variant> properties = new HashMap();
@@ -83,11 +83,11 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     @Test
     public void createWithMasterPassword() throws InterruptedException {
 
-        List<ObjectPath> collections = service.getCollections();
+        List<ObjectPath> collections = service.getCollections().get();
         List<String> cs = Static.Convert.toStrings(collections);
 
         if (cs.contains("/org/freedesktop/secrets/collection/test")) {
-            ObjectPath deleted = collection.delete();
+            ObjectPath deleted = collection.delete().get();
             assertEquals("/", deleted.getPath());
             Thread.currentThread().sleep(100L); // await signal: Service.CollectionDeleted
         }
@@ -97,7 +97,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         iugri.createWithMasterPassword(properties, original);
         Thread.currentThread().sleep(100L); // await signal: Service.CollectionCreated
 
-        collections = service.getCollections();
+        collections = service.getCollections().get();
         cs = Static.Convert.toStrings(collections);
 
         assertTrue(cs.contains(Static.ObjectPaths.collection("test")));

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static java.lang.System.exit;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class Context {
@@ -74,6 +75,8 @@ public class Context {
         }
 
         session = service.getSession();
+        log.info(session.getObjectPath());
+        assertNotNull(session);
         assertTrue(session.getObjectPath().startsWith(Static.ObjectPaths.SESSION + "/s"));
 
         password = new Secret(session.getPath(), "".getBytes(), "test".getBytes());
@@ -84,9 +87,9 @@ public class Context {
 
         collection = new Collection("test", service);
 
-        collections = Static.Convert.toStrings(service.getCollections());
+        collections = Static.Convert.toStrings(service.getCollections().get());
         if (collections.contains(Static.ObjectPaths.collection("test"))) {
-            ObjectPath deletePrompt = collection.delete();
+            ObjectPath deletePrompt = collection.delete().get();
             if (!deletePrompt.getPath().equals("/")) {
                 log.error("won't wait for prompt in automated test context.");
                 exit(-3);
@@ -94,7 +97,7 @@ public class Context {
         }
         Map<String, Variant> properties = Collection.createProperties("test");
         withoutPrompt.createWithMasterPassword(properties, password);
-        collections = Static.Convert.toStrings(service.getCollections());
+        collections = Static.Convert.toStrings(service.getCollections().get());
 
         if (collection.isLocked()) {
             withoutPrompt.unlockWithMasterPassword(collection.getPath(), password);
@@ -128,14 +131,14 @@ public class Context {
             withoutPrompt.unlockWithMasterPassword(collection.getPath(), password);
         }
 
-        List<ObjectPath> items = collection.getItems();
+        List<ObjectPath> items = collection.getItems().get();
         for (ObjectPath path : items) {
             Item i = new Item(path, service);
             i.delete();
         }
 
         Map<String, Variant> properties = Item.createProperties("TestItem", attributes);
-        Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, true);
+        Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, true).get();
         ObjectPath itemPath = response.a;
 
         item = new Item(itemPath, service);

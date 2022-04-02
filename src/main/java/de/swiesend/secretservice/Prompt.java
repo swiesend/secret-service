@@ -8,6 +8,7 @@ import de.swiesend.secretservice.handlers.Messaging;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 import static de.swiesend.secretservice.Static.ObjectPaths.PROMPT;
@@ -24,13 +25,13 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
     }
 
     @Override
-    public void prompt(String window_id) {
+    public boolean prompt(String window_id) {
         objectPath = Static.ObjectPaths.prompt(window_id);
-        send("Prompt", "s", window_id);
+        return send("Prompt", "s", window_id).isPresent();
     }
 
     @Override
-    public void prompt(ObjectPath prompt) throws NoSuchObject {
+    public boolean prompt(ObjectPath prompt) {
         objectPath = prompt.getPath();
 
         String windowID = "";
@@ -41,10 +42,11 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
                 windowID = split[split.length - 1];
             }
         } catch (IndexOutOfBoundsException | NullPointerException e) {
-            throw new NoSuchObject(objectPath);
+            // TODO: check if it is possible to can call the prompt anyway
+            return false;
         }
 
-        send("Prompt", "s", windowID);
+        return send("Prompt", "s", windowID).isPresent();
     }
 
     /**
@@ -82,10 +84,9 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
         return await(path, DEFAULT_PROMPT_TIMEOUT);
     }
 
-
     @Override
-    public void dismiss() {
-        send("Dismiss", "");
+    public boolean dismiss() {
+        return send("Dismiss", "").isPresent();
     }
 
     @Override

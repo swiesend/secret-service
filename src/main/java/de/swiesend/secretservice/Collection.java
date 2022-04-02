@@ -5,16 +5,16 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
+import de.swiesend.secretservice.Static.Utils;
 import de.swiesend.secretservice.handlers.Messaging;
 
 import java.util.*;
 
 public class Collection extends Messaging implements de.swiesend.secretservice.interfaces.Collection {
 
-    private String id;
-
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(
             ItemCreated.class, ItemChanged.class, ItemDeleted.class);
+    private String id;
 
     public Collection(DBusPath path, Service service) {
         super(service.getConnection(), signals,
@@ -70,71 +70,69 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
      */
     public static Map<String, Variant> createProperties(String label) {
         HashMap<String, Variant> properties = new HashMap();
-        properties.put(LABEL, new Variant(label));
+        properties.put(LABEL, new Variant<>(label));
         return properties;
     }
 
     @Override
-    public ObjectPath delete() {
-        Object[] response = send("Delete", "");
-        if (response == null) return null;
-        ObjectPath prompt = (ObjectPath) response[0];
+    public Optional<ObjectPath> delete() {
+        Optional<ObjectPath> prompt = send("Delete", "").flatMap(response ->
+                Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((ObjectPath) response[0])
+        );
         return prompt;
     }
 
     @Override
-    public List<ObjectPath> searchItems(Map<String, String> attributes) {
-        Object[] response = send("SearchItems", "a{ss}", attributes);
-        if (response == null) return null;
-        return (List<ObjectPath>) response[0];
+    public Optional<List<ObjectPath>> searchItems(Map<String, String> attributes) {
+        return send("SearchItems", "a{ss}", attributes).flatMap(response ->
+                Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((List<ObjectPath>) response[0])
+        );
     }
 
     @Override
-    public Pair<ObjectPath, ObjectPath> createItem(Map<String, Variant> properties, Secret secret,
-                                                   boolean replace) {
-        Object[] response = send("CreateItem", "a{sv}(oayays)b", properties, secret, replace);
-        if (response == null) return null;
-        return new Pair(response[0], response[1]);
+    public Optional<Pair<ObjectPath, ObjectPath>> createItem(Map<String, Variant> properties, Secret secret, boolean replace) {
+        return send("CreateItem", "a{sv}(oayays)b", properties, secret, replace).flatMap(response ->
+                (Utils.isNullOrEmpty(response) || response.length != 2) ?
+                        Optional.empty() :
+                        Optional.of(new Pair<ObjectPath, ObjectPath>((ObjectPath) response[0], (ObjectPath) response[1])));
     }
 
     @Override
-    public List<ObjectPath> getItems() {
-        Variant response = getProperty("Items");
-        if (response == null) return null;
-        return (ArrayList<ObjectPath>) response.getValue();
+    public Optional<List<ObjectPath>> getItems() {
+        return getProperty("Items").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((List<ObjectPath>) variant.getValue())
+        );
     }
 
     @Override
-    public String getLabel() {
-        Variant response = getProperty("Label");
-        if (response == null) return null;
-        return (String) response.getValue();
+    public Optional<String> getLabel() {
+        return getProperty("Label").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((String) variant.getValue())
+        );
     }
 
     @Override
-    public void setLabel(String label) {
-        setProperty("Label", new Variant(label));
+    public boolean setLabel(String label) {
+        return setProperty("Label", new Variant(label));
     }
 
     @Override
     public boolean isLocked() {
-        Variant response = getProperty("Locked");
-        if (response == null) return true;
-        return (boolean) response.getValue();
+        Optional<Boolean> response = getProperty("Locked").map(variant ->
+                variant == null ? false : (boolean) variant.getValue());
+        return response.isPresent() ? response.get() : false;
     }
 
     @Override
-    public UInt64 created() {
-        Variant response = getProperty("Created");
-        if (response == null) return null;
-        return (UInt64) response.getValue();
+    public Optional<UInt64> created() {
+        return getProperty("Created").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((UInt64) variant.getValue()));
     }
 
     @Override
-    public UInt64 modified() {
-        Variant response = getProperty("Modified");
-        if (response == null) return null;
-        return (UInt64) response.getValue();
+    public Optional<UInt64> modified() {
+        return getProperty("Modified").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((UInt64) variant.getValue()));
     }
 
     @Override
