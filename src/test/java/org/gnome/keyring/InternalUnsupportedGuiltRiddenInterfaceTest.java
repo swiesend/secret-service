@@ -2,6 +2,7 @@ package org.gnome.keyring;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.Collection;
@@ -31,7 +32,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
 
     @BeforeEach
     public void beforeEach() throws DBusException {
-        connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+        connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         service = new Service(connection);
         service.openSession(Static.Algorithm.PLAIN, new Variant(""));
         iugri = new InternalUnsupportedGuiltRiddenInterface(service);

@@ -2,6 +2,7 @@ package org.freedesktop.secret.test;
 
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.freedesktop.secret.*;
@@ -46,7 +47,7 @@ public class Context {
     public void ensureService() {
         DBusConnection connection = null;
         try {
-            connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+            connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         } catch (DBusException | RuntimeException e) {
             log.error("Could not connect to the D-Bus", e);
             exit(-1);

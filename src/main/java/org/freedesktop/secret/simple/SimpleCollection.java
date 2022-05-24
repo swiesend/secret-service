@@ -3,6 +3,7 @@ package org.freedesktop.secret.simple;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.types.Variant;
@@ -137,7 +138,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
      */
     private static DBusConnection getConnection() {
         try {
-            return DBusConnection.newConnection(DBusConnection.DBusBusType.SESSION);
+            return DBusConnectionBuilder.forSessionBus().withShared(false).build();
         } catch (DBusException e) {
             if (e == null) {
                 log.warn("Could not communicate properly with the D-Bus.");

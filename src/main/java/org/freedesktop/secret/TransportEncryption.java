@@ -3,6 +3,7 @@ package org.freedesktop.secret;
 import at.favre.lib.crypto.HKDF;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 
@@ -33,7 +34,7 @@ public class TransportEncryption implements AutoCloseable {
     private byte[] yb = null;
 
     public TransportEncryption() throws DBusException {
-        DBusConnection connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
+        DBusConnection connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         this.service = new Service(connection);
     }
 
