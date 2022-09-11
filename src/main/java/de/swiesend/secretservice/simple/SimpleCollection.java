@@ -87,11 +87,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 try {
                     encrypted = transport.encrypt(password);
                 } catch (NoSuchAlgorithmException |
-                        NoSuchPaddingException |
-                        InvalidAlgorithmParameterException |
-                        InvalidKeyException |
-                        BadPaddingException |
-                        IllegalBlockSizeException e) {
+                         NoSuchPaddingException |
+                         InvalidAlgorithmParameterException |
+                         InvalidKeyException |
+                         BadPaddingException |
+                         IllegalBlockSizeException e) {
                     log.error("Could not establish transport encryption.", e);
                 }
             }
@@ -290,10 +290,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
             }
         } catch (NoSuchAlgorithmException |
-                InvalidAlgorithmParameterException |
-                InvalidKeySpecException |
-                InvalidKeyException |
-                DBusException e) {
+                 InvalidAlgorithmParameterException |
+                 InvalidKeySpecException |
+                 InvalidKeyException |
+                 DBusException e) {
             throw new IOException("Could not initiate transport encryption.", e);
         }
     }
@@ -381,7 +381,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 performPrompt(response.b);
                 if (!collection.isLocked()) {
                     isUnlockedOnceWithUserPermission = true;
-                    log.info("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
+                    log.info("Unlocked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
                 }
             }
         }
@@ -487,11 +487,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 }
             }
         } catch (NoSuchAlgorithmException |
-                NoSuchPaddingException |
-                InvalidAlgorithmParameterException |
-                InvalidKeyException |
-                BadPaddingException |
-                IllegalBlockSizeException e) {
+                 NoSuchPaddingException |
+                 InvalidAlgorithmParameterException |
+                 InvalidKeyException |
+                 BadPaddingException |
+                 IllegalBlockSizeException e) {
             log.error("Could not encrypt the secret.", e);
         }
 
@@ -546,11 +546,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         if (password != null) try (Secret secret = transport.encrypt(password)) {
             item.setSecret(secret);
         } catch (NoSuchAlgorithmException |
-                NoSuchPaddingException |
-                InvalidAlgorithmParameterException |
-                InvalidKeyException |
-                BadPaddingException |
-                IllegalBlockSizeException e) {
+                 NoSuchPaddingException |
+                 InvalidAlgorithmParameterException |
+                 InvalidKeyException |
+                 BadPaddingException |
+                 IllegalBlockSizeException e) {
             log.error("Could not encrypt the secret.", e);
         }
     }
@@ -618,15 +618,14 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
         char[] decrypted = null;
         ObjectPath sessionPath = session.getPath();
-        log.info(sessionPath.getPath());
         try (final Secret secret = item.getSecret(sessionPath).orElseGet(() -> new Secret(sessionPath, null))) {
             decrypted = transport.decrypt(secret);
         } catch (NoSuchPaddingException |
-                NoSuchAlgorithmException |
-                InvalidAlgorithmParameterException |
-                InvalidKeyException |
-                BadPaddingException |
-                IllegalBlockSizeException e) {
+                 NoSuchAlgorithmException |
+                 InvalidAlgorithmParameterException |
+                 InvalidKeyException |
+                 BadPaddingException |
+                 IllegalBlockSizeException e) {
             log.error("Could not decrypt the secret.", e);
         }
         return decrypted;
