@@ -2,9 +2,9 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/de.swiesend/secret-service.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22de.swiesend%22%20AND%20a:%22secret-service%22)
 
-A Java library for storing secrets in a keyring over the D-Bus.
+A _Java_ library for storing secrets in the _Gnome Keyring_ over _DBus_.
 
-The library is conforming to the freedesktop.org
+The library is conform to the freedesktop.org
 [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with Gnome linux systems.
 
 The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon).
