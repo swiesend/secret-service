@@ -24,6 +24,11 @@ public class MessageHandler {
         this.connection = connection;
     }
 
+    public MessageHandler(DBusConnection connection, boolean fireAndForget) {
+        this.connection = connection;
+        this.fireAndForget = fireAndForget;
+    }
+
     public Optional<Object[]> send(String service, String path, String iface, String method, String signature, Object... args) {
         try {
             org.freedesktop.dbus.messages.Message message = new MethodCall(
@@ -35,12 +40,13 @@ public class MessageHandler {
             connection.sendMessage(message);
 
             org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(MAX_DELAY_MILLIS);
-            if (log.isTraceEnabled()) log.trace(String.valueOf(response));
+            if (log.isTraceEnabled()) log.trace("Response: " + response);
 
             Object[] parameters = null;
             if (response != null) {
                 parameters = response.getParameters();
-                if (log.isDebugEnabled()) log.debug(Arrays.deepToString(parameters));
+                if (log.isDebugEnabled())
+                    log.debug("Response parameters for method " + iface + "/" + method + ": " + Arrays.deepToString(parameters));
             }
 
             if (response instanceof org.freedesktop.dbus.errors.Error) {
@@ -71,7 +77,7 @@ public class MessageHandler {
                         if (log.isDebugEnabled()) log.debug(error);
                         return Optional.empty();
                     default:
-                        log.error("Unexpected org.freedesktop.dbus.errors.Error: ", error);
+                        log.error("Unexpected org.freedesktop.dbus.errors.Error: \"" + error + "\" with parameters: " + Arrays.deepToString(parameters));
                         return Optional.empty();
                 }
             }
@@ -101,25 +107,14 @@ public class MessageHandler {
     }
 
     public boolean setProperty(String service, String path, String iface, String property, Variant value) {
+        if (log.isDebugEnabled()) log.debug(iface + "@" + property + " with variant: " + value);
         Optional<Object[]> maybeResponse = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES, "Set", "ssv", iface, property, value);
-        // TODO: resolve return value
-//        if (maybeResponse.isPresent() && !fireAndForget) {
-//            Optional<Variant> maybeValue = getProperty(service, path, iface, property);
-//            if (maybeValue.isPresent()) {
-//                Variant result = maybeValue.get();
-//                if (result == null) return false;
-//                boolean valueCond = value.getValue() == result.getValue();
-//                boolean signatureCond = value.getSig() == result.getSig();
-//                boolean typeCond = value.getType() == result.getType();
-//                return valueCond && signatureCond && typeCond;
-//            } else {
-//                return false;
-//            }
-//        } else {
-//            return maybeResponse.isPresent();
-//        }
-        //return true;
-        return maybeResponse.isPresent();
+        if (maybeResponse.isPresent() && !fireAndForget) {
+            Optional<Variant> maybePropertyValue = getProperty(service, path, iface, property);
+            return value.equals(maybePropertyValue.orElse(null));
+        } else {
+            return maybeResponse.isPresent();
+        }
     }
 
 }

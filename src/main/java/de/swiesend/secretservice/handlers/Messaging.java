@@ -21,7 +21,7 @@ public abstract class Messaging {
     public Messaging(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                      String serviceName, String objectPath, String interfaceName) {
         this.connection = connection;
-        this.msg = new MessageHandler(connection);
+        this.msg = new MessageHandler(connection, true);
         if (signals != null) {
             this.sh.connect(connection, signals);
         }
