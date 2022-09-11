@@ -65,27 +65,27 @@ public class SignalHandler implements DBusSigHandler {
 
         if (s instanceof Collection.ItemCreated) {
             Collection.ItemCreated ic = (Collection.ItemCreated) s;
-            log.info("Received signal Collection.ItemCreated: " + ic.item);
+            log.info("Received signal: Collection.ItemCreated(" + ic.item + ")");
         } else if (s instanceof Collection.ItemChanged) {
             Collection.ItemChanged ic = (Collection.ItemChanged) s;
-            log.debug("Received signal Collection.ItemChanged: " + ic.item);
+            log.debug("Received signal: Collection.ItemChanged(" + ic.item + ")");
         } else if (s instanceof Collection.ItemDeleted) {
             Collection.ItemDeleted ic = (Collection.ItemDeleted) s;
-            log.info("Received signal Collection.ItemDeleted: " + ic.item);
+            log.info("Received signal: Collection.ItemDeleted(" + ic.item + ")");
         } else if (s instanceof Prompt.Completed) {
             Prompt.Completed c = (Prompt.Completed) s;
-            log.info("Received signal Prompt.Completed(" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
+            log.info("Received signal: Prompt.Completed(" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
         } else if (s instanceof Service.CollectionCreated) {
             Service.CollectionCreated cc = (Service.CollectionCreated) s;
-            log.info("Received signal Service.CollectionCreated: " + cc.collection);
+            log.info("Received signal: Service.CollectionCreated(" + cc.collection + ")");
         } else if (s instanceof Service.CollectionChanged) {
             Service.CollectionChanged cc = (Service.CollectionChanged) s;
-            log.info("Received signal Service.CollectionChanged: " + cc.collection);
+            log.info("Received signal: Service.CollectionChanged(" + cc.collection + ")");
         } else if (s instanceof Service.CollectionDeleted) {
             Service.CollectionDeleted cc = (Service.CollectionDeleted) s;
-            log.info("Received signal Service.CollectionDeleted: " + cc.collection);
+            log.info("Received signal: Service.CollectionDeleted(" + cc.collection + ")");
         } else try {
-            log.warn("Received unexpected signal: " + s.getClass().toString() + " {" + s.toString() + "}");
+            log.warn("Received unexpected signal: " + s.getClass().getName() + ": {" + s + "}");
         } catch (NullPointerException e) {
             log.warn("Received unknown signal.");
         }
