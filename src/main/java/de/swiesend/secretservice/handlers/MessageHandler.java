@@ -69,11 +69,12 @@ public class MessageHandler {
                         }
                         return Optional.empty();
                     case "org.freedesktop.DBus.Error.NoReply":
-                    case "org.freedesktop.DBus.Error.UnknownMethod":
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
-                    case "org.freedesktop.dbus.exceptions.NotConnected":
+                    case "org.freedesktop.DBus.Error.UnknownMethod":
+                    case "org.freedesktop.DBus.Error.UnknownObject":
                     case "org.freedesktop.DBus.Local.Disconnected":
                     case "org.freedesktop.dbus.exceptions.FatalDBusException":
+                    case "org.freedesktop.dbus.exceptions.NotConnected":
                         if (log.isDebugEnabled()) log.debug(error);
                         return Optional.empty();
                     default:
