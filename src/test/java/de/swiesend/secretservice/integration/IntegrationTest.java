@@ -13,6 +13,7 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.security.auth.DestroyFailedException;
+import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -37,20 +38,26 @@ public class IntegrationTest {
             NoSuchPaddingException,
             InvalidKeyException,
             BadPaddingException,
-            IllegalBlockSizeException, InterruptedException, InvalidKeySpecException, DestroyFailedException {
+            IllegalBlockSizeException,
+            InterruptedException,
+            IOException {
 
         TransportEncryption transportEncryption = new TransportEncryption();
-        transportEncryption.initialize();
-        transportEncryption.openSession();
-        transportEncryption.generateSessionKey();
+        TransportEncryption.EncryptedSession encryptedSession = transportEncryption
+                .initialize()
+                .flatMap(i -> i.openSession())
+                .flatMap(o -> o.generateSessionKey())
+                .orElseThrow(
+                        () -> new IOException("Could not initiate transport encryption.")
+                );
 
         String plain = "super secret";
-        Secret encrypted = transportEncryption.encrypt(plain);
+        Secret encrypted = encryptedSession.encrypt(plain);
 
         byte[] encBase64 = Base64.getEncoder().encode(encrypted.getSecretValue());
         log.info(label("encrypted secret (base64)", new String(encBase64)));
 
-        char[] decrypted = transportEncryption.decrypt(encrypted);
+        char[] decrypted = encryptedSession.decrypt(encrypted);
         log.info(label("         decrypted secret", new String(decrypted)));
         assertEquals(plain, new String(decrypted));
 
@@ -58,7 +65,7 @@ public class IntegrationTest {
         Session session = service.getSession();
 
         InternalUnsupportedGuiltRiddenInterface noPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
-        Secret master = transportEncryption.encrypt("test");
+        Secret master = encryptedSession.encrypt("test");
         Collection collection = new Collection("test", service);
         List<String> collections = Static.Convert.toStrings(service.getCollections().get());
 
@@ -97,7 +104,7 @@ public class IntegrationTest {
         assertEquals(encrypted.getSession(), actual.getSession());
         assertEquals(encrypted.getContentType(), actual.getContentType());
 
-        decrypted = transportEncryption.decrypt(actual);
+        decrypted = encryptedSession.decrypt(actual);
         log.info(label("  decrypted remote secret", new String(decrypted)));
         assertEquals(plain, new String(decrypted));
 

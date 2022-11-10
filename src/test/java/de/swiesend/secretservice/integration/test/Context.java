@@ -9,6 +9,7 @@ import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -24,7 +25,7 @@ public class Context {
     public Logger log;
     public boolean encrypted;
 
-    public TransportEncryption encryption = null;
+    public TransportEncryption.EncryptedSession encryption = null;
     public Service service = null;
     public Session session = null;
     public Secret password = null;
@@ -62,10 +63,13 @@ public class Context {
 
         try {
             if (encrypted) {
-                encryption = new TransportEncryption(service);
-                encryption.initialize();
-                encryption.openSession();
-                encryption.generateSessionKey();
+                encryption = new TransportEncryption(service)
+                        .initialize()
+                        .flatMap(i -> i.openSession())
+                        .flatMap(o -> o.generateSessionKey())
+                        .orElseThrow(
+                                () -> new IOException("Could not initiate transport encryption.")
+                        );
             } else {
                 service.openSession(Static.Algorithm.PLAIN, new Variant(""));
             }
