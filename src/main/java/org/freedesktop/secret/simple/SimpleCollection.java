@@ -106,7 +106,7 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                         path = response.a;
                     }
                     performPrompt(response.b);
-                } else if (encrypted != null) {
+                } else if (encrypted != null && withoutPrompt != null) {
                     path = withoutPrompt.createWithMasterPassword(properties, encrypted);
                 }
 
@@ -175,11 +175,10 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
-                List<String> names = Arrays.asList(bus.ListActivatableNames());
+                List<String> names = Arrays.asList(bus.ListNames());
                 if (!(names.containsAll(Arrays.asList(
                         Static.DBus.Service.DBUS,
-                        Static.Service.SECRETS,
-                        org.gnome.keyring.Static.Service.KEYRING)))) {
+                        Static.Service.SECRETS)))) {
                     return false;
                 }
 
@@ -204,6 +203,36 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             log.error("No D-Bus connection: Cannot check if all needed services are available.");
             return false;
         }
+    }
+
+    /**
+     * Checks if private/unsupported services are provided by the system:<br>
+     * <code>org.gnome.keyring</code>
+     *
+     * @return true if the secret service provider is gnome keyring, otherwise false and will log a warning message.
+     */
+    public static boolean isGnomeKeyringAvailable() {
+        if (connection != null && connection.isConnected()) {
+            try {
+                DBus bus = connection.getRemoteObject(
+                        Static.DBus.Service.DBUS,
+                        Static.DBus.ObjectPaths.DBUS,
+                        DBus.class);
+                List<String> names = Arrays.asList(bus.ListNames());
+                if (!(names.contains(
+                        org.gnome.keyring.Static.Service.KEYRING))) {
+                    return false;
+                }
+            } catch (DBusException | ExceptionInInitializerError e) {
+                log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
+                return false;
+            }
+        } else {
+            log.warn("Secret service provider is not Gnome Keyring: Some operations are not supported.");
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -254,7 +283,9 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
             service = transport.getService();
             session = service.getSession();
             prompt = new Prompt(service);
-            withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
+            if (isGnomeKeyringAvailable()) {
+                withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
+            }
         } catch (NoSuchAlgorithmException |
                 InvalidAlgorithmParameterException |
                 InvalidKeySpecException |
@@ -339,16 +370,16 @@ public final class SimpleCollection extends org.freedesktop.secret.simple.interf
 
     private void unlock() {
         if (collection != null && collection.isLocked()) {
-            if (encrypted == null || isDefault()) {
+            if (withoutPrompt != null && encrypted != null) {
+                withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
+                log.debug("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
+            } else {
                 Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable());
                 performPrompt(response.b);
                 if (!collection.isLocked()) {
                     isUnlockedOnceWithUserPermission = true;
                     log.info("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
                 }
-            } else {
-                withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
-                log.debug("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
             }
         }
     }
