@@ -11,6 +11,7 @@ The 2.0 interface design is to be found on the `develop-2.0.0` branch and has to
 - `Fixed`:
   - Make `org.gnome.keyring` optional. The `InternalUnsupportedGuiltRiddenInterface` is not part of the original specification. In order to unlock the `SimpleCollection` with a primary password, the `org.gnome.keyring` needs to be present.  
 - `Changed`:
+  - Require JDK 17.
   - Update `dbus-java` from `3.3.0` to `4.2.1`. Using the new split library `dbus-java-core` together with `dbus-java-transport-native-unixsocket`.
   - Update `slf4j-api` from `1.7.30` to `2.0.4`.
 
