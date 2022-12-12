@@ -25,7 +25,7 @@ public class SignalHandler implements DBusSigHandler {
     private final static int bufferSize = 1024;
     private Logger log = LoggerFactory.getLogger(getClass());
     private DBusConnection connection = null;
-    private List<Class<? extends DBusSignal>> registered = new ArrayList();
+    private List<Class<? extends DBusSignal>> registered = new ArrayList<>();
     private DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
 
@@ -136,7 +136,7 @@ public class SignalHandler implements DBusSigHandler {
         }
     }
 
-    public <S extends DBusSignal> S await(Class<S> s, String path, Callable action, Duration timeout) {
+    public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
         final int init = count;
 
         Object prompt = null;
@@ -147,7 +147,11 @@ public class SignalHandler implements DBusSigHandler {
         }
 
         try {
-            log.info("Await signal " + s.getName() + "(" + path + ") within " + timeout.getSeconds() + " seconds.");
+            log.info(String.format("Await signal %s.%s(%s) within %d seconds.",
+                    signal.getEnclosingClass().getSimpleName(),
+                    signal.getSimpleName(),
+                    path,
+                    timeout.getSeconds()));
         } catch (NullPointerException e) {
             log.error("Await signal for unknown class.");
         }
@@ -167,7 +171,7 @@ public class SignalHandler implements DBusSigHandler {
                 Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
                 current = getCount();
                 if (current != last) {
-                    signals = getHandledSignals(s, path);
+                    signals = getHandledSignals(signal, path);
                     if (signals != null && !signals.isEmpty()) {
                         return signals.get(0);
                     }
@@ -179,7 +183,7 @@ public class SignalHandler implements DBusSigHandler {
         try {
             long start = System.nanoTime();
             long nanos = timeout.toNanos();
-            while(!Thread.currentThread().isInterrupted()) {
+            while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {
                     return handler.get();
