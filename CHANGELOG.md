@@ -4,14 +4,13 @@ The [secret-service](https://github.com/swiesend/secret-service) library impleme
 
 ## Unreleased
 
-The 2.0 interface design is to be found on the `develop-2.0.0` branch and has to be merged with the `2.0.0` branch approach.
+The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.com/swiesend/secret-service/tree/develop-2.x.x) branch.
 
-## [1.8.0] - 2022-11-25
+## [1.8.0-jdk17] - 2022-12-12
 
-- `Fixed`:
-  - Make `org.gnome.keyring` optional. The `InternalUnsupportedGuiltRiddenInterface` is not part of the original specification. In order to unlock the `SimpleCollection` with a primary password, the `org.gnome.keyring` needs to be present.  
 - `Changed`:
-  - Require JDK 17.
+  - Make dbus service `org.gnome.keyring` an optional requirement. The `org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface` is not part of the original specification. In order to unlock the `SimpleCollection` with a primary password, the dbus service `org.gnome.keyring` needs to be present. There is the new static method `SimpleCollection.isGnomeKeyringAvailable()` in order to check the Gnome keyring availability separately.
+  - Require **JDK 17** for `dbus-java` upgrade.
   - Update `dbus-java` from `3.3.0` to `4.2.1`. Using the new split library `dbus-java-core` together with `dbus-java-transport-native-unixsocket`.
   - Update `slf4j-api` from `1.7.30` to `2.0.4`.
 
@@ -167,7 +166,7 @@ The 2.0 interface design is to be found on the `develop-2.0.0` branch and has to
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
-[1.8.0]:  https://github.com/swiesend/secret-service/compare/v1.7.0...v1.8.0
+[1.8.0-jdk17]:  https://github.com/swiesend/secret-service/compare/v1.7.0...v1.8.0-jdk17
 [1.7.0]:  https://github.com/swiesend/secret-service/compare/v1.6.2...v1.7.0
 [1.6.2]:  https://github.com/swiesend/secret-service/compare/v1.6.1...v1.6.2
 [1.6.1]:  https://github.com/swiesend/secret-service/compare/v1.6.0...v1.6.1

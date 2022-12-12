@@ -4,7 +4,7 @@
 
 A Java library for storing secrets in a keyring over the D-Bus.
 
-The library is conform to the freedesktop.org
+The library is conforming to the freedesktop.org
 [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with Gnome linux systems.
 
 The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon).
@@ -35,7 +35,7 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>1.8.0</version>
+    <version>1.8.0-jdk17</version>
     <exclusions>
         <exclusion>
             <groupId>org.slf4j</groupId>
