@@ -72,6 +72,8 @@ public class MessageHandler {
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
                     case "org.freedesktop.DBus.Error.UnknownMethod":
                     case "org.freedesktop.DBus.Error.UnknownObject":
+                    case "org.freedesktop.DBus.Error.InvalidArgs":
+                        log.error(error + ": " + Arrays.deepToString(parameters));
                     case "org.freedesktop.DBus.Local.Disconnected":
                     case "org.freedesktop.dbus.exceptions.FatalDBusException":
                     case "org.freedesktop.dbus.exceptions.NotConnected":

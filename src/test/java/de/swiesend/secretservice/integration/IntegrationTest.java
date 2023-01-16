@@ -62,7 +62,7 @@ public class IntegrationTest {
         assertEquals(plain, new String(decrypted));
 
         Service service = transportEncryption.getService();
-        Session session = service.getSession();
+        Session session = transportEncryption.getSession();
 
         InternalUnsupportedGuiltRiddenInterface noPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
         Secret master = encryptedSession.encrypt("test");

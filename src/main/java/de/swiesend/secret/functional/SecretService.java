@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.Collection;
 
 
 enum Activatable {
@@ -81,11 +82,13 @@ public class SecretService extends ServiceInterface {
     // private Prompt prompt = null;
     // private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
     // private org.freedesktop.secret.Session session = null;
-    private boolean isOrgGnomeKeyringAvailable = false;
+
+    private boolean gnomeKeyringAvailable = false;
+
 
     private SecretService(SystemInterface system, AvailableServices available) {
         this.service = new Service(system.getConnection());
-        this.isOrgGnomeKeyringAvailable = available.services.contains(Activatable.GNOME_KEYRING);
+        this.gnomeKeyringAvailable = available.services.contains(Activatable.GNOME_KEYRING);
     }
 
     /**
@@ -147,7 +150,7 @@ public class SecretService extends ServiceInterface {
 
     @Override
     public boolean isOrgGnomeKeyringAvailable() {
-        return isOrgGnomeKeyringAvailable;
+        return this.gnomeKeyringAvailable;
     }
 
     @Override
@@ -156,15 +159,21 @@ public class SecretService extends ServiceInterface {
     }
 
     @Override
-    public Optional<Session> openSession() {
-        return Session.open(this);
+    public Optional<SessionInterface> openSession() {
+        Optional<SessionInterface> session = Session
+                .open(this)
+                .map(s -> {
+                    registerSession(s);
+                    return s;
+                });
+        return session;
     }
 
-    public void registerSession(Session session) {
+    private void registerSession(SessionInterface session) {
         this.sessions.put(session.getId(), session);
     }
 
-    public void unregisterSession(Session session) {
+    private void unregisterSession(SessionInterface session) {
         this.sessions.remove(session.getId());
     }
 
@@ -190,7 +199,13 @@ public class SecretService extends ServiceInterface {
 
     @Override
     public void close() throws Exception {
-
+        // TODO: remove log.info
+        log.info("service close is triggered");
+        List<SessionInterface> values = this.sessions.values().stream().toList();
+        for (SessionInterface session : values) {
+            unregisterSession(session);
+            session.close();
+        }
     }
 
     public Service getService() {

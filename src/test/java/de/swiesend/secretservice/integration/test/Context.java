@@ -9,8 +9,14 @@ import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -37,12 +43,36 @@ public class Context {
 
     public Context(Logger log) {
         this.log = log;
-        this.encrypted = false;
+        this.encrypted = true;
     }
 
     public Context(Logger log, boolean encrypted) {
         this.log = log;
         this.encrypted = encrypted;
+    }
+
+    public static String label(String name, String msg) {
+        return name + ": \"" + msg + "\"";
+    }
+
+    public static String label(String name, int number) {
+        return name + ": " + number;
+    }
+
+    public static String label(String name, long number) {
+        return name + ": " + number;
+    }
+
+    public static String label(String name, BigInteger number) {
+        return name + ": " + number;
+    }
+
+    public static String label(String name, byte[] bytes) {
+        return name + ": " + Arrays.toString(bytes);
+    }
+
+    public static String label(String name, List list) {
+        return name + ": " + Arrays.toString(list.toArray());
     }
 
     public void ensureService() {
@@ -58,7 +88,7 @@ public class Context {
         prompt = new Prompt(service);
     }
 
-    public void ensureSession() {
+    public void ensureSession() throws RuntimeException {
         ensureService();
 
         try {
@@ -70,20 +100,31 @@ public class Context {
                         .orElseThrow(
                                 () -> new IOException("Could not initiate transport encryption.")
                         );
+                session = encryption.getSession();
             } else {
-                service.openSession(Static.Algorithm.PLAIN, new Variant(""));
+                Pair<Variant<byte[]>, ObjectPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant("")).get();
+                session = new Session(pair.b, service);
             }
         } catch (Exception e) {
             log.error("Could not establish transport encryption.", e);
             exit(-2);
         }
 
-        session = service.getSession();
         log.info(session.getObjectPath());
         assertNotNull(session);
         assertTrue(session.getObjectPath().startsWith(Static.ObjectPaths.SESSION + "/s"));
 
-        password = new Secret(session.getPath(), "".getBytes(), "test".getBytes());
+        String test = "test";
+        if (encrypted) {
+            try {
+                password = encryption.encrypt(test);
+            } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException |
+                     InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            password = new Secret(session.getPath(), "".getBytes(), test.getBytes());
+        }
     }
 
     public void ensureCollection() {
@@ -155,30 +196,6 @@ public class Context {
         } catch (InterruptedException e) {
             log.error("Could not disconnect properly from the D-Bus.", e);
         }
-    }
-
-    public static String label(String name, String msg) {
-        return name + ": \"" + msg + "\"";
-    }
-
-    public static String label(String name, int number) {
-        return name + ": " + number;
-    }
-
-    public static String label(String name, long number) {
-        return name + ": " + number;
-    }
-
-    public static String label(String name, BigInteger number) {
-        return name + ": " + number;
-    }
-
-    public static String label(String name, byte[] bytes) {
-        return name + ": " + Arrays.toString(bytes);
-    }
-
-    public static String label(String name, List list) {
-        return name + ": " + Arrays.toString(list.toArray());
     }
 
 

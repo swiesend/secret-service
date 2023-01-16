@@ -13,7 +13,7 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(
             CollectionCreated.class, CollectionChanged.class, CollectionDeleted.class);
     private static final Logger log = LoggerFactory.getLogger(Service.class);
-    private Session session = null;
+    // private Session session = null;
 
     public Service(DBusConnection connection) {
         super(connection, signals,
@@ -29,7 +29,8 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
                 .flatMap(response -> Optional.of(new Pair<>((Variant<byte[]>) response[0], (ObjectPath) response[1])))
                 .map(pair -> {
                     log.debug("Got session: " + pair.b.getPath());
-                    session = new Session(pair.b, this);
+                    // TODO: remove session creation from service
+                    // session = new Session(pair.b, this);
                     return pair;
                 });
     }
@@ -117,8 +118,8 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
         return Static.ObjectPaths.SECRETS;
     }
 
-    public Session getSession() {
+    /*public Session getSession() {
         return session;
-    }
+    }*/
 
 }

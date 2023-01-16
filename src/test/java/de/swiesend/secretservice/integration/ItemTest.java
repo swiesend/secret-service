@@ -9,14 +9,19 @@ import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static de.swiesend.secretservice.integration.test.Context.label;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ItemTest {
 
@@ -58,9 +63,19 @@ public class ItemTest {
 
         String parameters = new String(secret.getSecretParameters(), StandardCharsets.UTF_8);
         log.info(label("parameters", parameters));
-        assertEquals("", parameters);
+        if (context.encrypted == false) assertEquals("", parameters);
 
-        String value = new String(secret.getSecretValue(), StandardCharsets.UTF_8);
+        String value;
+        if (context.encrypted == false) {
+            value = new String(secret.getSecretValue(), StandardCharsets.UTF_8);
+        } else {
+            try {
+                value = new String(context.encryption.decrypt(secret));
+            } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidAlgorithmParameterException |
+                     InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+                throw new RuntimeException(e);
+            }
+        }
         log.info(label("value", value));
         assertEquals("super secret", value);
     }
@@ -79,8 +94,9 @@ public class ItemTest {
         Collection login = new Collection(alias, context.service);
         List<ObjectPath> items = login.getItems().get();
         Item item = new Item(items.get(0), context.service);
-        Secret secret = item.getSecret(context.service.getSession().getPath()).get();
-        log.info(new String(secret.getSecretValue()));
+        Secret secret = item.getSecret(context.session.getPath()).get();
+        log.info("'" + new String(secret.getSecretValue()) + "' [" + new String(secret.getSecretParameters()) + "]");
+
     }
 
     @Test

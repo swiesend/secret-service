@@ -287,7 +287,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                         () -> new IOException("Could not initiate transport encryption.")
                 );
         service = transport.getService();
-        session = service.getSession();
+        session = transport.getSession();
         prompt = new Prompt(service);
         withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
     }

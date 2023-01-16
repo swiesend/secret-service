@@ -36,6 +36,8 @@ public class TransportEncryption implements AutoCloseable {
     private SecretKey sessionKey = null;
     private byte[] yb = null;
 
+    private Session session = null;
+
     public TransportEncryption() throws DBusException {
         DBusConnection connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         this.service = new Service(connection);
@@ -83,6 +85,10 @@ public class TransportEncryption implements AutoCloseable {
         return service;
     }
 
+    public Session getSession() {
+        return session;
+    }
+
     public void clear() {
         if (privateKey != null) try {
             privateKey.destroy();
@@ -99,6 +105,7 @@ public class TransportEncryption implements AutoCloseable {
     @Override
     public void close() {
         clear();
+        if (session != null) session.close();
     }
 
     public class InitializedSession {
@@ -118,6 +125,9 @@ public class TransportEncryption implements AutoCloseable {
             ).flatMap(pair -> {
                 // transform peer's raw Y to a public key
                 yb = pair.a.getValue();
+
+                ObjectPath sessionPath = pair.b;
+                session = new Session(sessionPath, service);
                 return Optional.of(new OpenedSession());
             });
         }
@@ -159,6 +169,11 @@ public class TransportEncryption implements AutoCloseable {
     }
 
     public class EncryptedSession {
+
+        public Session getSession() {
+            return session;
+        }
+
         public Secret encrypt(CharSequence plain) throws NoSuchAlgorithmException, NoSuchPaddingException,
                 InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
 
@@ -193,7 +208,7 @@ public class TransportEncryption implements AutoCloseable {
 
             String contentType = Secret.createContentType(charset);
 
-            return new Secret(service.getSession().getPath(), ivSpec.getIV(), cipher.doFinal(plain), contentType);
+            return new Secret(session.getPath(), ivSpec.getIV(), cipher.doFinal(plain), contentType);
         }
 
         public char[] decrypt(Secret secret) throws NoSuchPaddingException,

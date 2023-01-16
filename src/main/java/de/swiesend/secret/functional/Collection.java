@@ -65,6 +65,7 @@ public class Collection implements CollectionInterface {
 
     private void init(SessionInterface session) {
         this.session = session;
+        // TODO: do not always refer to the default collection
         ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         collection = new org.freedesktop.secret.Collection(path, session.getService().getService());
         prompt = new Prompt(session.getService().getService());
@@ -233,7 +234,9 @@ public class Collection implements CollectionInterface {
 
     @Override
     public void close() throws Exception {
-
+        // TODO: remove log.info
+        log.info("collection close is triggered");
+        if (this.encrypted != null) this.encrypted.close();
     }
 
     private Map<ObjectPath, String> getLabels() {

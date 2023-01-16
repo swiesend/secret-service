@@ -1,51 +1,34 @@
 package de.swiesend.secret.functional;
 
-import de.swiesend.secret.functional.interfaces.ServiceInterface;
-import org.freedesktop.secret.TransportEncryption;
 import de.swiesend.secret.functional.interfaces.CollectionInterface;
+import de.swiesend.secret.functional.interfaces.ServiceInterface;
 import de.swiesend.secret.functional.interfaces.SessionInterface;
 import org.freedesktop.secret.Service;
+import org.freedesktop.secret.TransportEncryption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public class Session implements SessionInterface {
 
     private static final Logger log = LoggerFactory.getLogger(Session.class);
-
-    @Override
-    public TransportEncryption.EncryptedSession getEncryptedSession() {
-        return encryptedSession;
-    }
-
     public TransportEncryption.EncryptedSession encryptedSession = null;
 
+    private List<CollectionInterface> collections = new ArrayList<>();
     private UUID id = null;
-
-    @Override
-    public org.freedesktop.secret.Session getSession() {
-        return session;
-    }
-
-    org.freedesktop.secret.Session session = null;
-
-    @Override
-    public ServiceInterface getService() {
-        return service;
-    }
-
     private ServiceInterface service = null;
 
     private Session(ServiceInterface service, TransportEncryption.EncryptedSession encryptedSession) {
         this.id = UUID.randomUUID();
         this.service = service;
         this.encryptedSession = encryptedSession;
-        this.session = service.getService().getSession();
     }
 
-    public static Optional<Session> open(ServiceInterface service) {
+    public static Optional<SessionInterface> open(ServiceInterface service) {
 
         Service dbusService = service.getService();
 
@@ -55,13 +38,32 @@ public class Session implements SessionInterface {
                 .flatMap(opened -> opened.generateSessionKey())
                 .map(encryptedSession -> {
                     Session session = new Session(service, encryptedSession);
-                    service.registerSession(session);
-                    return session;
+                    return (SessionInterface) session;
                 })
                 .or(() -> {
                     log.error("Could not open transport encrypted session.");
                     return Optional.empty();
                 });
+    }
+
+    @Override
+    public TransportEncryption.EncryptedSession getEncryptedSession() {
+        return encryptedSession;
+    }
+
+    @Override
+    public org.freedesktop.secret.Session getSession() {
+        return this.encryptedSession.getSession();
+    }
+
+    @Override
+    public List<CollectionInterface> getCollections() {
+        return this.collections;
+    }
+
+    @Override
+    public ServiceInterface getService() {
+        return service;
     }
 
     @Override
@@ -72,19 +74,26 @@ public class Session implements SessionInterface {
 
     @Override
     public Optional<CollectionInterface> collection(String label, CharSequence password) {
-        return Optional.of(new Collection(this, label, password));
+        CollectionInterface collection = new Collection(this, label, password);
+        this.collections.add(collection);
+        return Optional.of(collection);
     }
 
     @Override
     public Optional<CollectionInterface> defaultCollection() {
-        return Optional.of(new Collection(this));
+        CollectionInterface collection = new Collection(this);
+        this.collections.add(collection);
+        return Optional.of(collection);
     }
 
     @Override
-    public void close() {
-
+    public void close() throws Exception {
+        for (CollectionInterface collection : this.collections) {
+            collection.close();
+        }
     }
 
+    @Override
     public UUID getId() {
         return id;
     }

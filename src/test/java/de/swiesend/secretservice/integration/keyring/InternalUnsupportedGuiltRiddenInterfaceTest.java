@@ -1,15 +1,12 @@
 package de.swiesend.secretservice.integration.keyring;
 
+import de.swiesend.secretservice.*;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
-import de.swiesend.secretservice.Collection;
-import de.swiesend.secretservice.Secret;
-import de.swiesend.secretservice.Service;
-import de.swiesend.secretservice.Static;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -35,10 +32,11 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     public void beforeEach() throws DBusException {
         connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         service = new Service(connection);
-        service.openSession(Static.Algorithm.PLAIN, new Variant(""));
+        Pair<Variant<byte[]>, ObjectPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant("")).get();
+        ObjectPath sessionPath = pair.b;
         iugri = new InternalUnsupportedGuiltRiddenInterface(service);
-        original = new Secret(service.getSession().getPath(), "".getBytes(), "test".getBytes());
-        master = new Secret(service.getSession().getPath(), "".getBytes(), "master-secret".getBytes());
+        original = new Secret(sessionPath, "".getBytes(), "test".getBytes());
+        master = new Secret(sessionPath, "".getBytes(), "master-secret".getBytes());
         collection = new Collection("test", service);
     }
 
