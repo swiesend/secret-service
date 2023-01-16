@@ -88,10 +88,10 @@
             </exclusions>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-transport-jnr-unixsocket -->
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-transport-native-unixsocket -->
         <dependency>
             <groupId>com.github.hypfvieh</groupId>
-            <artifactId>dbus-java-transport-jnr-unixsocket</artifactId>
+            <artifactId>dbus-java-transport-native-unixsocket</artifactId>
             <version>${dbus-java.version}</version>
             <exclusions>
                 <exclusion>
