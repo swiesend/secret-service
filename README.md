@@ -29,13 +29,13 @@ The library provides a simplified high-level API, which sends only transport enc
 
 ### Dependency
 
-Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version.
+Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version. The current version requires at least _JDK 17_.
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>1.8.0-jdk17</version>
+    <version>1.8.1-jdk17</version>
     <exclusions>
         <exclusion>
             <groupId>org.slf4j</groupId>

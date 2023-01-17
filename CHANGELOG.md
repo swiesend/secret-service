@@ -6,6 +6,14 @@ The [secret-service](https://github.com/swiesend/secret-service) library impleme
 
 The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.com/swiesend/secret-service/tree/develop-2.x.x) branch.
 
+## [1.8.1-jdk17] - 2023-01-17
+
+- `Fixed`:
+  - Actually use `dbus-java-transport-native-unixsocket` instead of `dbus-java-transport-jnr-unixsocket`.
+- `Changed`:
+  - Update `slf4j-api` from `2.0.5` to `2.0.6`.
+  - Update test and plugin libraries.
+
 ## [1.8.0-jdk17] - 2022-12-12
 
 - `Changed`:
