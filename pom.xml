@@ -289,6 +289,15 @@
                     <!-- Set this to true and the release will automatically proceed and sync to Central Repository will follow  -->
                     <autoReleaseAfterClose>false</autoReleaseAfterClose>
                 </configuration>
+                <dependencies>
+                    <!-- TODO: remove once a working `nexus-staging-maven-plugin` version is available -->
+                    <!-- https://mvnrepository.com/artifact/com.thoughtworks.xstream/xstream -->
+                    <dependency>
+                        <groupId>com.thoughtworks.xstream</groupId>
+                        <artifactId>xstream</artifactId>
+                        <version>1.4.14</version>
+                    </dependency>
+                </dependencies>
             </plugin>
             <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-surefire-plugin -->
             <plugin>
