@@ -1,5 +1,6 @@
 package org.freedesktop.secret.interfaces;
 
+import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
@@ -7,9 +8,9 @@ import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.Pair;
-import org.freedesktop.secret.Secret;
-import org.freedesktop.secret.Static;
+import de.swiesend.secretservice.Pair;
+import de.swiesend.secretservice.Secret;
+import de.swiesend.secretservice.Static;
 
 import java.util.List;
 import java.util.Map;
@@ -214,7 +215,7 @@ public interface Service extends DBusInterface {
      * See Also:<br>
      * {@link #lock(List objects)}<br>
      * {@link #unlock(List objects)}<br>
-     * {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#unlockWithMasterPassword(DBusPath collection, Secret master)}<br>
+     * {@link InternalUnsupportedGuiltRiddenInterface#unlockWithMasterPassword(DBusPath collection, Secret master)}<br>
      */
     abstract public void lockService();
 
@@ -227,7 +228,7 @@ public interface Service extends DBusInterface {
      * 
      * <br>
      * See Also:<br>
-     * {@link org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface#changeWithPrompt(DBusPath collection)}<br>
+     * {@link InternalUnsupportedGuiltRiddenInterface#changeWithPrompt(DBusPath collection)}<br>
      */
     abstract public ObjectPath changeLock(ObjectPath collection);
 

@@ -8,9 +8,9 @@ import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.Pair;
-import org.freedesktop.secret.Secret;
-import org.freedesktop.secret.Static;
+import de.swiesend.secretservice.Pair;
+import de.swiesend.secretservice.Secret;
+import de.swiesend.secretservice.Static;
 
 import java.util.List;
 import java.util.Map;
@@ -136,8 +136,8 @@ public interface Collection extends DBusInterface {
      *
      * <br>
      * See Also:<br>
-     * {@link org.freedesktop.secret.Collection#createProperties(String label)}<br>
-     * {@link org.freedesktop.secret.Item#createProperties(String label, Map attributes)}<br>
+     * {@link de.swiesend.secretservice.Collection#createProperties(String label)}<br>
+     * {@link de.swiesend.secretservice.Item#createProperties(String label, Map attributes)}<br>
      * @see Pair
      * @see ObjectPath
      * @see Secret

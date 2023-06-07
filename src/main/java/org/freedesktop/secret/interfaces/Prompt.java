@@ -6,8 +6,8 @@ import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.Static;
-import org.freedesktop.secret.errors.NoSuchObject;
+import de.swiesend.secretservice.Static;
+import de.swiesend.secretservice.errors.NoSuchObject;
 
 @DBusInterfaceName(Static.Interfaces.PROMPT)
 public interface Prompt extends DBusInterface {

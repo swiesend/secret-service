@@ -4,8 +4,8 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.types.UInt64;
-import org.freedesktop.secret.Secret;
-import org.freedesktop.secret.Static;
+import de.swiesend.secretservice.Secret;
+import de.swiesend.secretservice.Static;
 
 import java.util.Map;
 

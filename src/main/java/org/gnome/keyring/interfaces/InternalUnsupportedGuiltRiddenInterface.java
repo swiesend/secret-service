@@ -5,7 +5,7 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.Secret;
+import de.swiesend.secretservice.Secret;
 
 import java.util.Map;
 
