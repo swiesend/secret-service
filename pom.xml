@@ -10,7 +10,7 @@
     <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-rc.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH}-{JDKVERSION} -->
-    <version>1.8.1-jdk17</version>
+    <version>1.9.0-jdk17</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>
