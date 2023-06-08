@@ -6,6 +6,7 @@ module de.swiesend.secretservice {
 
     opens de.swiesend.secretservice to org.freedesktop.dbus;
 
+    exports de.swiesend.secretservice;
     exports de.swiesend.secretservice.simple;
     exports org.freedesktop.secret.interfaces;
     exports org.freedesktop.secret.simple.interfaces;
