@@ -2,7 +2,7 @@ module de.swiesend.secretservice {
     requires java.desktop;
     requires org.freedesktop.dbus;
     requires org.slf4j;
-    requires hkdf;
+    requires at.favre.lib.hkdf;
 
     opens de.swiesend.secretservice to org.freedesktop.dbus;
 
