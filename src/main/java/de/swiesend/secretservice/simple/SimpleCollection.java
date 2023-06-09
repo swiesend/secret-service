@@ -8,7 +8,7 @@ import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.interfaces.Prompt.Completed;
+import de.swiesend.secretservice.interfaces.Prompt.Completed;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +33,7 @@ import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 
-public final class SimpleCollection extends org.freedesktop.secret.simple.interfaces.SimpleCollection {
+public final class SimpleCollection extends de.swiesend.secretservice.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
     private static Thread shutdownHook = setupShutdownHook();

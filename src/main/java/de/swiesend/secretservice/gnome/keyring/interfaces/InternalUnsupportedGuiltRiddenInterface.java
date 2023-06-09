@@ -1,4 +1,4 @@
-package org.gnome.keyring.interfaces;
+package de.swiesend.secretservice.gnome.keyring.interfaces;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;

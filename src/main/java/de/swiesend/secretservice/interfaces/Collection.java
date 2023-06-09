@@ -1,4 +1,4 @@
-package org.freedesktop.secret.interfaces;
+package de.swiesend.secretservice.interfaces;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;

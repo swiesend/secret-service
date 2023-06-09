@@ -6,7 +6,7 @@ import de.swiesend.secretservice.Static;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import de.swiesend.secretservice.handlers.SignalHandler;
-import org.freedesktop.secret.interfaces.Prompt;
+import de.swiesend.secretservice.interfaces.Prompt;
 import de.swiesend.secretservice.integration.test.Context;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;

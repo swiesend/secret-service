@@ -11,7 +11,7 @@ import de.swiesend.secretservice.handlers.Messaging;
 import java.util.Map;
 
 public class InternalUnsupportedGuiltRiddenInterface extends Messaging implements
-        org.gnome.keyring.interfaces.InternalUnsupportedGuiltRiddenInterface {
+        de.swiesend.secretservice.gnome.keyring.interfaces.InternalUnsupportedGuiltRiddenInterface {
 
     public InternalUnsupportedGuiltRiddenInterface(Service service) {
         super(service.getConnection(), null,

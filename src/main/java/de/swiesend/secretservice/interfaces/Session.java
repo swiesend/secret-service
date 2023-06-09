@@ -1,4 +1,4 @@
-package org.freedesktop.secret.interfaces;
+package de.swiesend.secretservice.interfaces;
 
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.interfaces.DBusInterface;

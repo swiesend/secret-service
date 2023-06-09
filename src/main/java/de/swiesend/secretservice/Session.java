@@ -4,7 +4,7 @@ import org.freedesktop.dbus.DBusPath;
 import de.swiesend.secretservice.handlers.Messaging;
 
 
-public class Session extends Messaging implements org.freedesktop.secret.interfaces.Session {
+public class Session extends Messaging implements de.swiesend.secretservice.interfaces.Session {
 
 
     public Session(DBusPath path, Service service) {

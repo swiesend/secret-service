@@ -9,7 +9,7 @@ import de.swiesend.secretservice.handlers.Messaging;
 
 import java.util.*;
 
-public class Collection extends Messaging implements org.freedesktop.secret.interfaces.Collection {
+public class Collection extends Messaging implements de.swiesend.secretservice.interfaces.Collection {
 
     private String id;
 

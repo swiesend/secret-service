@@ -273,7 +273,7 @@ public class SimpleCollectionTest {
         // assertFalse(org.freedesktop.secret.simple.SimpleCollection.isConnected());
 
         // always false, as static methods cannot override interfaces.
-        assertFalse(org.freedesktop.secret.simple.interfaces.SimpleCollection.isConnected());
+        assertFalse(de.swiesend.secretservice.simple.interfaces.SimpleCollection.isConnected());
     }
 
 }

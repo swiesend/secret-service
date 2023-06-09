@@ -7,7 +7,7 @@ import de.swiesend.secretservice.handlers.Messaging;
 
 import java.util.*;
 
-public class Item extends Messaging implements org.freedesktop.secret.interfaces.Item {
+public class Item extends Messaging implements de.swiesend.secretservice.interfaces.Item {
 
     private String id;
 
@@ -65,12 +65,12 @@ public class Item extends Messaging implements org.freedesktop.secret.interfaces
      *
      *  <br>
      *  See Also:<br>
-     *      {@link org.freedesktop.secret.interfaces.Item#getAttributes()}<br>
-     *      {@link org.freedesktop.secret.interfaces.Item#setAttributes(Map attributes)}<br>
-     *      {@link org.freedesktop.secret.interfaces.Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
+     *      {@link de.swiesend.secretservice.interfaces.Item#getAttributes()}<br>
+     *      {@link de.swiesend.secretservice.interfaces.Item#setAttributes(Map attributes)}<br>
+     *      {@link de.swiesend.secretservice.interfaces.Collection#createItem(Map properties, Secret secret, boolean replace)}<br>
      *      {@link Collection#createProperties(String label)}<br>
-     *      {@link org.freedesktop.secret.interfaces.Service#createCollection(Map properties)}<br>
-     *      {@link org.freedesktop.secret.interfaces.Service#createCollection(Map properties, String alias)}<br>
+     *      {@link de.swiesend.secretservice.interfaces.Service#createCollection(Map properties)}<br>
+     *      {@link de.swiesend.secretservice.interfaces.Service#createCollection(Map properties, String alias)}<br>
      */
     public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
         Map<String, Variant> properties = new HashMap();

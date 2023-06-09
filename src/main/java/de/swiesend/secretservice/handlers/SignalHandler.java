@@ -4,9 +4,9 @@ import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusSigHandler;
 import org.freedesktop.dbus.messages.DBusSignal;
-import org.freedesktop.secret.interfaces.Collection;
-import org.freedesktop.secret.interfaces.Prompt;
-import org.freedesktop.secret.interfaces.Service;
+import de.swiesend.secretservice.interfaces.Collection;
+import de.swiesend.secretservice.interfaces.Prompt;
+import de.swiesend.secretservice.interfaces.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

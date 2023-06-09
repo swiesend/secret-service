@@ -1,4 +1,4 @@
-package org.freedesktop.secret.interfaces;
+package de.swiesend.secretservice.interfaces;
 
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.DBusPath;

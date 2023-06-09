@@ -12,7 +12,7 @@ import java.util.List;
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 import static de.swiesend.secretservice.Static.ObjectPaths.PROMPT;
 
-public class Prompt extends Messaging implements org.freedesktop.secret.interfaces.Prompt {
+public class Prompt extends Messaging implements de.swiesend.secretservice.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
 

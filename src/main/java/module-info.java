@@ -8,7 +8,6 @@ module de.swiesend.secretservice {
 
     exports de.swiesend.secretservice;
     exports de.swiesend.secretservice.simple;
-    exports org.freedesktop.secret.interfaces;
-    exports org.freedesktop.secret.simple.interfaces;
-    exports org.gnome.keyring.interfaces;
+    exports de.swiesend.secretservice.interfaces;
+    exports de.swiesend.secretservice.gnome.keyring.interfaces;
 }
