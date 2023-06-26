@@ -16,6 +16,11 @@ public abstract class SystemInterface implements AutoCloseable {
         return null;
     }
 
+    public static boolean isConnected() {
+        log.warn("Do not call the interface method, but the implementation.");
+        return false;
+    }
+
     synchronized public boolean disconnect() {
         log.warn("Do not call the interface method, but the implementation.");
         return false;
