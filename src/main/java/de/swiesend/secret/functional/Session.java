@@ -73,8 +73,8 @@ public class Session implements SessionInterface {
     }
 
     @Override
-    public Optional<CollectionInterface> collection(String label, CharSequence password) {
-        CollectionInterface collection = new Collection(this, label, password);
+    public Optional<CollectionInterface> collection(String label, Optional<CharSequence> maybePassword) {
+        CollectionInterface collection = new Collection(this, label, maybePassword);
         this.collections.add(collection);
         return Optional.of(collection);
     }

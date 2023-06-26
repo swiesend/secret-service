@@ -2,6 +2,7 @@ package de.swiesend.secret.functional;
 
 import de.swiesend.secret.functional.interfaces.SystemInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,7 @@ public class System extends SystemInterface {
     private static DBusConnection connection = null;
 
     private System(DBusConnection connection) {
-        this.connection = connection;
+        System.connection = connection;
     }
 
     /**
@@ -25,15 +26,10 @@ public class System extends SystemInterface {
      */
     public static Optional<System> connect() {
         try {
-            DBusConnection dbus = DBusConnection.newConnection(DBusConnection.DBusBusType.SESSION);
-            System c = new System(dbus);
-            return Optional.of(c);
+            DBusConnection dbus = DBusConnectionBuilder.forSessionBus().build();
+            return Optional.of(new System(dbus));
         } catch (DBusException e) {
-            if (e == null) {
-                log.warn("Could not communicate properly with the D-Bus.");
-            } else {
-                log.warn(String.format("Could not communicate properly with the D-Bus: [%s]: %s", e.getClass().getSimpleName(), e.getMessage()));
-            }
+            log.warn(String.format("Could not communicate properly with the D-Bus: [%s]: %s", e.getClass().getSimpleName(), e.getMessage()));
         }
         return Optional.empty();
     }
@@ -53,12 +49,9 @@ public class System extends SystemInterface {
 
     synchronized public boolean disconnect() {
         connection.disconnect();
-        return connection.isConnected();
+        return !connection.isConnected();
     }
 
-    /*private static Optional<Thread> setupShutdownHook() {
-        return Optional.empty();
-    }*/
     @Override
     public void close() throws Exception {
         connection.close();
