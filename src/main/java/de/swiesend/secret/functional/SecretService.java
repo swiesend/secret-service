@@ -1,15 +1,15 @@
 package de.swiesend.secret.functional;
 
 import de.swiesend.secret.functional.interfaces.*;
-import org.freedesktop.secret.Pair;
-import org.freedesktop.secret.Service;
+import de.swiesend.secretservice.Pair;
+import de.swiesend.secretservice.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
 
-import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
+import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 
 /**
  * Entrypoint for high-level API. Manages Secret-Service sessions and the D-Bus connection.
@@ -18,7 +18,7 @@ public class SecretService extends ServiceInterface {
 
     private static final Logger log = LoggerFactory.getLogger(SecretService.class);
     private Map<UUID, SessionInterface> sessions = new HashMap<>();
-    private org.freedesktop.secret.Service service;
+    private de.swiesend.secretservice.Service service;
 
     private boolean gnomeKeyringAvailable;
 
@@ -96,7 +96,7 @@ public class SecretService extends ServiceInterface {
         }
     }
 
-    public Service getService() {
+    public de.swiesend.secretservice.Service getService() {
         return service;
     }
 }

@@ -3,12 +3,12 @@ package de.swiesend.secret.functional;
 import de.swiesend.secret.functional.interfaces.CollectionInterface;
 import de.swiesend.secret.functional.interfaces.ServiceInterface;
 import de.swiesend.secret.functional.interfaces.SessionInterface;
+import de.swiesend.secretservice.*;
+import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.types.Variant;
-import org.freedesktop.secret.*;
-import org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +21,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.*;
 
-import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
+import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 
 /**
  * Representation of a Secret-Service collection. Main interface to interact with the keyring. Guarantees a valid Secret-Service session.
@@ -30,7 +30,7 @@ public class Collection implements CollectionInterface {
 
     private static final Logger log = LoggerFactory.getLogger(Collection.class);
 
-    org.freedesktop.secret.Collection collection = null;
+    de.swiesend.secretservice.Collection collection = null;
     SessionInterface session = null;
     ServiceInterface service = null;
     DBusConnection connection = null;
@@ -48,7 +48,7 @@ public class Collection implements CollectionInterface {
         init(session);
 
         this.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-        this.collection = new org.freedesktop.secret.Collection(path, connection);
+        this.collection = new de.swiesend.secretservice.Collection(path, connection);
         this.label = collection.getLabel().get();
         this.id = collection.getId();
     }
@@ -77,7 +77,7 @@ public class Collection implements CollectionInterface {
         }
     }
 
-    private Optional<org.freedesktop.secret.Collection> getOrCreateCollection(String label) {
+    private Optional<de.swiesend.secretservice.Collection> getOrCreateCollection(String label) {
         Optional<ObjectPath> maybePath;
 
         if (exists(label)) {
@@ -91,7 +91,7 @@ public class Collection implements CollectionInterface {
 
     private Optional<ObjectPath> createNewCollection(String label) {
         ObjectPath path = null;
-        Map<String, Variant> properties = org.freedesktop.secret.Collection.createProperties(label);
+        Map<String, Variant> properties = de.swiesend.secretservice.Collection.createProperties(label);
 
         if (encryptedCollectionPassword.isEmpty()) {
             path = createCollectionWithPrompt(properties);
@@ -135,13 +135,13 @@ public class Collection implements CollectionInterface {
         return null;
     }
 
-    private Optional<org.freedesktop.secret.Collection> getCollectionFromPath(ObjectPath path, String label) {
+    private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(ObjectPath path, String label) {
         if (path == null) {
             log.error(String.format("Could not acquire collection with label: \"%s\"", label));
             return Optional.empty();
         }
 
-        collection = new org.freedesktop.secret.Collection(path, connection);
+        collection = new de.swiesend.secretservice.Collection(path, connection);
         return Optional.of(collection);
     }
 
@@ -218,13 +218,13 @@ public class Collection implements CollectionInterface {
                                 .flatMap(pair -> Optional.ofNullable(pair.a)
                                         .map(item -> {
                                             if ("/".equals(item.getPath())) { // prompt required
-                                                org.freedesktop.secret.interfaces.Prompt.Completed completed = prompt.await(pair.b);
+                                                de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
                                                 if (completed.dismissed) {
                                                     return item;
                                                 } else {
                                                     return collection
                                                             .getSignalHandler()
-                                                            .getLastHandledSignal(org.freedesktop.secret.Collection.ItemCreated.class)
+                                                            .getLastHandledSignal(de.swiesend.secretservice.Collection.ItemCreated.class)
                                                             .item;
                                                 }
                                             } else {
@@ -476,7 +476,7 @@ public class Collection implements CollectionInterface {
 
         Map<ObjectPath, String> labels = new HashMap();
         for (ObjectPath path : collections) {
-            org.freedesktop.secret.Collection c = new org.freedesktop.secret.Collection(path, connection, null);
+            de.swiesend.secretservice.Collection c = new de.swiesend.secretservice.Collection(path, connection, null);
             labels.put(path, c.getLabel().get());
         }
 

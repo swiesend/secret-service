@@ -3,8 +3,8 @@ package de.swiesend.secret.functional;
 import de.swiesend.secret.functional.interfaces.CollectionInterface;
 import de.swiesend.secret.functional.interfaces.ServiceInterface;
 import de.swiesend.secret.functional.interfaces.SessionInterface;
-import org.freedesktop.secret.Service;
-import org.freedesktop.secret.TransportEncryption;
+import de.swiesend.secretservice.Service;
+import de.swiesend.secretservice.TransportEncryption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +55,7 @@ public class Session implements SessionInterface {
     }
 
     @Override
-    public org.freedesktop.secret.Session getSession() {
+    public de.swiesend.secretservice.Session getSession() {
         return this.encryptedSession.getSession();
     }
 
