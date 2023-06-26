@@ -206,7 +206,7 @@ public class ServiceTest {
         context.ensureSession();
 
         // lock common collections:
-        //   * alias/default == collection/login
+        //   * alias/default == collection/login (if not assigned otherwise)
         //   * collection/login
         //   * collection/session
         ArrayList<ObjectPath> collections = new ArrayList();

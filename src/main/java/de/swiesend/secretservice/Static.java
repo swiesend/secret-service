@@ -205,6 +205,10 @@ public class Static {
             return cs == null || cs.toString().trim().isEmpty();
         }
 
+        public static boolean isNullOrEmpty(final byte[] bytes) {
+            return bytes == null || bytes.toString().trim().isEmpty();
+        }
+
         public static boolean isNullOrEmpty(final String s) {
             return s == null || s.trim().isEmpty();
         }

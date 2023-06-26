@@ -174,44 +174,58 @@ public class TransportEncryption implements AutoCloseable {
             return session;
         }
 
-        public Secret encrypt(CharSequence plain) throws NoSuchAlgorithmException, NoSuchPaddingException,
-                InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
-
+        // TODO: fix interface usage
+        public Optional<Secret> encrypt(CharSequence plain) {
             final byte[] bytes = Secret.toBytes(plain);
+            Optional<Secret> secret = encrypt(bytes, StandardCharsets.UTF_8);
+            Secret.clear(bytes);
+            plain = null; // TODO: find a better way to clear the CharSequence
+            return secret;
+        }
+
+        // TODO: fix interface usage
+        public Optional<Secret> encrypt(byte[] plain, Charset charset) {
+
+            if (Static.Utils.isNullOrEmpty(plain)) return Optional.empty();
+
             try {
-                return encrypt(bytes, StandardCharsets.UTF_8);
+                if (service == null) {
+                    log.error("Missing session. Call Initialized.openSession() first.");
+                    return Optional.empty();
+                }
+                if (sessionKey == null) {
+                    log.error("Missing session key. Call Opened.generateSessionKey() first.");
+                    return Optional.empty();
+                }
+
+                // secret.parameter - 16 byte AES initialization vector
+                final byte[] salt = new byte[toBytes(AES_BITS)];
+                SecureRandom random = SecureRandom.getInstance(Static.Algorithm.SHA1_PRNG);
+                random.nextBytes(salt);
+                IvParameterSpec ivSpec = new IvParameterSpec(salt);
+
+                Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
+                cipher.init(Cipher.ENCRYPT_MODE, sessionKey, ivSpec);
+
+                String contentType = Secret.createContentType(charset);
+
+                return Optional.of(new Secret(session.getPath(), ivSpec.getIV(), cipher.doFinal(plain), contentType));
+            } catch (InvalidAlgorithmParameterException |
+                     InvalidKeyException |
+                     NoSuchPaddingException |
+                     BadPaddingException |
+                     IllegalBlockSizeException |
+                     NoSuchAlgorithmException e) {
+                log.error("Could not encrypt the secret", e);
             } finally {
-                Secret.clear(bytes);
+                Secret.clear(plain);
             }
+            return Optional.empty();
         }
 
-        public Secret encrypt(byte[] plain, Charset charset) throws NoSuchAlgorithmException, NoSuchPaddingException,
-                InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
-
-            if (plain == null) return null;
-
-            if (service == null) {
-                throw new IllegalStateException("Missing session. Call Initialized.openSession() first.");
-            }
-            if (sessionKey == null) {
-                throw new IllegalStateException("Missing session key. Call Opened.generateSessionKey() first.");
-            }
-
-            // secret.parameter - 16 byte AES initialization vector
-            final byte[] salt = new byte[toBytes(AES_BITS)];
-            SecureRandom random = SecureRandom.getInstance(Static.Algorithm.SHA1_PRNG);
-            random.nextBytes(salt);
-            IvParameterSpec ivSpec = new IvParameterSpec(salt);
-
-            Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
-            cipher.init(Cipher.ENCRYPT_MODE, sessionKey, ivSpec);
-
-            String contentType = Secret.createContentType(charset);
-
-            return new Secret(session.getPath(), ivSpec.getIV(), cipher.doFinal(plain), contentType);
-        }
-
-        public char[] decrypt(Secret secret) throws NoSuchPaddingException,
+        // TODO: return Optional; remove exceptions;
+        public char[] decrypt(Secret secret) throws
+                NoSuchPaddingException,
                 NoSuchAlgorithmException,
                 InvalidAlgorithmParameterException,
                 InvalidKeyException,

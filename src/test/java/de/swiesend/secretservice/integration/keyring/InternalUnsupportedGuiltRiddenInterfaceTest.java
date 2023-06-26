@@ -37,7 +37,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         iugri = new InternalUnsupportedGuiltRiddenInterface(service);
         original = new Secret(sessionPath, "".getBytes(), "test".getBytes());
         master = new Secret(sessionPath, "".getBytes(), "master-secret".getBytes());
-        collection = new Collection("test", service);
+        collection = new Collection("test", service.getConnection());
     }
 
     @AfterEach

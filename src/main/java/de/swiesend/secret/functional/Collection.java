@@ -118,7 +118,7 @@ public class Collection implements CollectionInterface {
                  InvalidKeyException |
                  BadPaddingException |
                  IllegalBlockSizeException e) {
-            log.error("Cloud not encrypt the secret.", e);
+            log.error("Could not encrypt the secret.", e);
         }
 
         if (null != item) {

@@ -52,7 +52,7 @@ public class IntegrationTest {
                 );
 
         String plain = "super secret";
-        Secret encrypted = encryptedSession.encrypt(plain);
+        Secret encrypted = encryptedSession.encrypt(plain).get();
 
         byte[] encBase64 = Base64.getEncoder().encode(encrypted.getSecretValue());
         log.info(label("encrypted secret (base64)", new String(encBase64)));
@@ -65,21 +65,21 @@ public class IntegrationTest {
         Session session = transportEncryption.getSession();
 
         InternalUnsupportedGuiltRiddenInterface noPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
-        Secret master = encryptedSession.encrypt("test");
-        Collection collection = new Collection("test", service);
+        Secret master = encryptedSession.encrypt("test").get();
+        Collection collection = new Collection("test", service.getConnection());
         List<String> collections = Static.Convert.toStrings(service.getCollections().get());
 
         if (collections.contains(collection.getObjectPath())) {
             noPrompt.unlockWithMasterPassword(collection.getPath(), master);
         } else {
-            HashMap<String, Variant> properties = new HashMap();
-            properties.put("org.freedesktop.Secret.Collection.Label", new Variant("test"));
+            HashMap<String, Variant> properties = new HashMap<>();
+            properties.put("org.freedesktop.Secret.Collection.Label", new Variant<>("test"));
             ObjectPath collectionPath = noPrompt.createWithMasterPassword(properties, master).get();
             log.info("created collection: " + collectionPath.getPath());
         }
 
         // create item with secret
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("transport", "encrypted");
         attributes.put("algorithm", "AES");
         attributes.put("bits", "128");

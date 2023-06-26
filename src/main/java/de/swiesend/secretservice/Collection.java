@@ -2,6 +2,7 @@ package de.swiesend.secretservice;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
@@ -16,8 +17,8 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
             ItemCreated.class, ItemChanged.class, ItemDeleted.class);
     private String id;
 
-    public Collection(DBusPath path, Service service) {
-        super(service.getConnection(), signals,
+    public Collection(DBusPath path, DBusConnection connection) {
+        super(connection, signals,
                 Static.Service.SECRETS,
                 path.getPath(),
                 Static.Interfaces.COLLECTION);
@@ -25,8 +26,8 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
         this.id = split[split.length - 1];
     }
 
-    public Collection(DBusPath path, Service service, List<Class<? extends DBusSignal>> signals) {
-        super(service.getConnection(), signals,
+    public Collection(DBusPath path, DBusConnection connection, List<Class<? extends DBusSignal>> signals) {
+        super(connection, signals,
                 Static.Service.SECRETS,
                 path.getPath(),
                 Static.Interfaces.COLLECTION);
@@ -34,8 +35,8 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
         this.id = split[split.length - 1];
     }
 
-    public Collection(String id, Service service) {
-        super(service.getConnection(), signals,
+    public Collection(String id, DBusConnection connection) {
+        super(connection, signals,
                 Static.Service.SECRETS,
                 Static.ObjectPaths.collection(id),
                 Static.Interfaces.COLLECTION);

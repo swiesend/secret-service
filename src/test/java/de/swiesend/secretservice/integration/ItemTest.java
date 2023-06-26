@@ -91,7 +91,7 @@ public class ItemTest {
         //
 
         DBusPath alias = new DBusPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-        Collection login = new Collection(alias, context.service);
+        Collection login = new Collection(alias, context.service.getConnection());
         List<ObjectPath> items = login.getItems().get();
         Item item = new Item(items.get(0), context.service);
         Secret secret = item.getSecret(context.session.getPath()).get();

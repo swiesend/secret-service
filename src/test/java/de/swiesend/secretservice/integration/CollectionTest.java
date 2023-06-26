@@ -99,7 +99,7 @@ public class CollectionTest {
     @Test
     @Disabled
     public void getLabel() {
-        Collection collection = new Collection("login", context.service);
+        Collection collection = new Collection("login", context.service.getConnection());
         String response = collection.getLabel().get();
         log.info(response);
         List<String> labels = Arrays.asList(new String[]{
@@ -139,17 +139,17 @@ public class CollectionTest {
         Collection collection;
         UInt64 response;
 
-        collection = new Collection("test", context.service);
+        collection = new Collection("test", context.service.getConnection());
         response = collection.created().get();
         log.info("test: " + response);
         assertTrue(response.longValue() >= 0L);
 
-        collection = new Collection("login", context.service);
+        collection = new Collection("login", context.service.getConnection());
         response = collection.created().get();
         log.info("login: " + response);
         assertTrue(response.longValue() >= 0L);
 
-        collection = new Collection("session", context.service);
+        collection = new Collection("session", context.service.getConnection());
         response = collection.created().get();
         log.info("session: " + response);
         assertTrue(response.longValue() == 0L);
@@ -161,16 +161,16 @@ public class CollectionTest {
         Collection collection;
         UInt64 response;
 
-        collection = new Collection("test", context.service);
+        collection = new Collection("test", context.service.getConnection());
         response = collection.modified().get();
         log.info("test: " + response);
         assertTrue(response.longValue() >= 0L);
-        collection = new Collection("login", context.service);
+        collection = new Collection("login", context.service.getConnection());
         response = collection.modified().get();
         log.info("login: " + response);
         assertTrue(response.longValue() >= 0L);
 
-        collection = new Collection("session", context.service);
+        collection = new Collection("session", context.service.getConnection());
         response = collection.modified().get();
         log.info("session: " + response);
         assertTrue(response.longValue() == 0L);
@@ -178,7 +178,7 @@ public class CollectionTest {
 
     @Test
     public void isRemote() {
-        Collection collection = new Collection("test", context.service);
+        Collection collection = new Collection("test", context.service.getConnection());
         assertFalse(collection.isRemote());
     }
 
@@ -188,11 +188,11 @@ public class CollectionTest {
         log.info(test);
         assertEquals("/org/freedesktop/secrets/collection/test", test);
 
-        Collection login = new Collection("login", context.service);
+        Collection login = new Collection("login", context.service.getConnection());
         log.info(login.getObjectPath());
         assertEquals("/org/freedesktop/secrets/collection/login", login.getObjectPath());
 
-        Collection session = new Collection("session", context.service);
+        Collection session = new Collection("session", context.service.getConnection());
         log.info(session.getObjectPath());
         assertEquals("/org/freedesktop/secrets/collection/session", session.getObjectPath());
     }

@@ -56,7 +56,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         try {
             init();
             ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-            collection = new Collection(path, service);
+            collection = new Collection(path, connection);
         } catch (RuntimeException e) {
             throw new IOException("Could not initialize the secret service.", e);
         }
@@ -82,20 +82,16 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         try {
             init();
             if (password != null) {
-                try {
-                    encrypted = transportEncryptedSession.encrypt(password);
-                } catch (NoSuchAlgorithmException |
-                         NoSuchPaddingException |
-                         InvalidAlgorithmParameterException |
-                         InvalidKeyException |
-                         BadPaddingException |
-                         IllegalBlockSizeException e) {
-                    log.error("Could not establish transport encryption.", e);
+                Optional<Secret> maybeEncrypted = transportEncryptedSession.encrypt(password);
+                if (maybeEncrypted.isPresent()) {
+                    encrypted = maybeEncrypted.get();
+                } else {
+                    log.error("Could not establish transport encryption.");
                 }
             }
             if (exists(label)) {
                 ObjectPath path = getCollectionPath(label);
-                collection = new Collection(path, service);
+                collection = new Collection(path, connection);
             } else {
                 DBusPath path = null;
                 Map<String, Variant> properties = Collection.createProperties(label);
@@ -122,7 +118,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
                 if (path == null) throw new IOException("Could not acquire a path for the prompt.");
 
-                collection = new Collection(path, service);
+                collection = new Collection(path, connection);
             }
         } catch (RuntimeException e) {
             throw new IOException("Could not initialize the secret service.", e);
@@ -297,7 +293,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
         Map<ObjectPath, String> labels = new HashMap();
         for (ObjectPath path : collections) {
-            Collection c = new Collection(path, service, null);
+            Collection c = new Collection(path, connection, null);
             labels.put(path, c.getLabel().get());
         }
 
@@ -467,33 +463,32 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
         unlock();
 
-        DBusPath item = null;
-        final Map<String, Variant> properties = Item.createProperties(label, attributes);
-        try (final Secret secret = transportEncryptedSession.encrypt(password)) {
-            Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false).get();
-            if (response == null) return null;
-            item = response.a;
-            if ("/".equals(item.getPath())) {
-                Completed completed = prompt.await(response.b);
-                if (!completed.dismissed) {
-                    Collection.ItemCreated ic = collection.getSignalHandler().getLastHandledSignal(Collection.ItemCreated.class);
-                    item = ic.item;
-                }
-            }
-        } catch (NoSuchAlgorithmException |
-                 NoSuchPaddingException |
-                 InvalidAlgorithmParameterException |
-                 InvalidKeyException |
-                 BadPaddingException |
-                 IllegalBlockSizeException e) {
-            log.error("Could not encrypt the secret.", e);
-        }
-
-        if (null != item) {
-            return item.getPath();
-        } else {
-            return null;
-        }
+        return transportEncryptedSession
+                .encrypt(password)
+                .flatMap(secret -> {
+                    try (secret) { // auto-close
+                        final Map<String, Variant> properties = Item.createProperties(label, attributes);
+                        return collection.createItem(properties, secret, false)
+                                .flatMap(pair -> Optional.ofNullable(pair.a)
+                                        .map(item -> {
+                                            if ("/".equals(item.getPath())) { // prompt required
+                                                org.freedesktop.secret.interfaces.Prompt.Completed completed = prompt.await(pair.b);
+                                                if (completed.dismissed) {
+                                                    return item;
+                                                } else {
+                                                    return collection
+                                                            .getSignalHandler()
+                                                            .getLastHandledSignal(org.freedesktop.secret.Collection.ItemCreated.class)
+                                                            .item;
+                                                }
+                                            } else {
+                                                return item;
+                                            }
+                                        })
+                                        .map(DBusPath::getPath));
+                    }
+                })
+                .orElse(null);
     }
 
     /**
@@ -537,15 +532,14 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
             item.setAttributes(attributes);
         }
 
-        if (password != null) try (Secret secret = transportEncryptedSession.encrypt(password)) {
-            item.setSecret(secret);
-        } catch (NoSuchAlgorithmException |
-                 NoSuchPaddingException |
-                 InvalidAlgorithmParameterException |
-                 InvalidKeyException |
-                 BadPaddingException |
-                 IllegalBlockSizeException e) {
-            log.error("Could not encrypt the secret.", e);
+        if (password != null) {
+            transportEncryptedSession.encrypt(password).map(secret -> {
+                try (secret) {
+                    boolean success = item.setSecret(secret);
+                    if (!success) log.error("Could not set the secret.");
+                    return success;
+                }
+            });
         }
     }
 

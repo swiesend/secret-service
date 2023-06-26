@@ -64,7 +64,7 @@ public class PromptTest {
         List<ObjectPath> cs = Arrays.asList(context.collection.getPath());
         context.service.lock(cs);
         SignalHandler handler = context.service.getSignalHandler();
-        Collection defaultCollection = new Collection("login", context.service);
+        Collection defaultCollection = new Collection("login", context.service.getConnection());
         boolean expected = defaultCollection.isLocked();
         Thread.currentThread().sleep(500L);
 

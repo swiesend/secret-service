@@ -102,7 +102,7 @@ public class Context {
                         );
                 session = encryption.getSession();
             } else {
-                Pair<Variant<byte[]>, ObjectPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant("")).get();
+                Pair<Variant<byte[]>, ObjectPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant<>("")).get();
                 session = new Session(pair.b, service);
             }
         } catch (Exception e) {
@@ -116,12 +116,7 @@ public class Context {
 
         String test = "test";
         if (encrypted) {
-            try {
-                password = encryption.encrypt(test);
-            } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException |
-                     InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
-                throw new RuntimeException(e);
-            }
+            password = encryption.encrypt(test).get();
         } else {
             password = new Secret(session.getPath(), "".getBytes(), test.getBytes());
         }
@@ -130,7 +125,7 @@ public class Context {
     public void ensureCollection() {
         ensureSession();
 
-        collection = new Collection("test", service);
+        collection = new Collection("test", service.getConnection());
 
         collections = Static.Convert.toStrings(service.getCollections().get());
         if (collections.contains(Static.ObjectPaths.collection("test"))) {
@@ -152,7 +147,7 @@ public class Context {
     public void ensureItem() {
         ensureCollection();
 
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
         attributes.put("Attribute2", "Value2");
 
@@ -161,7 +156,7 @@ public class Context {
 
         if (encrypted) {
             try {
-                secret = encryption.encrypt(plain);
+                secret = encryption.encrypt(plain).get();
                 attributes.put("TransportEncryption", "yes");
             } catch (Exception e) {
                 log.error("Could not encrypt the secret.", e);
