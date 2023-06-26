@@ -11,7 +11,9 @@ import java.util.*;
 
 import static org.freedesktop.secret.Static.DEFAULT_PROMPT_TIMEOUT;
 
-
+/**
+ * Entrypoint for high-level API. Manages Secret-Service sessions and the D-Bus connection.
+ */
 public class SecretService extends ServiceInterface {
 
     private static final Logger log = LoggerFactory.getLogger(SecretService.class);

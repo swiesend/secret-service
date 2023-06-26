@@ -13,6 +13,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Manages a Secret-Service session on top of a D-Bus session.
+ */
 public class Session implements SessionInterface {
 
     private static final Logger log = LoggerFactory.getLogger(Session.class);

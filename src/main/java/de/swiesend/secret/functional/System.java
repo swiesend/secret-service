@@ -9,6 +9,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
+/**
+ * Manages the D-Bus connection on the system.
+ */
 public class System extends SystemInterface {
 
     private static final Logger log = LoggerFactory.getLogger(System.class);
@@ -20,9 +23,9 @@ public class System extends SystemInterface {
     }
 
     /**
-     * Try to get a new DBus connection.
+     * Try to get a new D-Bus connection.
      *
-     * @return a new DBusConnection or Optional.empty()
+     * @return a new `DBusConnection` or `Optional.empty()`
      */
     public static Optional<System> connect() {
         try {

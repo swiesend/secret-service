@@ -23,6 +23,9 @@ import java.util.*;
 
 import static org.freedesktop.secret.Static.DBus.DEFAULT_DELAY_MILLIS;
 
+/**
+ * Representation of a Secret-Service collection. Main interface to interact with the keyring. Guarantees a valid Secret-Service session.
+ */
 public class Collection implements CollectionInterface {
 
     private static final Logger log = LoggerFactory.getLogger(Collection.class);
