@@ -8,8 +8,6 @@ import java.util.UUID;
 
 public interface SessionInterface extends AutoCloseable {
 
-    boolean clear();
-
     Optional<CollectionInterface> collection(String label, Optional<CharSequence> maybePassword);
 
     Optional<CollectionInterface> defaultCollection();

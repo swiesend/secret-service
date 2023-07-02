@@ -70,12 +70,6 @@ public class Session implements SessionInterface {
     }
 
     @Override
-    public boolean clear() {
-        // TODO: to be implemented
-        return false;
-    }
-
-    @Override
     public Optional<CollectionInterface> collection(String label, Optional<CharSequence> maybePassword) {
         CollectionInterface collection = new Collection(this, label, maybePassword);
         this.collections.add(collection);
@@ -94,6 +88,7 @@ public class Session implements SessionInterface {
         for (CollectionInterface collection : this.collections) {
             collection.close();
         }
+        encryptedSession.getSession().close();
     }
 
     @Override
