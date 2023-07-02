@@ -12,7 +12,7 @@ import de.swiesend.secretservice.errors.NoSuchObject;
 @DBusInterfaceName(Static.Interfaces.PROMPT)
 public interface Prompt extends DBusInterface {
 
-    public static class Completed extends DBusSignal {
+    class Completed extends DBusSignal {
         public final boolean dismissed;
         public final Variant result;
 
@@ -40,21 +40,20 @@ public interface Prompt extends DBusInterface {
      * 
      * @see Completed
      */
-    abstract public void prompt(String window_id);
+    boolean prompt(String window_id);
 
     /**
      * Perform the prompt.
      * 
      * @param prompt        Objectpath of the prompt.
-     * @throws NoSuchObject No such item or collection exists.
      * 
      * @see Completed
      */
-    abstract public void prompt(ObjectPath prompt) throws NoSuchObject;
+    boolean prompt(ObjectPath prompt);
 
     /**
      * Dismiss the prompt.
      */
-    abstract public void dismiss();
+    boolean dismiss();
 
 }

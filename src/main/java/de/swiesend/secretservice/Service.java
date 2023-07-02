@@ -5,17 +5,16 @@ import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.handlers.Messaging;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class Service extends Messaging implements de.swiesend.secretservice.interfaces.Service {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(
             CollectionCreated.class, CollectionChanged.class, CollectionDeleted.class);
-    private Session session = null;
+    private static final Logger log = LoggerFactory.getLogger(Service.class);
 
     public Service(DBusConnection connection) {
         super(connection, signals,
@@ -25,88 +24,87 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     }
 
     @Override
-    public Pair<Variant<byte[]>, ObjectPath> openSession(String algorithm, Variant input) {
-        Object[] params = send("OpenSession", "sv", algorithm, input);
-        if (params == null) return null;
-        session = new Session((ObjectPath) params[1], this);
-        return new Pair(params[0], params[1]);
+    public Optional<Pair<Variant<byte[]>, ObjectPath>> openSession(String algorithm, Variant input) {
+        return send("OpenSession", "sv", algorithm, input)
+                .filter(response -> !Static.Utils.isNullOrEmpty(response) && response.length == 2)
+                .flatMap(response -> Optional.of(new Pair<>((Variant<byte[]>) response[0], (ObjectPath) response[1])))
+                .map(pair -> {
+                    log.debug("Got session: " + pair.b.getPath());
+                    return pair;
+                });
     }
 
     @Override
-    public Pair<ObjectPath, ObjectPath> createCollection(Map<String, Variant> properties, String alias) {
-        String a;
-        if (alias == null) {
-            a = "";
-        } else {
-            a = alias;
-        }
-        Object[] params = send("CreateCollection", "a{sv}s", properties, a);
-        if (params == null) return null;
-        return new Pair(params[0], params[1]);
+    public Optional<Pair<ObjectPath, ObjectPath>> createCollection(Map<String, Variant> properties, String alias) {
+        String a = alias == null ? "" : alias;
+        return send("CreateCollection", "a{sv}s", properties, a).flatMap(response ->
+                (Static.Utils.isNullOrEmpty(response) || response.length != 2) ?
+                        Optional.empty() :
+                        Optional.of(new Pair<ObjectPath, ObjectPath>((ObjectPath) response[0], (ObjectPath) response[1])));
     }
 
     @Override
-    public Pair<ObjectPath, ObjectPath> createCollection(Map<String, Variant> properties) {
+    public Optional<Pair<ObjectPath, ObjectPath>> createCollection(Map<String, Variant> properties) {
         return createCollection(properties, "");
     }
 
     @Override
-    public Pair<List<ObjectPath>, List<ObjectPath>> searchItems(Map<String, String> attributes) {
-        Object[] params = send("SearchItems", "a{ss}", attributes);
-        if (params == null) return null;
-        return new Pair(params[0], params[1]);
+    public Optional<Pair<List<ObjectPath>, List<ObjectPath>>> searchItems(Map<String, String> attributes) {
+        return send("SearchItems", "a{ss}", attributes).flatMap(response ->
+                (Static.Utils.isNullOrEmpty(response) || response.length != 2) ?
+                        Optional.empty() :
+                        Optional.of(new Pair<List<ObjectPath>, List<ObjectPath>>((List<ObjectPath>) response[0], (List<ObjectPath>) response[1])));
     }
 
     @Override
-    public Pair<List<ObjectPath>, ObjectPath> unlock(List<ObjectPath> objects) {
-        Object[] params = send("Unlock", "ao", objects);
-        if (params == null) return null;
-        return new Pair(params[0], params[1]);
+    public Optional<Pair<List<ObjectPath>, ObjectPath>> unlock(List<ObjectPath> objects) {
+        return send("Unlock", "ao", objects).flatMap(response ->
+                (Static.Utils.isNullOrEmpty(response) || response.length != 2) ?
+                        Optional.empty() :
+                        Optional.of(new Pair<List<ObjectPath>, ObjectPath>((List<ObjectPath>) response[0], (ObjectPath) response[1])));
     }
 
     @Override
-    public Pair<List<ObjectPath>, ObjectPath> lock(List<ObjectPath> objects) {
-        Object[] params = send("Lock", "ao", objects);
-        if (params == null) return null;
-        return new Pair(params[0], params[1]);
+    public Optional<Pair<List<ObjectPath>, ObjectPath>> lock(List<ObjectPath> objects) {
+        return send("Lock", "ao", objects).flatMap(response ->
+                (Static.Utils.isNullOrEmpty(response) || response.length != 2) ?
+                        Optional.empty() :
+                        Optional.of(new Pair<List<ObjectPath>, ObjectPath>((List<ObjectPath>) response[0], (ObjectPath) response[1])));
     }
 
     @Override
-    public void lockService() {
-        send("LockService", "");
+    public boolean lockService() {
+        return send("LockService", "").isPresent();
     }
 
     @Override
-    public ObjectPath changeLock(ObjectPath collection) {
-        Object[] params = send("ChangeLock", "o", collection);
-        if (params == null) return null;
-        return (ObjectPath) params[0];
+    public Optional<ObjectPath> changeLock(ObjectPath collection) {
+        return send("ChangeLock", "o", collection).flatMap(response ->
+                Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((ObjectPath) response[0]));
     }
 
     @Override
-    public Map<ObjectPath, Secret> getSecrets(List<ObjectPath> items, ObjectPath session) {
-        Object[] params = send("GetSecrets", "aoo", items, session);
-        if (params == null) return null;
-        return (Map<ObjectPath, Secret>) params[0];
+    public Optional<Map<ObjectPath, Secret>> getSecrets(List<ObjectPath> items, ObjectPath session) {
+        return send("GetSecrets", "aoo", items, session).flatMap(response ->
+                Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((Map<ObjectPath, Secret>) response[0]));
     }
 
     @Override
-    public ObjectPath readAlias(String name) {
-        Object[] params = send("ReadAlias", "s", name);
-        if (params == null) return null;
-        return (ObjectPath) params[0];
+    public Optional<ObjectPath> readAlias(String name) {
+        return send("ReadAlias", "s", name).flatMap(response ->
+                Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((ObjectPath) response[0]));
     }
 
     @Override
-    public void setAlias(String name, ObjectPath collection) {
-        send("SetAlias", "so", name, collection);
+    public boolean setAlias(String name, ObjectPath collection) {
+        return send("SetAlias", "so", name, collection).isPresent();
     }
 
     @Override
-    public List<ObjectPath> getCollections() {
-        Variant response = getProperty("Collections");
-        if (response == null) return null;
-        return (ArrayList<ObjectPath>) response.getValue();
+    public Optional<List<ObjectPath>> getCollections() {
+        return getProperty("Collections").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((ArrayList<ObjectPath>) variant.getValue())
+        );
     }
 
     @Override
@@ -117,10 +115,6 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     @Override
     public String getObjectPath() {
         return Static.ObjectPaths.SECRETS;
-    }
-
-    public Session getSession() {
-        return session;
     }
 
 }

@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.Static;
+import de.swiesend.secretservice.Static.Utils;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -32,25 +33,34 @@ public class StaticTest {
     @Test
     public void isNullOrEmptyCharSeq() {
         CharSequence nullCharSeq = null;
-        assertTrue(Static.isNullOrEmpty(nullCharSeq));
+        assertTrue(Utils.isNullOrEmpty(nullCharSeq));
         CharSequence emptyCharSeq = "";
-        assertTrue(Static.isNullOrEmpty(emptyCharSeq));
+        assertTrue(Utils.isNullOrEmpty(emptyCharSeq));
         CharSequence blankCharSeq = " ";
-        assertTrue(Static.isNullOrEmpty(blankCharSeq));
+        assertTrue(Utils.isNullOrEmpty(blankCharSeq));
         CharSequence nonEmptyCharSeq = "not empty";
-        assertFalse(Static.isNullOrEmpty(nonEmptyCharSeq));
+        assertFalse(Utils.isNullOrEmpty(nonEmptyCharSeq));
     }
 
     @Test
     public void isNullOrEmptyStr() {
         String nullStr = null;
-        assertTrue(Static.isNullOrEmpty(nullStr));
+        assertTrue(Utils.isNullOrEmpty(nullStr));
         String emptyStr = "";
-        assertTrue(Static.isNullOrEmpty(emptyStr));
+        assertTrue(Utils.isNullOrEmpty(emptyStr));
         String blankStr = " ";
-        assertTrue(Static.isNullOrEmpty(blankStr));
+        assertTrue(Utils.isNullOrEmpty(blankStr));
         String nonEmptyStr = "not empty";
-        assertFalse(Static.isNullOrEmpty(nonEmptyStr));
+        assertFalse(Utils.isNullOrEmpty(nonEmptyStr));
+    }
+
+    @Test
+    public void isNullOrEmptyArrayOfObjects() {
+        assertTrue(Utils.isNullOrEmpty((Object[]) null));
+        Object[] emptyArrayOfObj = new Object[0];
+        assertTrue(Utils.isNullOrEmpty(emptyArrayOfObj));
+        Object[] nonEmptyArrayOfObj = new Object[]{new Object()};
+        assertFalse(Utils.isNullOrEmpty(nonEmptyArrayOfObj));
     }
 
 }

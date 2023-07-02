@@ -8,6 +8,7 @@ import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.Secret;
 
 import java.util.Map;
+import java.util.Optional;
 
 @DBusInterfaceName("org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface")
 public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
@@ -21,7 +22,7 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * @param original      The current password.
      * @param master        The new password.
      */
-    void changeWithMasterPassword(DBusPath collection, Secret original, Secret master);
+    boolean changeWithMasterPassword(DBusPath collection, Secret original, Secret master);
 
     /**
      * Toggle the lock of a collection.
@@ -30,7 +31,7 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      *
      * @return The ObjectPath of the collection.
      */
-    ObjectPath changeWithPrompt(DBusPath collection);
+    Optional<ObjectPath> changeWithPrompt(DBusPath collection);
 
     /**
      * Create a collection with a password without prompting.
@@ -40,7 +41,7 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * 
      * @return  The ObjectPath of the created collection.
      */
-    ObjectPath createWithMasterPassword(Map<String, Variant> properties, Secret master);
+    Optional<ObjectPath> createWithMasterPassword(Map<String, Variant> properties, Secret master);
 
     /**
      * Unlock a collection without prompting.
@@ -48,6 +49,6 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * @param collection    The ObjectPath of the collection.
      * @param master        The password of the collection.
      */
-    void unlockWithMasterPassword(DBusPath collection, Secret master);
+    boolean unlockWithMasterPassword(DBusPath collection, Secret master);
 
 }

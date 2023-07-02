@@ -7,18 +7,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class Static {
 
     public static final Duration DEFAULT_PROMPT_TIMEOUT = Duration.ofSeconds(120);
-
-    public static boolean isNullOrEmpty(final CharSequence cs) {
-        return cs == null || cs.toString().trim().isEmpty();
-    }
-
-    public static boolean isNullOrEmpty(final String s) {
-        return s == null || s.trim().isEmpty();
-    }
 
     public static class DBus {
 
@@ -181,6 +174,14 @@ public class Static {
             return new ObjectPath("", path);
         }
 
+        public static Optional<ObjectPath> toObjectPath(Object obj) {
+            try {
+                return Optional.of((ObjectPath) obj);
+            } catch (ClassCastException e) {
+                return Optional.empty();
+            }
+        }
+
         public static List<String> toStrings(List<ObjectPath> paths) {
             ArrayList<String> ps = new ArrayList();
             for (ObjectPath p : paths) {
@@ -197,6 +198,24 @@ public class Static {
             return ps;
         }
 
+    }
+
+    public static class Utils {
+        public static boolean isNullOrEmpty(final CharSequence cs) {
+            return cs == null || cs.toString().trim().isEmpty();
+        }
+
+        public static boolean isNullOrEmpty(final byte[] bytes) {
+            return bytes == null || bytes.toString().trim().isEmpty();
+        }
+
+        public static boolean isNullOrEmpty(final String s) {
+            return s == null || s.trim().isEmpty();
+        }
+
+        public static boolean isNullOrEmpty(Object[] objects) {
+            return objects == null || objects.length == 0;
+        }
     }
 
     /**
