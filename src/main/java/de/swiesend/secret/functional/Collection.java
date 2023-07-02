@@ -181,8 +181,6 @@ public class Collection implements CollectionInterface {
     public boolean clear() {
         if (encryptedCollectionPassword.isPresent()) {
             encryptedCollectionPassword.get().clear();
-            // TODO: remove log statement
-            log.info("collection password: " + encryptedCollectionPassword.get().getSecretValue());
         }
         return true;
     }
