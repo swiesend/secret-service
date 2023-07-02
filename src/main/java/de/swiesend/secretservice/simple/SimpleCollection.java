@@ -472,13 +472,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                                 .flatMap(pair -> Optional.ofNullable(pair.a)
                                         .map(item -> {
                                             if ("/".equals(item.getPath())) { // prompt required
-                                                org.freedesktop.secret.interfaces.Prompt.Completed completed = prompt.await(pair.b);
+                                                de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
                                                 if (completed.dismissed) {
                                                     return item;
                                                 } else {
                                                     return collection
                                                             .getSignalHandler()
-                                                            .getLastHandledSignal(org.freedesktop.secret.Collection.ItemCreated.class)
+                                                            .getLastHandledSignal(de.swiesend.secretservice.Collection.ItemCreated.class)
                                                             .item;
                                                 }
                                             } else {
