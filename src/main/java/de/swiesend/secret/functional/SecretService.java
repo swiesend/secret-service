@@ -45,12 +45,6 @@ public class SecretService extends ServiceInterface {
     }
 
     @Override
-    public boolean clear() {
-        // TODO: implement
-        return false;
-    }
-
-    @Override
     public Optional<SessionInterface> openSession() {
         Optional<SessionInterface> session = Session
                 .open(this)
@@ -86,7 +80,6 @@ public class SecretService extends ServiceInterface {
 
     @Override
     public void close() throws Exception {
-        this.clear();
         List<SessionInterface> values = getSessions();
         if (values != null) {
             for (SessionInterface session : values) {

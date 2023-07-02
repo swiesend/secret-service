@@ -1,8 +1,8 @@
 package de.swiesend.secret.functional.interfaces;
 
 import de.swiesend.secret.functional.System;
-import org.freedesktop.dbus.connections.impl.DBusConnection;
 import de.swiesend.secretservice.TransportEncryption;
+import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,8 +85,6 @@ public abstract class ServiceInterface implements AutoCloseable {
             return false;
         }
     }
-
-    abstract public boolean clear();
 
     abstract public Optional<SessionInterface> openSession();
 
