@@ -193,11 +193,6 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
             }
-            // TODO: remove comment
-            /*catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
-                log.error("The secret service could not be initialized as the service does not provide the expected transport encryption algorithm.", e);
-                return false;
-            }*/
         } else {
             log.error("No D-Bus connection: Cannot check if all needed services are available.");
             return false;
