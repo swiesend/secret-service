@@ -1,6 +1,8 @@
 package de.swiesend.secretservice.simple;
 
+import de.swiesend.secretservice.Collection;
 import de.swiesend.secretservice.*;
+import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
@@ -8,20 +10,11 @@ import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.types.Variant;
-import de.swiesend.secretservice.Collection;
-import de.swiesend.secretservice.interfaces.Prompt.Completed;
-import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import java.io.IOException;
 import java.security.AccessControlException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.RejectedExecutionException;
@@ -599,19 +592,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
         final Item item = getItem(objectPath);
 
-        char[] decrypted = null;
+        Optional<char[]> decrypted = null;
         ObjectPath sessionPath = session.getPath();
         try (final Secret secret = item.getSecret(sessionPath).orElseGet(() -> new Secret(sessionPath, null))) {
-            decrypted = transportEncryptedSession.decrypt(secret);
-        } catch (NoSuchPaddingException |
-                 NoSuchAlgorithmException |
-                 InvalidAlgorithmParameterException |
-                 InvalidKeyException |
-                 BadPaddingException |
-                 IllegalBlockSizeException e) {
-            log.error("Could not decrypt the secret.", e);
+            return transportEncryptedSession.decrypt(secret).orElse(null);
         }
-        return decrypted;
     }
 
     /**

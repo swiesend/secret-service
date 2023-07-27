@@ -342,20 +342,9 @@ public class Collection implements CollectionInterface {
                     return item.getSecret(sessionPath);
                 })
                 .flatMap(secret -> {
-                    try {
-                        char[] decrypted = session.getEncryptedSession().decrypt(secret);
-                        return Optional.of(decrypted);
-                    } catch (BadPaddingException |
-                             IllegalBlockSizeException |
-                             InvalidAlgorithmParameterException |
-                             InvalidKeyException |
-                             NoSuchAlgorithmException |
-                             NoSuchPaddingException e) {
-                        log.error("Could not decrypt the secret.", e);
-                        return Optional.empty();
-                    } finally {
-                        secret.clear();
-                    }
+                    Optional<char[]> decrypted = session.getEncryptedSession().decrypt(secret); // TODO: should this be final?
+                    secret.clear();
+                    return decrypted;
                 });
     }
 

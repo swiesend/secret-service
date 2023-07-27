@@ -224,26 +224,28 @@ public class TransportEncryption implements AutoCloseable {
         }
 
         // TODO: return Optional; remove exceptions;
-        public char[] decrypt(Secret secret) throws
-                NoSuchPaddingException,
-                NoSuchAlgorithmException,
-                InvalidAlgorithmParameterException,
-                InvalidKeyException,
-                BadPaddingException,
-                IllegalBlockSizeException {
+        public Optional<char[]> decrypt(Secret secret) {
 
-            if (secret == null) return null;
+            if (secret == null) return Optional.empty();
 
             if (sessionKey == null) {
-                throw new IllegalStateException("Missing session key. Call Opened.generateSessionKey() first.");
+                log.error("Missing session key. Call Opened.generateSessionKey() first.");
             }
-
-            IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
-            Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
-            cipher.init(Cipher.DECRYPT_MODE, sessionKey, ivSpec);
-            final byte[] decrypted = cipher.doFinal(secret.getSecretValue());
+            byte[] decrypted = new byte[0]; // TODO: should this be final? How to handle the final Secret.clear?
             try {
-                return Secret.toChars(decrypted);
+                IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
+                Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
+                cipher.init(Cipher.DECRYPT_MODE, sessionKey, ivSpec);
+                decrypted = cipher.doFinal(secret.getSecretValue());
+                return Optional.of(Secret.toChars(decrypted));
+            } catch (InvalidAlgorithmParameterException |
+                     InvalidKeyException |
+                     NoSuchPaddingException |
+                     BadPaddingException |
+                     IllegalBlockSizeException |
+                     NoSuchAlgorithmException e) {
+                log.error("Could not decrypt the secret", e);
+                return Optional.empty();
             } finally {
                 Secret.clear(decrypted);
             }
