@@ -447,7 +447,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
             throw new IllegalArgumentException("The label of the item may not be null.");
         }
 
-        if (collection == null || transport == null) return null;
+        if (collection == null || transportEncryptedSession == null) return null;
 
         unlock();
 
