@@ -235,7 +235,7 @@ public class Collection implements CollectionInterface {
             ObjectPath promptPath = collection.delete().get();
             performPrompt(promptPath);
         } else {
-            log.error("Default collections may not be deleted with the simple API.");
+            log.error("Default collections shall only be deleted with the low-level API.");
             return false;
         }
         return true;
