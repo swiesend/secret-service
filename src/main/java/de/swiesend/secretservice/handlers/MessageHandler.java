@@ -97,8 +97,13 @@ public class MessageHandler {
                         log.error("Unexpected org.freedesktop.dbus.errors.Error: \"" + error + "\" with parameters: " + Arrays.deepToString(parameters));
                         return Optional.empty();
                 }
+            } else {
+                if (parameters != null && parameters.length == 0)
+                    return Optional.of(new Object[]{true}); // indicate with a boolean that there was no error
+                else {
+                    return Optional.ofNullable(parameters);
+                }
             }
-            return Optional.ofNullable(parameters);
         } catch (DBusException e) {
             log.error("Unexpected D-Bus response: ", e);
         } catch (RuntimeException e) {

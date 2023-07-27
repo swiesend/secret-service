@@ -1,12 +1,12 @@
 package de.swiesend.secretservice.gnome.keyring;
 
-import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
-import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.Secret;
 import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.Static;
 import de.swiesend.secretservice.handlers.Messaging;
+import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.types.Variant;
 
 import java.util.Map;
 import java.util.Optional;
@@ -24,9 +24,7 @@ public class InternalUnsupportedGuiltRiddenInterface extends Messaging implement
     @Override
     public boolean changeWithMasterPassword(DBusPath collection, Secret original, Secret master) {
         return send("ChangeWithMasterPassword", "o(oayays)(oayays)", collection, original, master)
-                // TODO: check which condition should apply
-                // .map(Static.Utils::isNullOrEmpty)
-                .map(response -> !Static.Utils.isNullOrEmpty(response))
+                .map(response -> (boolean) response[0]) // expect first parameter to be true when no error is present
                 .orElse(false);
     }
 
@@ -45,9 +43,7 @@ public class InternalUnsupportedGuiltRiddenInterface extends Messaging implement
     @Override
     public boolean unlockWithMasterPassword(DBusPath collection, Secret master) {
         return send("UnlockWithMasterPassword", "o(oayays)", collection, master)
-                // TODO: check which condition should apply
-                // .map(Static.Utils::isNullOrEmpty)
-                .map(response -> !Static.Utils.isNullOrEmpty(response))
+                .map(response -> (boolean) response[0]) // expect first parameter to be true when no error is present
                 .orElse(false);
     }
 
