@@ -90,12 +90,11 @@ public class ItemTest {
 
     @Test
     public void setSecret() {
-        Secret secret = new Secret(context.session.getPath(), "new secret".getBytes());
-        context.item.setSecret(secret);
-
+        Secret secret = context.encryption.encrypt("new secret").get();
+        assertTrue(context.item.setSecret(secret));
         Secret result = context.item.getSecret(context.session.getPath()).get();
         log.info(label("secret", result.toString()));
-        assertEquals("new secret", Static.Convert.toString(result.getSecretValue()));
+        assertEquals("new secret", new String(context.encryption.decrypt(result).orElse(null)));
     }
 
     @Test
