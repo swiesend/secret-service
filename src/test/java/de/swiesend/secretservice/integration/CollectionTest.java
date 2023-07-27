@@ -65,11 +65,7 @@ public class CollectionTest {
 
     @Test
     public void createItem() {
-
-        // some empty cipher parameters
-        byte[] parameters = "".getBytes();
-        byte[] value = "super secret".getBytes();
-        Secret secret = new Secret(context.session.getPath(), parameters, value);
+        Secret secret = context.encryption.encrypt("super secret").get();
 
         Map<String, String> attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
