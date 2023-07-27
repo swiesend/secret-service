@@ -1,10 +1,10 @@
 package de.swiesend.secretservice.handlers;
 
+import de.swiesend.secretservice.Static;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.messages.MethodCall;
 import org.freedesktop.dbus.types.Variant;
-import de.swiesend.secretservice.Static;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,7 +57,11 @@ public class MessageHandler {
                         if (Static.Utils.isNullOrEmpty(parameters)) {
                             log.warn(error);
                         } else {
-                            log.warn(error + ": " + parameters[0]);
+                            if (parameters.length == 1) {
+                                log.warn(error + ": \"" + parameters[0] + "\"");
+                            } else {
+                                log.warn(error + ": " + Arrays.deepToString(parameters));
+                            }
                         }
                         return Optional.empty();
                     case "org.gnome.keyring.Error.Denied":
@@ -65,7 +69,11 @@ public class MessageHandler {
                         if (Static.Utils.isNullOrEmpty(parameters)) {
                             log.info(error);
                         } else {
-                            log.info(error + ": " + parameters[0]);
+                            if (parameters.length == 1) {
+                                log.info(error + ": \"" + parameters[0] + "\"");
+                            } else {
+                                log.info(error + ": " + Arrays.deepToString(parameters));
+                            }
                         }
                         return Optional.empty();
                     case "org.freedesktop.DBus.Error.NoReply":
@@ -73,7 +81,12 @@ public class MessageHandler {
                     case "org.freedesktop.DBus.Error.UnknownMethod":
                     case "org.freedesktop.DBus.Error.UnknownObject":
                     case "org.freedesktop.DBus.Error.InvalidArgs":
-                        log.error(error + ": " + Arrays.deepToString(parameters));
+                    case "org.freedesktop.DBus.Error.Failed":
+                        if (parameters.length == 1) {
+                            log.error(error + ": \"" + parameters[0] + "\"");
+                        } else {
+                            log.error(error + ": " + Arrays.deepToString(parameters));
+                        }
                     case "org.freedesktop.DBus.Local.Disconnected":
                     case "org.freedesktop.dbus.exceptions.FatalDBusException":
                     case "org.freedesktop.dbus.exceptions.NotConnected":
