@@ -87,6 +87,7 @@ public class MessageHandler {
                         } else {
                             log.error(error + ": " + Arrays.deepToString(parameters));
                         }
+                        return Optional.empty();
                     case "org.freedesktop.DBus.Local.Disconnected":
                     case "org.freedesktop.dbus.exceptions.FatalDBusException":
                     case "org.freedesktop.dbus.exceptions.NotConnected":
