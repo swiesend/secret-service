@@ -11,6 +11,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 
 public class InternalUnsupportedGuiltRiddenInterfaceTest {
+
+    private static final Logger log = LoggerFactory.getLogger(InternalUnsupportedGuiltRiddenInterfaceTest.class);
 
     private DBusConnection connection;
     private Service service;
@@ -65,9 +69,9 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         lock.add(collection.getPath());
         service.lock(lock);
 
-        assertDoesNotThrow(() -> iugri.unlockWithMasterPassword(collection.getPath(), master));
-
-        iugri.changeWithMasterPassword(collection.getPath(), master, original);
+        // TODO: fix occasional: org.gnome.keyring.Error.Denied: "The password was invalid"
+        assertTrue(iugri.unlockWithMasterPassword(collection.getPath(), master));
+        assertTrue(iugri.changeWithMasterPassword(collection.getPath(), master, original));
     }
 
     @Test
