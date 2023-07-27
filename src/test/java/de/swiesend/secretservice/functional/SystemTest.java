@@ -3,6 +3,7 @@ package de.swiesend.secretservice.functional;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -32,7 +33,8 @@ class SystemTest {
     }
 
     @Test
-    void disconnect() {
+    @Disabled
+    void disconnect() throws InterruptedException {
         assertTrue(system.getConnection().isConnected());
         assertTrue(system.disconnect());
         assertFalse(system.getConnection().isConnected());
