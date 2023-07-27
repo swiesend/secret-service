@@ -1,4 +1,4 @@
-package de.swiesend.secret.functional.interfaces;
+package de.swiesend.secretservice.functional.interfaces;
 
 import de.swiesend.secretservice.Static;
 

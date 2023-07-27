@@ -1,10 +1,10 @@
-package de.swiesend.secret.functional;
+package de.swiesend.secretservice.functional;
 
-import de.swiesend.secret.functional.interfaces.CollectionInterface;
-import de.swiesend.secret.functional.interfaces.ServiceInterface;
-import de.swiesend.secret.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.TransportEncryption;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
+import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

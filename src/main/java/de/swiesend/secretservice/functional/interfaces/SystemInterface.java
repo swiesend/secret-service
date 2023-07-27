@@ -1,6 +1,6 @@
-package de.swiesend.secret.functional.interfaces;
+package de.swiesend.secretservice.functional.interfaces;
 
-import de.swiesend.secret.functional.System;
+import de.swiesend.secretservice.functional.System;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

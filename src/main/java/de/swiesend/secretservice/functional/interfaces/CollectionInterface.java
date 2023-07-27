@@ -1,4 +1,4 @@
-package de.swiesend.secret.functional.interfaces;
+package de.swiesend.secretservice.functional.interfaces;
 
 import java.util.List;
 import java.util.Map;

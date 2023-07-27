@@ -1,9 +1,9 @@
-package de.swiesend.secret.functional;
+package de.swiesend.secretservice.functional;
 
-import de.swiesend.secret.functional.interfaces.CollectionInterface;
-import de.swiesend.secret.functional.interfaces.ServiceInterface;
-import de.swiesend.secret.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.*;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
+import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
