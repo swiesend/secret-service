@@ -44,7 +44,7 @@ public class Example {
             // WARN: be careful activating this on the default collection...
             if (collectionId != "default") {
                 log.info("Non default collection. Deleting collection...");
-                // collection.delete();
+                collection.delete();
             }
 
             // CollectionInterface col2 = service.openSession()
