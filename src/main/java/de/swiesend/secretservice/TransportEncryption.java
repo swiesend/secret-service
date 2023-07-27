@@ -228,7 +228,8 @@ public class TransportEncryption implements AutoCloseable {
             if (sessionKey == null) {
                 log.error("Missing session key. Call Opened.generateSessionKey() first.");
             }
-            byte[] decrypted = new byte[0]; // TODO: should this be final? How to handle the final Secret.clear?
+            // TODO: should decrypted be a final value? How to handle the finally Secret.clear?
+            byte[] decrypted = new byte[0];
             try {
                 IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
