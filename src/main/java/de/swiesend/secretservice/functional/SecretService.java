@@ -12,7 +12,7 @@ import java.util.*;
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 
 /**
- * Entrypoint for high-level API. Manages Secret-Service sessions and the D-Bus connection.
+ * Entrypoint for the functional high-level API. Manages Secret-Service sessions and the D-Bus connection.
  */
 public class SecretService extends ServiceInterface {
 
