@@ -174,7 +174,6 @@ public class TransportEncryption implements AutoCloseable {
             return session;
         }
 
-        // TODO: fix interface usage
         public Optional<Secret> encrypt(CharSequence plain) {
             final byte[] bytes = Secret.toBytes(plain);
             Optional<Secret> secret = encrypt(bytes, StandardCharsets.UTF_8);
@@ -183,7 +182,6 @@ public class TransportEncryption implements AutoCloseable {
             return secret;
         }
 
-        // TODO: fix interface usage
         public Optional<Secret> encrypt(byte[] plain, Charset charset) {
 
             if (Static.Utils.isNullOrEmpty(plain)) return Optional.empty();
@@ -223,7 +221,6 @@ public class TransportEncryption implements AutoCloseable {
             return Optional.empty();
         }
 
-        // TODO: return Optional; remove exceptions;
         public Optional<char[]> decrypt(Secret secret) {
 
             if (secret == null) return Optional.empty();
