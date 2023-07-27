@@ -1,6 +1,6 @@
-package de.swiesend.secret.functional;
+package de.swiesend.secretservice.functional;
 
-import de.swiesend.secret.functional.interfaces.SystemInterface;
+import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;

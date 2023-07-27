@@ -1,4 +1,4 @@
-package de.swiesend.secret.functional;
+package de.swiesend.secretservice.functional;
 
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.junit.jupiter.api.AfterEach;

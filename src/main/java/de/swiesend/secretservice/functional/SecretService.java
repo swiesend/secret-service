@@ -1,8 +1,8 @@
-package de.swiesend.secret.functional;
+package de.swiesend.secretservice.functional;
 
-import de.swiesend.secret.functional.interfaces.*;
 import de.swiesend.secretservice.Pair;
 import de.swiesend.secretservice.Service;
+import de.swiesend.secretservice.functional.interfaces.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

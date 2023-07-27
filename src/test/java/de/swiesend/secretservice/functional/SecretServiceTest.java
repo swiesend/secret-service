@@ -1,9 +1,9 @@
-package de.swiesend.secret.functional;
+package de.swiesend.secretservice.functional;
 
-import de.swiesend.secret.functional.interfaces.AvailableServices;
-import de.swiesend.secret.functional.interfaces.CollectionInterface;
-import de.swiesend.secret.functional.interfaces.ServiceInterface;
-import de.swiesend.secret.functional.interfaces.SessionInterface;
+import de.swiesend.secretservice.functional.interfaces.AvailableServices;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
+import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
