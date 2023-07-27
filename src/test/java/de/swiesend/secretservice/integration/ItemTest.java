@@ -1,21 +1,15 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.*;
+import de.swiesend.secretservice.integration.test.Context;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.types.UInt64;
-import de.swiesend.secretservice.integration.test.Context;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,12 +63,7 @@ public class ItemTest {
         if (context.encrypted == false) {
             value = new String(secret.getSecretValue(), StandardCharsets.UTF_8);
         } else {
-            try {
-                value = new String(context.encryption.decrypt(secret));
-            } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidAlgorithmParameterException |
-                     InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
-                throw new RuntimeException(e);
-            }
+            value = new String(context.encryption.decrypt(secret).get());
         }
         log.info(label("value", value));
         assertEquals("super secret", value);

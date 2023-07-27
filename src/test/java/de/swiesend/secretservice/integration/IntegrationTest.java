@@ -57,7 +57,7 @@ public class IntegrationTest {
         byte[] encBase64 = Base64.getEncoder().encode(encrypted.getSecretValue());
         log.info(label("encrypted secret (base64)", new String(encBase64)));
 
-        char[] decrypted = encryptedSession.decrypt(encrypted);
+        char[] decrypted = encryptedSession.decrypt(encrypted).get();
         log.info(label("         decrypted secret", new String(decrypted)));
         assertEquals(plain, new String(decrypted));
 
@@ -104,7 +104,7 @@ public class IntegrationTest {
         assertEquals(encrypted.getSession(), actual.getSession());
         assertEquals(encrypted.getContentType(), actual.getContentType());
 
-        decrypted = encryptedSession.decrypt(actual);
+        decrypted = encryptedSession.decrypt(actual).get();
         log.info(label("  decrypted remote secret", new String(decrypted)));
         assertEquals(plain, new String(decrypted));
 
