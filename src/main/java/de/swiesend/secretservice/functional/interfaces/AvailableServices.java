@@ -18,7 +18,7 @@ public class AvailableServices {
 
     public EnumSet<Activatable> services = EnumSet.noneOf(Activatable.class);
 
-    public AvailableServices(System system) {
+    public AvailableServices(SystemInterface system) {
         DBusConnection connection = system.getConnection();
         if (connection.isConnected()) {
             try {

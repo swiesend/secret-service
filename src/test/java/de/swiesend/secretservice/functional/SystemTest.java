@@ -1,5 +1,6 @@
 package de.swiesend.secretservice.functional;
 
+import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SystemTest {
 
-    System system;
+    SystemInterface system;
 
     @BeforeEach
     void beforeEach() {

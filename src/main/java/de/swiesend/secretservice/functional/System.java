@@ -27,7 +27,7 @@ public class System extends SystemInterface {
      *
      * @return a new `DBusConnection` or `Optional.empty()`
      */
-    public static Optional<System> connect() {
+    public static Optional<SystemInterface> connect() {
         try {
             DBusConnection dbus = DBusConnectionBuilder.forSessionBus().build();
             return Optional.of(new System(dbus));

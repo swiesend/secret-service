@@ -47,7 +47,7 @@ public abstract class ServiceInterface implements AutoCloseable {
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
      */
-    public static boolean isAvailable(System system, AvailableServices available) {
+    public static boolean isAvailable(SystemInterface system, AvailableServices available) {
         DBusConnection connection = system.getConnection();
         if (connection.isConnected()) {
             try {
