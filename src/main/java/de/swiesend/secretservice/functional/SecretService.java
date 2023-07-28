@@ -20,6 +20,8 @@ public class SecretService extends ServiceInterface {
     private Map<UUID, SessionInterface> sessions = new HashMap<>();
     private de.swiesend.secretservice.Service service;
 
+    private static Optional<SystemInterface> maybeSystem = Optional.empty();
+
     private boolean gnomeKeyringAvailable;
 
     private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
@@ -33,7 +35,12 @@ public class SecretService extends ServiceInterface {
      * Create a Secret-Service instance with initialized transport encryption.
      */
     public static Optional<ServiceInterface> create() {
-        return System.connect()
+        maybeSystem = System.connect();
+        return create(maybeSystem);
+    }
+
+    public static Optional<ServiceInterface> create(Optional<SystemInterface> maybeSystem) {
+        return maybeSystem
                 .map(system -> new Pair<>(system, new AvailableServices(system)))
                 .filter(pair -> isAvailable(pair.a, pair.b))
                 .map(pair -> new SecretService(pair.a, pair.b));
@@ -86,6 +93,9 @@ public class SecretService extends ServiceInterface {
                 unregisterSession(session);
                 session.close();
             }
+        }
+        if (maybeSystem.isPresent()) {
+            maybeSystem.get().close();
         }
     }
 

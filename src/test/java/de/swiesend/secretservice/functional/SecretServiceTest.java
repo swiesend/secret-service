@@ -1,9 +1,6 @@
 package de.swiesend.secretservice.functional;
 
-import de.swiesend.secretservice.functional.interfaces.AvailableServices;
-import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
-import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
-import de.swiesend.secretservice.functional.interfaces.SessionInterface;
+import de.swiesend.secretservice.functional.interfaces.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +38,7 @@ public class SecretServiceTest {
 
     @Test
     void isOrgGnomeKeyringAvailable() {
-        System system = System.connect().get();
+        SystemInterface system = System.connect().get();
         assertTrue(SecretService.isAvailable(system, new AvailableServices(system)));
     }
 

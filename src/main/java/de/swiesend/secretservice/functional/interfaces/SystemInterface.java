@@ -11,7 +11,7 @@ public abstract class SystemInterface implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SystemInterface.class);
 
-    public static Optional<System> connect() {
+    public static Optional<SystemInterface> connect() {
         log.warn("Do not call the interface method, but the implementation.");
         return null;
     }
