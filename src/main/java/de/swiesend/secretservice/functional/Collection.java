@@ -8,7 +8,6 @@ import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInt
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
-import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +53,7 @@ public class Collection implements CollectionInterface {
         this.encryptedCollectionPassword = maybePassword
                 .flatMap(password -> session.getEncryptedSession().encrypt(password));
 
+        // TODO: the constructor may not throw an error...
         this.collection = getOrCreateCollection(label)
                 .orElseThrow(() -> new NoSuchElementException(String.format("Cloud not acquire collection with name %s", label)));
         this.path = collection.getPath();
@@ -245,13 +245,14 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean delete() {
-        if (!isDefault()) {
-            ObjectPath promptPath = collection.delete().get();
-            return performPrompt(promptPath).isPresent();
-        } else {
+        if (isDefault()) {
             log.error("The default collection shall only be deleted with the low-level API.");
             return false;
         }
+
+        return collection.delete()
+                .map(promptPath -> promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent())
+                .orElse(false);
     }
 
     @Override
