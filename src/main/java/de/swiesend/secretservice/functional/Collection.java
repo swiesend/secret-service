@@ -8,6 +8,7 @@ import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInt
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +89,13 @@ public class Collection implements CollectionInterface {
         Map<String, Variant> properties = de.swiesend.secretservice.Collection.createProperties(label);
 
         if (encryptedCollectionPassword.isEmpty()) {
-            path = createCollectionWithPrompt(properties);
+            Optional<ObjectPath> maybePath = createCollectionWithPrompt(properties);
+            if (maybePath.isPresent()) {
+                path = maybePath.get();
+                log.trace("Created collection at path: " + path); // TODO: make log.info
+            } else {
+                return Optional.empty();
+            }
         } else if (service.isOrgGnomeKeyringAvailable()) {
             path = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get()).get();
         }
@@ -96,17 +103,21 @@ public class Collection implements CollectionInterface {
         if (path == null) {
             waitForCollectionCreatedSignal();
             Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class);
+            if (signal == null) {
+                log.warn("Collection \"" + label + "\" was not created.");
+                return Optional.empty();
+            }
+
             DBusPath signalPath = signal.collection;
             if (signalPath == null || signalPath.getPath() == null) {
                 log.error(String.format("Received bad signal `CollectionCreated` without proper collection path: %s", signal));
-                return null;
+                return Optional.empty();
             }
             path = Static.Convert.toObjectPath(signalPath.getPath());
         }
 
         if (path == null) {
             log.error("Could not acquire a path for the prompt.");
-            return null;
         }
 
         return Optional.ofNullable(path);
@@ -120,13 +131,13 @@ public class Collection implements CollectionInterface {
         }
     }
 
-    private ObjectPath createCollectionWithPrompt(Map<String, Variant> properties) {
+    private Optional<ObjectPath> createCollectionWithPrompt(Map<String, Variant> properties) {
         Pair<ObjectPath, ObjectPath> response = service.getService().createCollection(properties).get();
         if (!"/".equals(response.a.getPath())) {
-            return response.a;
+            return Optional.of(response.a);
+        } else {
+            return performPrompt(response.b);
         }
-        performPrompt(response.b);
-        return null;
     }
 
     private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(ObjectPath path, String label) {
@@ -164,12 +175,15 @@ public class Collection implements CollectionInterface {
         }
     }
 
-    private void performPrompt(ObjectPath path) {
+    private Optional<ObjectPath> performPrompt(ObjectPath path) {
         if (!("/".equals(path.getPath()))) {
-            prompt.await(path, timeout);
+            return Optional.of(prompt.await(path, timeout))
+                    .filter(completed -> !completed.dismissed)
+                    .map(success -> new ObjectPath(success.getSource(), success.result.getValue().toString()));
+        } else {
+            return Optional.empty();
         }
     }
-
 
     @Override
     public boolean clear() {
@@ -233,12 +247,11 @@ public class Collection implements CollectionInterface {
     public boolean delete() {
         if (!isDefault()) {
             ObjectPath promptPath = collection.delete().get();
-            performPrompt(promptPath);
+            return performPrompt(promptPath).isPresent();
         } else {
-            log.error("Default collections shall only be deleted with the low-level API.");
+            log.error("The default collection shall only be deleted with the low-level API.");
             return false;
         }
-        return true;
     }
 
     @Override
@@ -252,8 +265,7 @@ public class Collection implements CollectionInterface {
 
         Item item = getItem(objectPath).get();
         ObjectPath promptPath = item.delete().get();
-        performPrompt(promptPath);
-        return true;
+        return performPrompt(promptPath).isPresent();
     }
 
     @Override
@@ -382,20 +394,28 @@ public class Collection implements CollectionInterface {
         return collection.isLocked();
     }
 
-    private void unlock() {
+    private boolean unlock() {
         if (collection != null && collection.isLocked()) {
             if (encryptedCollectionPassword.isEmpty() || isDefault()) {
-                Pair<List<ObjectPath>, ObjectPath> response = service.getService().unlock(lockable()).get();
-                performPrompt(response.b);
-                if (!collection.isLocked()) {
-                    isUnlockedOnceWithUserPermission = true;
-                    log.info("Unlocked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
+                Optional<Pair<List<ObjectPath>, ObjectPath>> maybeResponse = service.getService().unlock(lockable());
+                if (maybeResponse.isPresent()) {
+                    ObjectPath promptPath = maybeResponse.get().b;
+                    if (performPrompt(promptPath).isPresent() && !collection.isLocked()) {
+                        isUnlockedOnceWithUserPermission = true;
+                        log.debug("Unlocked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
+                        return true;
+                    }
                 }
             } else if (encryptedCollectionPassword.isPresent() && service.isOrgGnomeKeyringAvailable()) {
-                withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());
-                log.debug("Unlocked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
+                boolean result = withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());
+                if (result == true) {
+                    log.debug("Unlocked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
+                }
+                return result;
             }
         }
+        log.debug("Could not unlocked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
+        return false;
     }
 
     @Override
