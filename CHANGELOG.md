@@ -6,6 +6,15 @@ The [secret-service](https://github.com/swiesend/secret-service) library impleme
 
 The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.com/swiesend/secret-service/tree/develop-2.x.x) branch.
 
+## [2.0.0-beta1] - 2023-08-06
+
+- `Added`
+  - Introduce java modules `module-info.java`
+- Changed`
+  - Update `hkdf` from `1.1.0` to `2.0.0`
+  - Update `slf4j` from `2.0.6` to `2.0.7`
+  - Update Maven dependencies
+
 ## [1.8.1-jdk17] - 2023-01-17
 
 - `Fixed`:
@@ -174,6 +183,7 @@ The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[2.0.0-beta1]:  https://github.com/swiesend/secret-service/compare/v1.8.0-jdk17...v2.0.0-beta1
 [1.8.0-jdk17]:  https://github.com/swiesend/secret-service/compare/v1.7.0...v1.8.0-jdk17
 [1.7.0]:  https://github.com/swiesend/secret-service/compare/v1.6.2...v1.7.0
 [1.6.2]:  https://github.com/swiesend/secret-service/compare/v1.6.1...v1.6.2
