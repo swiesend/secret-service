@@ -8,9 +8,10 @@
     <artifactId>secret-service</artifactId>
     <!-- Semantic Versioning - see https://semver.org/spec/v2.0.0.html -->
     <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
+    <!-- Pre-Release:       {MAJOR}.{MINOR}.{PATCH}-{alpha|beta}.?{INC}? -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-rc.{INC} -->
-    <!-- Release:           {MAJOR}.{MINOR}.{PATCH}-{JDKVERSION} -->
-    <version>1.9.0-jdk17</version>
+    <!-- Release:           {MAJOR}.{MINOR}.{PATCH}-?{JDKVERSION}? -->
+    <version>2.0.0-alpha</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>
