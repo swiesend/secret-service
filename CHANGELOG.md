@@ -174,6 +174,7 @@ The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[1.8.1-jdk17]:  https://github.com/swiesend/secret-service/compare/v1.8.0-jdk17...v1.8.1-jdk17
 [1.8.0-jdk17]:  https://github.com/swiesend/secret-service/compare/v1.7.0...v1.8.0-jdk17
 [1.7.0]:  https://github.com/swiesend/secret-service/compare/v1.6.2...v1.7.0
 [1.6.2]:  https://github.com/swiesend/secret-service/compare/v1.6.1...v1.6.2
