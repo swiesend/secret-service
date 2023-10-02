@@ -34,8 +34,9 @@ public interface Prompt extends DBusInterface {
 
     /**
      * Perform the prompt.
-     * 
+     *
      * @param window_id     Platform specific window handle to use for showing the prompt.
+     *                      Calling a prompt with an empty window_id can be useful for providers like KeePassXC.
      * 
      * @see Completed
      */
