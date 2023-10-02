@@ -161,3 +161,4 @@ Special thanks goes out to
 * [@jmehrens](https://github.com/jmehrens) for pointing out several issues and explaining them.
 * [@aanno](https://github.com/aanno) for pointing out multiple issues.
 * [@shocklateboy92](https://github.com/shocklateboy92) for making things spec compliant.
+* [@invidian](https://github.com/invidian) for preparing KeePassXC support.
