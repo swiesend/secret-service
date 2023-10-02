@@ -55,7 +55,9 @@ public class Collection implements CollectionInterface {
 
         // TODO: the constructor may not throw an error...
         this.collection = getOrCreateCollection(label)
-                .orElseThrow(() -> new NoSuchElementException(String.format("Cloud not acquire collection with name %s", label)));
+                .orElseThrow(() -> new NoSuchElementException(
+                        String.format("Could not acquire collection with name %s", label)
+                ));
         this.path = collection.getPath();
         this.label = label;
         this.id = collection.getId();
