@@ -143,7 +143,7 @@ public class SignalHandler implements DBusSigHandler {
         try {
             prompt = action.call();
         } catch (Exception e) {
-            log.error("Cloud not acquire a prompt.", e);
+            log.error("Could not acquire a prompt.", e);
         }
 
         try {

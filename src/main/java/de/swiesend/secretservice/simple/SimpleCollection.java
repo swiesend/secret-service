@@ -292,7 +292,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 InvalidKeySpecException |
                 InvalidKeyException |
                 DBusException e) {
-            throw new IOException("Cloud not initiate transport encryption.", e);
+            throw new IOException("Could not initiate transport encryption.", e);
         }
     }
 
@@ -490,7 +490,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 InvalidKeyException |
                 BadPaddingException |
                 IllegalBlockSizeException e) {
-            log.error("Cloud not encrypt the secret.", e);
+            log.error("Could not encrypt the secret.", e);
         }
 
         if (null != item) {
@@ -549,7 +549,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 InvalidKeyException |
                 BadPaddingException |
                 IllegalBlockSizeException e) {
-            log.error("Cloud not encrypt the secret.", e);
+            log.error("Could not encrypt the secret.", e);
         }
     }
 
