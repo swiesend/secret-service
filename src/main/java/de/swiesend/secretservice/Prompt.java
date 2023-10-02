@@ -1,14 +1,14 @@
 package de.swiesend.secretservice;
 
+import de.swiesend.secretservice.handlers.Messaging;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
-import de.swiesend.secretservice.errors.NoSuchObject;
-import de.swiesend.secretservice.handlers.Messaging;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 import static de.swiesend.secretservice.Static.ObjectPaths.PROMPT;
@@ -16,6 +16,8 @@ import static de.swiesend.secretservice.Static.ObjectPaths.PROMPT;
 public class Prompt extends Messaging implements de.swiesend.secretservice.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
+
+    private static final Logger log = LoggerFactory.getLogger(Prompt.class);
 
     public Prompt(Service service) {
         super(service.getConnection(), signals,
@@ -36,14 +38,12 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
 
         String windowID = "";
 
-        try {
-            if (objectPath.startsWith(PROMPT + "/p") || objectPath.startsWith(PROMPT + "/u")) {
-                String[] split = prompt.getPath().split("/");
-                windowID = split[split.length - 1];
+        if (objectPath.startsWith(PROMPT + "/p") || objectPath.startsWith(PROMPT + "/u")) {
+            try {
+                windowID = objectPath.substring(objectPath.lastIndexOf("/") + 1);
+            } catch (IndexOutOfBoundsException | NullPointerException e) {
+                log.warn(String.format("Continuing with window ID: \"%s\"", windowID));
             }
-        } catch (IndexOutOfBoundsException | NullPointerException e) {
-            // TODO: check if it is possible to can call the prompt anyway
-            return false;
         }
 
         return send("Prompt", "s", windowID).isPresent();
