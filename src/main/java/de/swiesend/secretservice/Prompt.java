@@ -32,17 +32,19 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
     @Override
     public void prompt(ObjectPath prompt) throws NoSuchObject {
         objectPath = prompt.getPath();
+
+        String windowID = "";
+
         try {
             if (objectPath.startsWith(PROMPT + "/p") || objectPath.startsWith(PROMPT + "/u")) {
                 String[] split = prompt.getPath().split("/");
-                String window_id = split[split.length - 1];
-                send("Prompt", "s", window_id);
-            } else {
-                throw new NoSuchObject(objectPath);
+                windowID = split[split.length - 1];
             }
         } catch (IndexOutOfBoundsException | NullPointerException e) {
             throw new NoSuchObject(objectPath);
         }
+
+        send("Prompt", "s", windowID);
     }
 
     /**
