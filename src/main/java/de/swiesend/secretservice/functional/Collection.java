@@ -75,11 +75,9 @@ public class Collection implements CollectionInterface {
     }
 
     private Optional<de.swiesend.secretservice.Collection> getOrCreateCollection(String label) {
-        Optional<ObjectPath> maybePath;
+        Optional<ObjectPath> maybePath = getCollectionPath(label);
 
-        if (exists(label)) {
-            maybePath = getCollectionPath(label);
-        } else {
+        if (maybePath.isEmpty()) {
             maybePath = createNewCollection(label);
         }
 
