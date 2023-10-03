@@ -92,7 +92,6 @@ public class Collection implements CollectionInterface {
             Optional<ObjectPath> maybePath = createCollectionWithPrompt(properties);
             if (maybePath.isPresent()) {
                 path = maybePath.get();
-                log.trace("Created collection at path: " + path); // TODO: make log.info
             } else {
                 return Optional.empty();
             }
