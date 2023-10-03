@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class Example {
     private static final Logger log = LoggerFactory.getLogger(Example.class);
@@ -30,22 +31,30 @@ public class Example {
                     .get();
             String collectionLabel = collection.getLabel().get();
             String collectionId = collection.getId().get();
-            log.info(String.format("Collection {label: %s, id: %s}", collectionLabel, collectionId));
+            log.info(String.format("Collection {label: \"%s\", id: \"%s\"}", collectionLabel, collectionId));
 
             Map<String, String> attributes = Map.of("key", "value");
-            String item = collection.createItem("label", "password", attributes).get();
-            password = collection.getSecret(item).get();
+            String itemPath = collection.createItem("label", "password", attributes).get();
+            log.info(String.format("Created Item {path: \"%s\"}", itemPath));
+            password = collection.getSecret(itemPath).get();
+            boolean deleteItemSuccess = collection.deleteItem(itemPath);
+            assertTrue(deleteItemSuccess);
 
-            for (String itemPath : collection.getItems(attributes).get()) {
-                String label = collection.getItemLabel(itemPath).get();
-                log.info(String.format("[%s] {label: %s, attributes: %s}", itemPath, label, attributes));
-                collection.deleteItem(itemPath);
-            }
+            /*for (String oneItemPath : collection.getItems(attributes).get()) {
+                String label = collection.getItemLabel(oneItemPath).get();
+                log.info(String.format("Delete Item {label: %s, attributes: %s, path: %s}", label, attributes, oneItemPath));
+                collection.deleteItem(oneItemPath);
+            }*/
+
             // WARN: be careful activating this on the default collection...
-            if (collectionId != "default") {
-                log.info("Non default collection. Deleting collection...");
-                collection.delete();
-            }
+            /*if (collectionLabel == "test" || collectionLabel == "täst" ) {
+                log.info(String.format("Deleting collection {label: \"%s\", id: \"%s\"} …", collectionLabel, collectionId));
+                boolean success = collection.delete();
+                if (success)
+                    log.info(String.format("Deleted collection {label: \"%s\", id: \"%s\"}", collectionLabel, collectionId));
+                else
+                    log.warn(String.format("Could not delete collection {label: \"%s\", id: \"%s\"}", collectionLabel, collectionId));
+            }*/
 
             // CollectionInterface col2 = service.openSession()
             //        .flatMap(session -> session.collection("test", "test"))

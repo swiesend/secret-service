@@ -269,7 +269,8 @@ public class Collection implements CollectionInterface {
 
         Item item = getItem(objectPath).get();
         ObjectPath promptPath = item.delete().get();
-        return performPrompt(promptPath).isPresent();
+        // TODO: Fix this. Do not negate here, but return true if deleted.
+        return !performPrompt(promptPath).isPresent();
     }
 
     @Override
