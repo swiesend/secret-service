@@ -38,12 +38,16 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
 
         String windowID = "";
 
-        if (objectPath.startsWith(PROMPT + "/p") || objectPath.startsWith(PROMPT + "/u")) {
+        if (objectPath.startsWith(PROMPT + "/")) {
             try {
+                // NOTE: If the windowID starts with the prefix 'p' or 'u' followed by numerics only,
+                //       then it comes from the gnome-keyring. KeePassXC generates random alphanumeric ids.
                 windowID = objectPath.substring(objectPath.lastIndexOf("/") + 1);
             } catch (IndexOutOfBoundsException | NullPointerException e) {
-                log.warn(String.format("Continuing with window ID: \"%s\"", windowID));
+                log.warn(String.format("No proper window ID. Continuing with window ID: \"%s\"", windowID));
             }
+        } else {
+            log.warn(String.format("No proper prompt path. Continuing with window ID: \"%s\"", windowID));
         }
 
         return send("Prompt", "s", windowID).isPresent();
