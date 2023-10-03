@@ -215,11 +215,14 @@ public class Collection implements CollectionInterface {
 
         unlock();
 
-        Optional<String> result = session.getEncryptedSession().encrypt(password)
+        Optional<String> result = session
+                .getEncryptedSession()
+                .encrypt(password)
                 .flatMap(secret -> {
                     try (secret) { // auto-close
                         final Map<String, Variant> properties = Item.createProperties(label, attributes);
-                        return collection.createItem(properties, secret, false)
+                        return collection
+                                .createItem(properties, secret, false)
                                 .flatMap(pair -> Optional.ofNullable(pair.a)
                                         .map(item -> {
                                             if ("/".equals(item.getPath())) { // prompt required
@@ -236,7 +239,8 @@ public class Collection implements CollectionInterface {
                                                 return item;
                                             }
                                         })
-                                        .map(DBusPath::getPath));
+                                        .map(DBusPath::getPath)
+                                );
                     }
                 });
         return result;
