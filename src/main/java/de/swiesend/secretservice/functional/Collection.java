@@ -269,8 +269,9 @@ public class Collection implements CollectionInterface {
 
         Item item = getItem(objectPath).get();
         ObjectPath promptPath = item.delete().get();
-        // TODO: Fix this. Do not negate here, but return true if deleted.
-        return !performPrompt(promptPath).isPresent();
+        // TODO: Fix this. The gnome-keyring return false here, but KeePassXC return true.
+        //       Handle depending on the keyring used.
+        return performPrompt(promptPath).isPresent();
     }
 
     @Override
