@@ -193,14 +193,14 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public Optional<String> createItem(String label, CharSequence password) {
-        return createItem(label, password, null);
+    public Optional<String> createItem(String label, CharSequence secret) {
+        return createItem(label, secret, null);
     }
 
     @Override
-    public Optional<String> createItem(String label, CharSequence password, Map<String, String> attributes) {
-        if (Static.Utils.isNullOrEmpty(password)) {
-            log.error("The password may not be null or empty.");
+    public Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes) {
+        if (Static.Utils.isNullOrEmpty(secret)) {
+            log.error("The secret may not be null or empty.");
             return Optional.empty();
         }
         if (label == null) {
@@ -217,12 +217,12 @@ public class Collection implements CollectionInterface {
 
         Optional<String> result = session
                 .getEncryptedSession()
-                .encrypt(password)
-                .flatMap(secret -> {
-                    try (secret) { // auto-close
+                .encrypt(secret)
+                .flatMap(secInst -> {
+                    try (secInst) { // auto-close
                         final Map<String, Variant> properties = Item.createProperties(label, attributes);
                         return collection
-                                .createItem(properties, secret, false)
+                                .createItem(properties, secInst, false)
                                 .flatMap(pair -> Optional.ofNullable(pair.a)
                                         .map(item -> {
                                             if ("/".equals(item.getPath())) { // prompt required
