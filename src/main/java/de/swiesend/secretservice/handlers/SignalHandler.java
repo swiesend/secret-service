@@ -11,10 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -142,9 +139,9 @@ public class SignalHandler implements DBusSigHandler {
     public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
         final int init = count;
 
-        Object prompt = null;
+        Optional<Prompt> maybePrompt = Optional.empty();
         try {
-            prompt = action.call();
+            maybePrompt = Optional.ofNullable((Prompt) action.call());
         } catch (Exception e) {
             log.error("Could not acquire a prompt.", e);
         }
@@ -196,12 +193,14 @@ public class SignalHandler implements DBusSigHandler {
                 Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
             }
         } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
-            if (prompt != null && prompt instanceof Prompt) {
-                ((Prompt) prompt).dismiss();
-                log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
-            } else {
-                log.warn("Cancelled the action, but could not dismiss the prompt.", e);
-            }
+            maybePrompt.ifPresentOrElse(
+                    (prompt) -> {
+                        prompt.dismiss();
+                        log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
+                    },
+                    () -> {
+                        log.warn("Cancelled the action, but could not dismiss the prompt.", e);
+                    });
         } finally {
             handler.cancel(true);
             executor.shutdownNow();
