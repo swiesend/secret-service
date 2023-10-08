@@ -176,7 +176,7 @@ public class Collection implements CollectionInterface {
 
     private Optional<ObjectPath> performPrompt(ObjectPath path) {
         if (!("/".equals(path.getPath()))) {
-            return Optional.of(prompt.await(path, timeout))
+            return Optional.ofNullable(prompt.await(path, timeout))
                     .filter(completed -> !completed.dismissed)
                     .map(success -> new ObjectPath(success.getSource(), success.result.getValue().toString()));
         } else {
