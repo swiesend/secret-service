@@ -269,9 +269,14 @@ public class Collection implements CollectionInterface {
 
         Item item = getItem(objectPath).get();
         ObjectPath promptPath = item.delete().get();
-        // TODO: Fix this. The gnome-keyring return false here, but KeePassXC return true.
-        //       Handle depending on the keyring used.
-        return performPrompt(promptPath).isPresent();
+        Optional<ObjectPath> performedPrompt = performPrompt(promptPath);
+        if (service.isGnomeKeyringAvailable() && performedPrompt.isEmpty()) {
+            // gnome-keyring returns no path;
+            return true;
+        } else {
+            // KeePassXC returns an empty path
+            return performedPrompt.isPresent();
+        }
     }
 
     @Override
