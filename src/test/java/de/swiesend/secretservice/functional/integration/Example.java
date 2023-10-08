@@ -47,14 +47,14 @@ public class Example {
             }*/
 
             // WARN: be careful activating this on the default collection...
-            /*if (collectionLabel == "test" || collectionLabel == "täst" ) {
+            if (collectionLabel == "test" || collectionLabel == "täst" ) {
                 log.info(String.format("Deleting collection {label: \"%s\", id: \"%s\"} …", collectionLabel, collectionId));
                 boolean success = collection.delete();
                 if (success)
                     log.info(String.format("Deleted collection {label: \"%s\", id: \"%s\"}", collectionLabel, collectionId));
                 else
                     log.warn(String.format("Could not delete collection {label: \"%s\", id: \"%s\"}", collectionLabel, collectionId));
-            }*/
+            }
 
             // CollectionInterface col2 = service.openSession()
             //        .flatMap(session -> session.collection("test", "test"))
