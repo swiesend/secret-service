@@ -30,9 +30,9 @@ public class Collection implements CollectionInterface {
     DBusConnection connection = null;
     private Duration timeout = null;
     private Boolean isUnlockedOnceWithUserPermission = false;
-    private String label = null;
+    private Optional<String> label = Optional.empty();
     private String id = null;
-    private Optional<Secret> encryptedCollectionPassword = null;
+    private Optional<Secret> encryptedCollectionPassword = Optional.empty();
     private Prompt prompt = null;
     private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
 
@@ -43,7 +43,7 @@ public class Collection implements CollectionInterface {
 
         this.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         this.collection = new de.swiesend.secretservice.Collection(path, connection);
-        this.label = collection.getLabel().get();
+        this.label = collection.getLabel();
         this.id = collection.getId();
     }
 
@@ -59,7 +59,7 @@ public class Collection implements CollectionInterface {
                         String.format("Could not acquire collection with name %s", label)
                 ));
         this.path = collection.getPath();
-        this.label = label;
+        this.label = Optional.ofNullable(label);
         this.id = collection.getId();
     }
 
@@ -328,14 +328,14 @@ public class Collection implements CollectionInterface {
     public boolean setLabel(String label) {
         boolean success = collection.setLabel(label);
         if (success) {
-            this.label = label;
+            this.label = Optional.ofNullable(label);
         }
         return success;
     }
 
     @Override
     public Optional<String> getLabel() {
-        return Optional.of(this.label);
+        return this.label;
     }
 
     @Override
