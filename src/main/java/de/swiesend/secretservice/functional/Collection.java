@@ -69,7 +69,7 @@ public class Collection implements CollectionInterface {
         this.connection = service.getService().getConnection();
         this.timeout = session.getService().getTimeout();
         this.prompt = new Prompt(session.getService().getService());
-        if (service.isOrgGnomeKeyringAvailable()) {
+        if (service.isGnomeKeyringAvailable()) {
             this.withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(session.getService().getService());
         }
     }
@@ -95,7 +95,7 @@ public class Collection implements CollectionInterface {
             } else {
                 return Optional.empty();
             }
-        } else if (service.isOrgGnomeKeyringAvailable()) {
+        } else if (service.isGnomeKeyringAvailable()) {
             path = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get()).get();
         }
 
@@ -412,7 +412,7 @@ public class Collection implements CollectionInterface {
                         return true;
                     }
                 }
-            } else if (encryptedCollectionPassword.isPresent() && service.isOrgGnomeKeyringAvailable()) {
+            } else if (encryptedCollectionPassword.isPresent() && service.isGnomeKeyringAvailable()) {
                 boolean result = withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());
                 if (result == true) {
                     log.debug("Unlocked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
