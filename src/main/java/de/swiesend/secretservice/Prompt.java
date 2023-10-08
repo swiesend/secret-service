@@ -67,11 +67,15 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
         if ("/".equals(path.getPath())) {
             return sh.getLastHandledSignal(Completed.class);
         } else {
-            return sh.await(Completed.class, path.getPath(), () -> {
+            return sh.await(
+                    Completed.class,
+                    path.getPath(),
+                    () -> {
                         prompt(path);
                         return this;
                     },
-                    timeout);
+                    timeout
+            );
         }
     }
 
