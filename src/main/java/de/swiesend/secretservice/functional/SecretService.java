@@ -22,13 +22,13 @@ public class SecretService extends ServiceInterface {
 
     private static Optional<SystemInterface> maybeSystem = Optional.empty();
 
-    private boolean gnomeKeyringAvailable;
+    private boolean isGnomeKeyringAvailable;
 
     private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
 
     private SecretService(SystemInterface system, AvailableServices available) {
         this.service = new Service(system.getConnection());
-        this.gnomeKeyringAvailable = available.services.contains(Activatable.GNOME_KEYRING);
+        this.isGnomeKeyringAvailable = available.services.contains(Activatable.GNOME_KEYRING);
     }
 
     /**
@@ -47,8 +47,8 @@ public class SecretService extends ServiceInterface {
     }
 
     @Override
-    public boolean isOrgGnomeKeyringAvailable() {
-        return this.gnomeKeyringAvailable;
+    public boolean isGnomeKeyringAvailable() {
+        return this.isGnomeKeyringAvailable;
     }
 
     @Override

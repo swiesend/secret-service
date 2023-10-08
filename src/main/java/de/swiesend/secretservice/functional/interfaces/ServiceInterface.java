@@ -1,7 +1,6 @@
 package de.swiesend.secretservice.functional.interfaces;
 
 import de.swiesend.secretservice.TransportEncryption;
-import de.swiesend.secretservice.functional.System;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,5 +95,5 @@ public abstract class ServiceInterface implements AutoCloseable {
 
     abstract public de.swiesend.secretservice.Service getService();
 
-    abstract public boolean isOrgGnomeKeyringAvailable();
+    abstract public boolean isGnomeKeyringAvailable();
 }
