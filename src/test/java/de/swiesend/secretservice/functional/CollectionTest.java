@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -116,15 +117,25 @@ class CollectionTest {
     }
 
     @Test
-    @Disabled
-        // TODO
     void deleteItem() {
+        String item = null;
+        item = collection.createItem("test", "secret").get();
+        assertTrue(collection.deleteItem(item));
+        assertTrue(collection.getSecret(item).isEmpty());
+
+        Map<String, String> attributes = Map.of("key", "value");
+        item = collection.createItem("test", "secret", attributes).get();
+        assertTrue(collection.deleteItem(item));
+        assertTrue(collection.getSecret(item).isEmpty());
     }
 
     @Test
-    @Disabled
-        // TODO
     void deleteItems() {
+        String item1 = collection.createItem("test", "secret1").get();
+        String item2 = collection.createItem("test", "secret2").get();
+        assertTrue(collection.deleteItems(List.of(item1, item2)));
+        assertTrue(collection.getSecret(item1).isEmpty());
+        assertTrue(collection.getSecret(item2).isEmpty());
     }
 
     @Test
