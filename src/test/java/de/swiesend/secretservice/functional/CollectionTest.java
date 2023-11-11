@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -139,9 +140,21 @@ class CollectionTest {
     }
 
     @Test
-    @Disabled
-        // TODO
     void getAttributes() {
+        String item = null;
+        Optional<Map<String, String>> maybeAttributes;
+        Map<String, String> emptyMap = Map.of();;
+
+        item = collection.createItem("test", "secret").get();
+        maybeAttributes = collection.getAttributes(item);
+        assertTrue(maybeAttributes.isPresent());
+        assertEquals(emptyMap,  maybeAttributes.get());
+
+        Map<String, String> attributes = Map.of("key", "value");
+        item = collection.createItem("test", "secret", attributes).get();
+        maybeAttributes = collection.getAttributes(item);
+        assertTrue(maybeAttributes.isPresent());
+        assertEquals(attributes,  maybeAttributes.get());
     }
 
     @Test
