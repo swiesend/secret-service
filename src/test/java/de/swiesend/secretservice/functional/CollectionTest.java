@@ -42,9 +42,8 @@ class CollectionTest {
     }
 
     @Test
-    @Disabled
-        // TODO
     void clear() {
+        assertTrue(collection.clear());
     }
 
     @Test

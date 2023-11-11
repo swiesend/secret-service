@@ -16,6 +16,11 @@ import static java.util.Objects.requireNonNull;
 
 public final class Secret extends Struct implements AutoCloseable {
 
+    // NOTE: the specification defines the default content_type differently with "text/plain; charset=utf8"
+    //  see: https://standards.freedesktop.org/secret-service/0.2/ch14.html
+    public static final String TEXT_PLAIN_CHARSET_UTF_8 = "text/plain; charset=utf-8";
+    public static final String TEXT_PLAIN = "text/plain";
+    private static final String CHARSET = "charset=";
     @Position(0)
     private final ObjectPath session;
     @Position(1)
@@ -24,15 +29,9 @@ public final class Secret extends Struct implements AutoCloseable {
     private final byte[] value;
     @Position(3)
     private final String contentType;
-
     private String mimeType = null;
     private Charset charset = null;
 
-    // NOTE: the specification defines the default content_type differently with "text/plain; charset=utf8"
-    //  see: https://standards.freedesktop.org/secret-service/0.2/ch14.html
-    public static final String TEXT_PLAIN_CHARSET_UTF_8 = "text/plain; charset=utf-8";
-    public static final String TEXT_PLAIN = "text/plain";
-    private static final String CHARSET = "charset=";
 
     public Secret(ObjectPath session, byte[] value) {
         this.session = session;
@@ -90,26 +89,6 @@ public final class Secret extends Struct implements AutoCloseable {
         parseContentType(this.contentType);
     }
 
-    private void parseContentType(String contentType) {
-        String pattern = "[\\s\\\"\\;\\,]";
-        List<String> split = Arrays.asList(contentType.split(pattern));
-        List<String> filtered = split.stream().
-                filter(s -> !(s.isEmpty() || s.length() == 1)).
-                collect(Collectors.toList());
-
-        if (filtered.size() > 0) {
-            mimeType = filtered.get(0);
-        } else {
-            mimeType = TEXT_PLAIN;
-        }
-
-        if (filtered.size() == 2 && filtered.get(1).startsWith(CHARSET)) {
-            charset = Charset.forName(filtered.get(1).substring(CHARSET.length()).toUpperCase());
-        } else {
-            charset = null;
-        }
-    }
-
     static public String createContentType(String mimeType, Charset charset) {
         return mimeType + "; " + CHARSET + charset.name().toLowerCase();
     }
@@ -140,7 +119,7 @@ public final class Secret extends Struct implements AutoCloseable {
         }
     }
 
-    static public char[] toChars(byte[] bytes){
+    static public char[] toChars(byte[] bytes) {
         ByteBuffer encoded = ByteBuffer.wrap(bytes);
         CharBuffer decoded = StandardCharsets.UTF_8.decode(encoded);
         final char[] chars = new char[decoded.remaining()];
@@ -153,35 +132,70 @@ public final class Secret extends Struct implements AutoCloseable {
         }
     }
 
-    static public void clear(byte[] bytes) {
+    static public boolean clear(byte[] bytes) {
         Arrays.fill(bytes, (byte) 0);
-        for(byte b: bytes) {
-            assert((byte) 0 == b);
+        try {
+            for (byte b : bytes) {
+                assert ((byte) 0 == b);
+            }
+        } catch (AssertionError e) {
+            return false;
         }
+        return true;
     }
 
-    static public void clear(ByteBuffer buffer) {
+    static public boolean clear(ByteBuffer buffer) {
         final byte[] zeros = new byte[buffer.limit()];
         Arrays.fill(zeros, (byte) 0);
         buffer.rewind();
         buffer.put(zeros);
-        for(byte b: buffer.array()) {
-            assert((byte) 0 == b);
+        try {
+            for (byte b : buffer.array()) {
+                assert ((byte) 0 == b);
+            }
+        } catch (AssertionError e) {
+            return false;
         }
+        return true;
     }
 
-    static public void clear(CharBuffer buffer) {
+    static public boolean clear(CharBuffer buffer) {
         final char[] zeros = new char[buffer.limit()];
         Arrays.fill(zeros, (char) 0);
         buffer.rewind();
         buffer.put(zeros);
-        for(char c: buffer.array()) {
-            assert((char) 0 == c);
+        try {
+            for (char c : buffer.array()) {
+                assert ((char) 0 == c);
+            }
+        } catch (AssertionError e) {
+            return false;
+        }
+        return true;
+    }
+
+    private void parseContentType(String contentType) {
+        String pattern = "[\\s\\\"\\;\\,]";
+        List<String> split = Arrays.asList(contentType.split(pattern));
+        List<String> filtered = split.stream()
+                .filter(s -> !(s.isEmpty() || s.length() == 1))
+                .collect(Collectors.toList());
+
+        if (filtered.size() > 0) {
+            mimeType = filtered.get(0);
+        } else {
+            mimeType = TEXT_PLAIN;
+        }
+
+        if (filtered.size() == 2 && filtered.get(1).startsWith(CHARSET)) {
+            charset = Charset.forName(filtered.get(1).substring(CHARSET.length()).toUpperCase());
+        } else {
+            charset = null;
         }
     }
 
-    public void clear() {
-        clear(value);
+    public boolean clear() {
+        return clear(value);
     }
 
     @Override

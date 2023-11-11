@@ -198,7 +198,7 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean clear() {
         if (encryptedCollectionPassword.isPresent()) {
-            encryptedCollectionPassword.get().clear();
+            return encryptedCollectionPassword.get().clear();
         }
         return true;
     }
