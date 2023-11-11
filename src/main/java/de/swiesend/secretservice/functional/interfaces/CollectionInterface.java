@@ -6,6 +6,11 @@ import java.util.Optional;
 
 public interface CollectionInterface extends AutoCloseable {
 
+    /**
+     * Clear the collection password.
+     *
+     * @return true, if password could be cleared else false.
+     */
     boolean clear();
 
     /**
