@@ -38,33 +38,44 @@ public class Collection implements CollectionInterface {
 
     private ObjectPath path = null;
 
-    public Collection(SessionInterface session) {
-        init(session);
 
+    public Collection() {
+        this(Optional.empty());
+    }
+
+    public Collection(Optional<SessionInterface> maybeSession) {
+        init(maybeSession);
         this.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         this.collection = new de.swiesend.secretservice.Collection(path, connection);
         this.label = collection.getLabel();
         this.id = collection.getId();
     }
 
-    public Collection(SessionInterface session, String label, Optional<CharSequence> maybePassword) {
-        init(session);
+    public Collection(String label) {
+        this(label, Optional.empty(), Optional.empty());
+    }
 
-        this.encryptedCollectionPassword = maybePassword
-                .flatMap(password -> session.getEncryptedSession().encrypt(password));
+    public Collection(String label, Optional<CharSequence> maybePassword) {
+        this(label, maybePassword, Optional.empty());
+    }
+
+    public Collection(String label, Optional<CharSequence> maybePassword, Optional<SessionInterface> maybeSession) {
+        init(maybeSession);
+        this.encryptedCollectionPassword = maybePassword.flatMap(
+                password -> this.session.getEncryptedSession().encrypt(password)
+        );
 
         // TODO: the constructor may not throw an error...
-        this.collection = getOrCreateCollection(label)
-                .orElseThrow(() -> new NoSuchElementException(
-                        String.format("Could not acquire collection with name %s", label)
-                ));
+        this.collection = getOrCreateCollection(label).orElseThrow(() -> new NoSuchElementException(
+                String.format("Could not acquire collection with name %s", label)
+        ));
         this.path = collection.getPath();
         this.label = Optional.ofNullable(label);
         this.id = collection.getId();
     }
 
-    private void init(SessionInterface session) {
-        this.session = session;
+    private void init(Optional<SessionInterface> maybeSession) {
+        this.session = maybeSession.or(() -> SecretService.create().flatMap(service -> service.openSession())).get();
         this.service = session.getService();
         this.connection = service.getService().getConnection();
         this.timeout = session.getService().getTimeout();
@@ -495,7 +506,7 @@ public class Collection implements CollectionInterface {
         return labels;
     }
 
-    private boolean exists(String label) {
+    private boolean existsLabel(String label) {
         Map<ObjectPath, String> labels = getLabels();
         return labels.containsValue(label);
     }
