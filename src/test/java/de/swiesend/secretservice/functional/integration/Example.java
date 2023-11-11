@@ -1,5 +1,6 @@
 package de.swiesend.secretservice.functional.integration;
 
+import de.swiesend.secretservice.functional.Collection;
 import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
@@ -13,6 +14,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 
 public class Example {
     private static final Logger log = LoggerFactory.getLogger(Example.class);
@@ -47,7 +49,7 @@ public class Example {
             }*/
 
             // WARN: be careful activating this on the default collection...
-            if (collectionLabel == "test" || collectionLabel == "täst" ) {
+            if (collectionLabel == "test" || collectionLabel == "täst") {
                 log.info(String.format("Deleting collection {label: \"%s\", id: \"%s\"} …", collectionLabel, collectionId));
                 boolean success = collection.delete();
                 if (success)
@@ -98,5 +100,30 @@ public class Example {
                 }
             }
         }*/
+    }
+
+    @Test
+    public void collection() throws Exception {
+        char[] secret = null;
+
+        try (CollectionInterface collection = new Collection("test")) {
+            Map<String, String> attributes = Map.of("key", "value");
+            String item1 = collection.createItem("s1", "s1", attributes).orElseThrow();
+            secret = collection.getSecret(item1).orElseThrow();
+
+            String item2 = collection.createItem("s1", "s2", attributes).orElseThrow();
+            collection.getItems(attributes)
+                    .ifPresent(items -> {
+                        for (String it : items) {
+                            collection.getSecret(it).ifPresent(s ->
+                                    assertTrue("s1".equals(new String(s)) || "s2".equals(new String(s)))
+                            );
+                        }
+                    });
+            assertTrue(collection.deleteItem(item1));
+            assertTrue(collection.deleteItem(item2));
+            assertTrue(collection.delete());
+        }
+        assertEquals("s1", new String(secret));
     }
 }
