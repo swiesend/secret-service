@@ -38,12 +38,20 @@ public class Collection implements CollectionInterface {
 
     private ObjectPath path = null;
 
+    private boolean clearSessionAtClose = false;
+
+    private boolean isPrompting = true;
+
 
     public Collection() {
         this(Optional.empty());
+        this.clearSessionAtClose = true;
     }
 
     public Collection(Optional<SessionInterface> maybeSession) {
+        if (maybeSession.isEmpty()) {
+            this.clearSessionAtClose = true;
+        }
         init(maybeSession);
         this.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         this.collection = new de.swiesend.secretservice.Collection(path, connection);
@@ -53,13 +61,18 @@ public class Collection implements CollectionInterface {
 
     public Collection(String label) {
         this(label, Optional.empty(), Optional.empty());
+        this.clearSessionAtClose = true;
     }
 
     public Collection(String label, Optional<CharSequence> maybePassword) {
         this(label, maybePassword, Optional.empty());
+        this.clearSessionAtClose = true;
     }
 
     public Collection(String label, Optional<CharSequence> maybePassword, Optional<SessionInterface> maybeSession) {
+        if (maybeSession.isEmpty()) {
+            this.clearSessionAtClose = true;
+        }
         init(maybeSession);
         this.encryptedCollectionPassword = maybePassword.flatMap(
                 password -> this.session.getEncryptedSession().encrypt(password)
@@ -75,6 +88,9 @@ public class Collection implements CollectionInterface {
     }
 
     private void init(Optional<SessionInterface> maybeSession) {
+        if (maybeSession.isEmpty()) {
+            this.clearSessionAtClose = true;
+        }
         this.session = maybeSession.or(() -> SecretService.create().flatMap(service -> service.openSession())).get();
         this.service = session.getService();
         this.connection = service.getService().getConnection();
@@ -107,7 +123,10 @@ public class Collection implements CollectionInterface {
                 return Optional.empty();
             }
         } else if (service.isGnomeKeyringAvailable()) {
-            path = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get()).get();
+            Optional<ObjectPath> maybePath = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
+            if (maybePath.isPresent()) {
+                path = maybePath.get();
+            } // TODO: maybe else case?
         }
 
         if (path == null) {
@@ -186,6 +205,10 @@ public class Collection implements CollectionInterface {
     }
 
     private Optional<ObjectPath> performPrompt(ObjectPath path) {
+        if (!isPrompting) {
+            log.trace("dismissed the prompt");
+            return Optional.empty();
+        }
         if (!("/".equals(path.getPath()))) {
             return Optional.ofNullable(prompt.await(path, timeout))
                     .filter(completed -> !completed.dismissed)
@@ -198,9 +221,18 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean clear() {
         if (encryptedCollectionPassword.isPresent()) {
-            return encryptedCollectionPassword.get().clear();
+            boolean cleared = encryptedCollectionPassword.get().clear();
+            encryptedCollectionPassword = Optional.empty();
+            if (cleared) {
+                log.trace("cleared collection password");
+            } else {
+                log.trace("Could not clear collection password");
+            }
+            return cleared;
+        } else {
+            log.trace("No collection password to clear");
+            return true;
         }
-        return true;
     }
 
     @Override
@@ -360,12 +392,40 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
+    public boolean lockItem(String itemPath) {
+        Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
+        if (!item.isLocked()) {
+            Pair<List<ObjectPath>, ObjectPath> lock = service.getService().lock(List.of(item.getPath())).get();
+            java.lang.System.out.println("lock item: " + lock);
+            de.swiesend.secretservice.interfaces.Prompt.Completed result = prompt.await(lock.b, timeout);
+            java.lang.System.out.println("lock item prompt: " + result);
+        }
+        return true;
+    }
+
+    @Override
+    public boolean unlockItem(String itemPath) {
+        Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
+        if (item.isLocked()) {
+            service.getService().unlock(List.of(item.getPath())).ifPresent(unlock -> {
+                java.lang.System.out.println("unlock item: " + unlock);
+                if(unlock.a.isEmpty()){
+                    de.swiesend.secretservice.interfaces.Prompt.Completed await = prompt.await(unlock.b, timeout);
+                    log.info(String.format("Unlocked Item: %s", await.result.getValue()));
+                }
+            });
+        }
+        return true;
+    }
+
+    @Override
     public Optional<char[]> getSecret(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
 
         return getItem(objectPath)
                 .flatMap(item -> {
+                    // unlockItem(item.getObjectPath());
                     ObjectPath sessionPath = session.getSession().getPath();
                     return item.getSecret(sessionPath);
                 })
@@ -487,11 +547,11 @@ public class Collection implements CollectionInterface {
 
     @Override
     public void close() throws Exception {
-        if (encryptedCollectionPassword.isPresent()) {
-            encryptedCollectionPassword.get().close();
-            log.trace("cleared collection password");
-        }
+        clear();
         log.trace("closed collection");
+        if (clearSessionAtClose) {
+            session.close();
+        }
     }
 
     private Map<ObjectPath, String> getLabels() {
@@ -521,5 +581,16 @@ public class Collection implements CollectionInterface {
 
     private List<ObjectPath> lockable() {
         return Arrays.asList(collection.getPath());
+    }
+
+    // TODO: add concept to Prompt class..
+    public boolean disablePrompt() {
+        isPrompting = false;
+        return true;
+    }
+
+    public boolean enablePrompt() {
+        isPrompting = true;
+        return true;
     }
 }
