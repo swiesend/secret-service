@@ -126,4 +126,18 @@ public class Example {
         }
         assertEquals("s1", new String(secret));
     }
+
+    @Test
+    // TODO: add unlockItem()
+    public void unlockItem() throws Exception {
+        try (CollectionInterface collection = new Collection("test")) {
+            Map<String, String> attributes = Map.of("key", "asdf");
+            String item1 = collection.createItem("item-1", "secret", attributes).get();
+            collection.lockItem(item1);  // TODO: lock item does not apply immediately...
+            Thread.sleep(1000);
+            // dismiss the prompt
+            assert collection.getSecret(item1).isEmpty();
+        }
+    }
+
 }
