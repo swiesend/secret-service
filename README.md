@@ -2,9 +2,9 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/de.swiesend/secret-service.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22de.swiesend%22%20AND%20a:%22secret-service%22)
 
-A Java library for storing secrets in a keyring over the D-Bus.
+A _Java_ library for storing secrets in a keyring over the _DBus_.
 
-The library is conforming to the freedesktop.org
+The library is conform to the freedesktop.org
 [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with Gnome linux systems.
 
 The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon).
@@ -19,9 +19,49 @@ For KDE systems there is the [`kdewallet`](https://github.com/purejava/kdewallet
 
 ### CVE-2018-19358 (Vulnerability)
 
-There is a current investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked). Available D-Bus protection mechanisms (involving the busconfig and policy XML elements) are not used by default. The Secret Service API was never designed with a secure retrieval mechanism.
+There is an investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked).
+Available D-Bus protection mechanisms (involving the `busconfig` and `policy XML elements) are not used by default. But D-Bus protection mechanisms are not sufficient to protect against malicious attackers, because applications could identify themselves as different applications with various mechanisms.
+The Secret Service API was never designed with a secure retrieval mechanism, as this problem is mainly a design problem in the Linux desktop itself, which does not provide _Sandboxing_ (like Flatpak, sandbox, containers) for applications by default.
 
-* [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358) Base Score: __[7.8 HIGH]__, CVSS:3.0
+The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.org/Projects/GnomeKeyring/SecurityFAQ), [SecurityPhilosophy](https://wiki.gnome.org/Projects/GnomeKeyring/SecurityPhilosophy) and [disputed](https://gitlab.gnome.org/GNOME/gnome-keyring/-/issues/5) because the behavior represents a design decision.
+
+| Publisher | Url                                                                                                                                             | Base Score       | Vector | Published | Last Update | Status      |
+|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|------------------|--------|-----------|-------------|-------------|
+| NVD NIST  | [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)                                                                               | __[7.8 HIGH]__   | CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H | 2018-11-18 | 2020-08-24 | active      |
+| Cisco  | [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179) | __[5.5 MEDIUM]__ | CVSS:3.0 |  |  | unpublished |
+| Red Hat | [CVE-2018-19358](https://access.redhat.com/security/cve/cve-2018-19358)                                                                         | __[4.3 MEDIUM]__ | CVSS:3.0/AV:P/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N | 2018-07-06 | 2023-04-06 | Red Hat Product Security determined that this flaw was not a security vulnerability, but a design problem in the Linux desktop |
+| Suse | related issue [CVE-2008-7320](https://www.suse.com/security/cve/CVE-2008-7320.html)                                                             | [2.1 LOW]        | CVSS:2.0/AV:L/AC:L/Au:N/C:P/I:N/A:N | 2018-11-09 | 2023-07-03 | Resolved |
+
+**Mitigation**
+
+**Not recommended**
+- Storing secrets in the `login`/`default` keyring, when there are potentially malicious applications installed by the user. This is often the case in not well maintained desktop environment.
+- Implementing a `busconfig` for the D-Bus that enforces restrictions on the Secret Service API of the host system, knowing that these can be mitigated by providing a false sender/window/process id or dbus address.
+
+**Recommended**
+- [`easy`] Storing secrets in a non-default collection that is always locked. This is a compromise that is useful when the user is willing to be prompted for the collection password, when accessing a secret. One can lock the collection after retrieval, so that the secrets are only exposed for a brief moment.
+- [`easy`] Using [KeePassXC](https://keepassxc.org/) as provider. The KeePassXC implementation of the Secret Service API mitigates unauthorized retrievals by providing several access control mechanisms.
+  - [`easy`] Always locked collection: One can lock the collection after retrieval, so that the secrets are only exposed for a brief moment.
+- [`easy`] Storing secrets in a file with proper permissions instead of using the Secret Service API.
+  - [`moderate`] There are projects like [SOPS](https://github.com/getsops/sops) for secret-management to encrypt and edit files. But again oneself has to store the encryption keys securely.
+  - [`easy`/`moderate`] Using disk encryption like [LUKS](https://gitlab.com/cryptsetup/cryptsetup) does not help against malicious applications, but at least against several scenarios with physical access. 
+- [`moderate`/`advanced`] Deliver your application in a secure sandbox.
+
+**KeePassXC**
+
+Notification:
+  - Show notification when passwords are retrieved by clients
+
+Access Control:
+  - Confirm when passwords are retrieved by clients.
+  - Confirm when clients request entry deletion.
+  - Prompt to unlock database before searching.
+  - Management of an exposed database group, instead of the whole database.
+  - Prohibiting the deletion of the database. Only entries can be deleted, but are moved to the "Recycle Bin" group by default.
+
+Authorization:
+  - Showing connected applications by PID and DBus Address.
+  - Using a keyfile that has to be present when accessing the collection.
 
 ## Usage
 

@@ -1,9 +1,10 @@
 package de.swiesend.secretservice;
 
+import de.swiesend.secretservice.handlers.Messaging;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
-import de.swiesend.secretservice.errors.NoSuchObject;
-import de.swiesend.secretservice.handlers.Messaging;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -16,6 +17,8 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
 
+    private static final Logger log = LoggerFactory.getLogger(Prompt.class);
+
     public Prompt(Service service) {
         super(service.getConnection(), signals,
                 Static.Service.SECRETS,
@@ -24,27 +27,30 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
     }
 
     @Override
-    public void prompt(String window_id) {
+    public boolean prompt(String window_id) {
         objectPath = Static.ObjectPaths.prompt(window_id);
-        send("Prompt", "s", window_id);
+        return send("Prompt", "s", window_id).isPresent();
     }
 
     @Override
-    public void prompt(ObjectPath prompt) throws NoSuchObject {
+    public boolean prompt(ObjectPath prompt) {
         objectPath = prompt.getPath();
 
         String windowID = "";
 
-        try {
-            if (objectPath.startsWith(PROMPT + "/p") || objectPath.startsWith(PROMPT + "/u")) {
-                String[] split = prompt.getPath().split("/");
-                windowID = split[split.length - 1];
+        if (objectPath.startsWith(PROMPT + "/")) {
+            try {
+                // NOTE: If the windowID starts with the prefix 'p' or 'u' followed by numerics only,
+                //       then it comes from the gnome-keyring. KeePassXC generates random alphanumeric ids.
+                windowID = objectPath.substring(objectPath.lastIndexOf("/") + 1);
+            } catch (IndexOutOfBoundsException | NullPointerException e) {
+                log.warn(String.format("No proper window ID. Continuing with window ID: \"%s\"", windowID));
             }
-        } catch (IndexOutOfBoundsException | NullPointerException e) {
-            throw new NoSuchObject(objectPath);
+        } else {
+            log.warn(String.format("No proper prompt path. Continuing with window ID: \"%s\"", windowID));
         }
 
-        send("Prompt", "s", windowID);
+        return send("Prompt", "s", windowID).isPresent();
     }
 
     /**
@@ -61,11 +67,15 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
         if ("/".equals(path.getPath())) {
             return sh.getLastHandledSignal(Completed.class);
         } else {
-            return sh.await(Completed.class, path.getPath(), () -> {
+            return sh.await(
+                    Completed.class,
+                    path.getPath(),
+                    () -> {
                         prompt(path);
                         return this;
                     },
-                    timeout);
+                    timeout
+            );
         }
     }
 
@@ -82,10 +92,9 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
         return await(path, DEFAULT_PROMPT_TIMEOUT);
     }
 
-
     @Override
-    public void dismiss() {
-        send("Dismiss", "");
+    public boolean dismiss() {
+        return send("Dismiss", "").isPresent();
     }
 
     @Override

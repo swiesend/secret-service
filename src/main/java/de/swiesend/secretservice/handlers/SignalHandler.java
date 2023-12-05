@@ -11,10 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -46,8 +43,11 @@ public class SignalHandler implements DBusSigHandler {
                     }
                 }
             } catch (DBusException e) {
-                log.error("Could not connect to the D-Bus.", e);
+                log.error("Could not connect to the D-Bus: ", e);
+            } catch (ClassCastException e) {
+                log.error("Could not cast a signal: ", e);
             }
+
         }
     }
 
@@ -62,27 +62,27 @@ public class SignalHandler implements DBusSigHandler {
 
         if (s instanceof Collection.ItemCreated) {
             Collection.ItemCreated ic = (Collection.ItemCreated) s;
-            log.info("Received signal Collection.ItemCreated: " + ic.item);
+            log.info("Received signal: Collection.ItemCreated(" + ic.item + ")");
         } else if (s instanceof Collection.ItemChanged) {
             Collection.ItemChanged ic = (Collection.ItemChanged) s;
-            log.debug("Received signal Collection.ItemChanged: " + ic.item);
+            log.debug("Received signal: Collection.ItemChanged(" + ic.item + ")");
         } else if (s instanceof Collection.ItemDeleted) {
             Collection.ItemDeleted ic = (Collection.ItemDeleted) s;
-            log.info("Received signal Collection.ItemDeleted: " + ic.item);
+            log.info("Received signal: Collection.ItemDeleted(" + ic.item + ")");
         } else if (s instanceof Prompt.Completed) {
             Prompt.Completed c = (Prompt.Completed) s;
-            log.info("Received signal Prompt.Completed(" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
+            log.info("Received signal: Prompt.Completed(" + s.getPath() + "): {dismissed: " + c.dismissed + ", result: " + c.result + "}");
         } else if (s instanceof Service.CollectionCreated) {
             Service.CollectionCreated cc = (Service.CollectionCreated) s;
-            log.info("Received signal Service.CollectionCreated: " + cc.collection);
+            log.info("Received signal: Service.CollectionCreated(" + cc.collection + ")");
         } else if (s instanceof Service.CollectionChanged) {
             Service.CollectionChanged cc = (Service.CollectionChanged) s;
-            log.info("Received signal Service.CollectionChanged: " + cc.collection);
+            log.info("Received signal: Service.CollectionChanged(" + cc.collection + ")");
         } else if (s instanceof Service.CollectionDeleted) {
             Service.CollectionDeleted cc = (Service.CollectionDeleted) s;
-            log.info("Received signal Service.CollectionDeleted: " + cc.collection);
+            log.info("Received signal: Service.CollectionDeleted(" + cc.collection + ")");
         } else try {
-            log.warn("Received unexpected signal: " + s.getClass().toString() + " {" + s.toString() + "}");
+            log.warn("Received unexpected signal: " + s.getClass().getName() + ": {" + s + "}");
         } catch (NullPointerException e) {
             log.warn("Received unknown signal.");
         }
@@ -139,9 +139,9 @@ public class SignalHandler implements DBusSigHandler {
     public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
         final int init = count;
 
-        Object prompt = null;
+        Optional<Prompt> maybePrompt = Optional.empty();
         try {
-            prompt = action.call();
+            maybePrompt = Optional.ofNullable((Prompt) action.call());
         } catch (Exception e) {
             log.error("Could not acquire a prompt.", e);
         }
@@ -193,12 +193,14 @@ public class SignalHandler implements DBusSigHandler {
                 Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
             }
         } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
-            if (prompt != null && prompt instanceof Prompt) {
-                ((Prompt) prompt).dismiss();
-                log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
-            } else {
-                log.warn("Cancelled the action, but could not dismiss the prompt.", e);
-            }
+            maybePrompt.ifPresentOrElse(
+                    (prompt) -> {
+                        prompt.dismiss();
+                        log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
+                    },
+                    () -> {
+                        log.warn("Cancelled the action, but could not dismiss the prompt.", e);
+                    });
         } finally {
             handler.cancel(true);
             executor.shutdownNow();

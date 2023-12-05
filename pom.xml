@@ -57,14 +57,17 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <java.version>17</java.version>
 
         <!-- 3rd party dependencies -->
         <hkdf.version>2.0.0</hkdf.version>
         <dbus-java.version>4.3.0</dbus-java.version>
-        <slf4j.version>2.0.9</slf4j.version>
+        <slf4j.version>2.0.7</slf4j.version>
 
         <!-- test dependencies -->
-        <junit-jupiter.version>5.10.0</junit-jupiter.version>
+        <junit-jupiter.version>5.9.3</junit-jupiter.version>
     </properties>
 
     <dependencies>
@@ -76,7 +79,8 @@
             <version>${hkdf.version}</version>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-core -->
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java till `3.3.1` -->
+        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-core since `4.0.0`-->
         <dependency>
             <groupId>com.github.hypfvieh</groupId>
             <artifactId>dbus-java-core</artifactId>
@@ -133,6 +137,12 @@
             <scope>test</scope>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.12.0</version>
+        </dependency>
+
     </dependencies>
 
     <profiles>
@@ -165,6 +175,7 @@
     </profiles>
 
     <build>
+        <!-- What is pluginManagement in Maven's pom.xml? https://stackoverflow.com/questions/10483180/what-is-pluginmanagement-in-mavens-pom-xml -->
         <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
             <plugins>
                 <!-- https://maven.apache.org/enforcer/maven-enforcer-plugin/ -->
@@ -238,6 +249,11 @@
                     <artifactId>jacoco-maven-plugin</artifactId>
                     <version>0.8.10</version>
                 </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>versions-maven-plugin</artifactId>
+                    <version>2.8.1</version>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
@@ -247,9 +263,9 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <release>9</release>
-                    <source>9</source>
-                    <target>9</target>
+                    <release>17</release>
+                    <source>17</source>
+                    <target>17</target>
                 </configuration>
             </plugin>
             <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-source-plugin -->
@@ -327,6 +343,17 @@
                         <version>${junit-jupiter.version}</version>
                     </dependency>
                 </dependencies>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>versions-maven-plugin</artifactId>
+                <configuration>
+                    <allowAnyUpdates>false</allowAnyUpdates>
+                    <allowMajorUpdates>false</allowMajorUpdates>
+                    <allowMinorUpdates>true</allowMinorUpdates>
+                    <!--<allowIncrementalUpdates>true</allowIncrementalUpdates>-->
+                    <verbose>true</verbose>
+                </configuration>
             </plugin>
         </plugins>
     </build>

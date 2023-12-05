@@ -41,13 +41,13 @@ public class CollectionTest {
     @Test
     @DisplayName("delete test collection")
     public void delete() {
-        List<ObjectPath> expected = context.service.getCollections();
-        ObjectPath promptPath = context.collection.delete();
+        List<ObjectPath> expected = context.service.getCollections().get();
+        ObjectPath promptPath = context.collection.delete().get();
         log.info(promptPath.toString());
         assertEquals("/", promptPath.getPath());
         // assertTrue(promptPath.getPath().startsWith("/org/freedesktop/secrets/prompt/p"));
 
-        List<ObjectPath> actual = context.service.getCollections();
+        List<ObjectPath> actual = context.service.getCollections().get();
         assertEquals(expected.size() - 1, actual.size());
     }
 
@@ -57,7 +57,7 @@ public class CollectionTest {
         Map<String, String> attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
 
-        List<ObjectPath> items = context.collection.searchItems(attributes);
+        List<ObjectPath> items = context.collection.searchItems(attributes).get();
         log.info(Arrays.toString(items.toArray()));
         assertEquals(1, items.size());
         assertTrue(items.get(0).getPath().startsWith("/org/freedesktop/secrets/collection/test/"));
@@ -65,32 +65,28 @@ public class CollectionTest {
 
     @Test
     public void createItem() {
-
-        // some empty cipher parameters
-        byte[] parameters = "".getBytes();
-        byte[] value = "super secret".getBytes();
-        Secret secret = new Secret(context.session.getPath(), parameters, value);
+        Secret secret = context.encryption.encrypt("super secret").get();
 
         Map<String, String> attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
         Map<String, Variant> properties = Item.createProperties("TestItem", attributes);
 
-        Pair<ObjectPath, ObjectPath> response = context.collection.createItem(properties, secret, true);
+        Pair<ObjectPath, ObjectPath> response = context.collection.createItem(properties, secret, true).get();
         log.info(response.toString());
         assertTrue(response.a.getPath().startsWith("/org/freedesktop/secrets/collection/test/"));
         assertEquals("/", response.b.getPath());
 
-        List<ObjectPath> items = context.collection.getItems();
+        List<ObjectPath> items = context.collection.getItems().get();
         assertEquals(1, items.size());
 
         context.collection.createItem(properties, secret, false);
-        items = context.collection.getItems();
+        items = context.collection.getItems().get();
         assertEquals(2, items.size());
     }
 
     @Test
     public void getItems() {
-        List<ObjectPath> items = context.collection.getItems();
+        List<ObjectPath> items = context.collection.getItems().get();
         log.info(Arrays.toString(items.toArray()));
         assertEquals(1, items.size());
         assertTrue(items.get(0).getPath().startsWith("/org/freedesktop/secrets/collection/test/"));
@@ -99,8 +95,8 @@ public class CollectionTest {
     @Test
     @Disabled
     public void getLabel() {
-        Collection collection = new Collection("login", context.service);
-        String response = collection.getLabel();
+        Collection collection = new Collection("login", context.service.getConnection());
+        String response = collection.getLabel().get();
         log.info(response);
         List<String> labels = Arrays.asList(new String[]{
                 "login",     // en
@@ -114,15 +110,15 @@ public class CollectionTest {
 
     @Test
     public void setLabel() {
-        String label = context.collection.getLabel();
+        String label = context.collection.getLabel().get();
         assertEquals("test", label);
 
         context.collection.setLabel("test-renamed");
-        label = context.collection.getLabel();
+        label = context.collection.getLabel().get();
         assertEquals("test-renamed", label);
 
         context.collection.setLabel("test");
-        label = context.collection.getLabel();
+        label = context.collection.getLabel().get();
         assertEquals("test", label);
     }
 
@@ -139,18 +135,18 @@ public class CollectionTest {
         Collection collection;
         UInt64 response;
 
-        collection = new Collection("test", context.service);
-        response = collection.created();
+        collection = new Collection("test", context.service.getConnection());
+        response = collection.created().get();
         log.info("test: " + response);
         assertTrue(response.longValue() >= 0L);
 
-        collection = new Collection("login", context.service);
-        response = collection.created();
+        collection = new Collection("login", context.service.getConnection());
+        response = collection.created().get();
         log.info("login: " + response);
         assertTrue(response.longValue() >= 0L);
 
-        collection = new Collection("session", context.service);
-        response = collection.created();
+        collection = new Collection("session", context.service.getConnection());
+        response = collection.created().get();
         log.info("session: " + response);
         assertTrue(response.longValue() == 0L);
     }
@@ -161,24 +157,24 @@ public class CollectionTest {
         Collection collection;
         UInt64 response;
 
-        collection = new Collection("test", context.service);
-        response = collection.modified();
+        collection = new Collection("test", context.service.getConnection());
+        response = collection.modified().get();
         log.info("test: " + response);
         assertTrue(response.longValue() >= 0L);
-        collection = new Collection("login", context.service);
-        response = collection.modified();
+        collection = new Collection("login", context.service.getConnection());
+        response = collection.modified().get();
         log.info("login: " + response);
         assertTrue(response.longValue() >= 0L);
 
-        collection = new Collection("session", context.service);
-        response = collection.modified();
+        collection = new Collection("session", context.service.getConnection());
+        response = collection.modified().get();
         log.info("session: " + response);
         assertTrue(response.longValue() == 0L);
     }
 
     @Test
     public void isRemote() {
-        Collection collection = new Collection("test", context.service);
+        Collection collection = new Collection("test", context.service.getConnection());
         assertFalse(collection.isRemote());
     }
 
@@ -188,11 +184,11 @@ public class CollectionTest {
         log.info(test);
         assertEquals("/org/freedesktop/secrets/collection/test", test);
 
-        Collection login = new Collection("login", context.service);
+        Collection login = new Collection("login", context.service.getConnection());
         log.info(login.getObjectPath());
         assertEquals("/org/freedesktop/secrets/collection/login", login.getObjectPath());
 
-        Collection session = new Collection("session", context.service);
+        Collection session = new Collection("session", context.service.getConnection());
         log.info(session.getObjectPath());
         assertEquals("/org/freedesktop/secrets/collection/session", session.getObjectPath());
     }
