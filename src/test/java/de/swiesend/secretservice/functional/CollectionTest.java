@@ -112,11 +112,12 @@ class CollectionTest {
     @Disabled
     // TODO: test password abort
     void deleteCollectionWithoutPassword() {
-        CollectionInterface collectionWithoutPassword = service.openSession()
-                .flatMap(session ->
-                        session.collection("test-no-password-collection", Optional.empty())
-                ).get();
-        collectionWithoutPassword.disablePrompt();
+        CollectionInterface collectionWithoutPassword = service.openSession().flatMap(session ->
+                session.collection("test-no-password-collection", Optional.empty())
+        ).get();
+        // collectionWithoutPassword.disablePrompt();
+        Optional<Map<String, char[]>> maybeSecrets = collectionWithoutPassword.getSecrets();
+        // assertTrue(maybeSecrets.isEmpty());
         assertTrue(collectionWithoutPassword.delete());
     }
 
@@ -182,7 +183,6 @@ class CollectionTest {
     }
 
     @Test
-    @Disabled
     void setItemLabel() {
         String item = collection.createItem("item-original", "secret").get();
         assertTrue(collection.setItemLabel(item, "item-override"));
