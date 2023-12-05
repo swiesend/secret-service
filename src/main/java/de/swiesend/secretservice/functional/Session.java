@@ -25,6 +25,8 @@ public class Session implements SessionInterface {
     private UUID id = null;
     private ServiceInterface service = null;
 
+    private boolean isClosed = false;
+
     private Session(ServiceInterface service, TransportEncryption.EncryptedSession encryptedSession) {
         this.id = UUID.randomUUID();
         this.service = service;
@@ -85,10 +87,14 @@ public class Session implements SessionInterface {
 
     @Override
     public void close() throws Exception {
-        for (CollectionInterface collection : this.collections) {
-            collection.close();
+        if (!isClosed) {
+            for (CollectionInterface collection : this.collections) {
+                collection.close();
+            }
+            encryptedSession.getSession().close();
         }
-        encryptedSession.getSession().close();
+        log.trace("closed session");
+        isClosed = true;
     }
 
     @Override

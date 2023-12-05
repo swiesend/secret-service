@@ -57,6 +57,6 @@ public class System extends SystemInterface {
 
     @Override
     public void close() throws Exception {
-        connection.close();
+        disconnect();
     }
 }
