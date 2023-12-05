@@ -8,6 +8,7 @@ import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Optional;
 
@@ -83,9 +84,9 @@ public class MessageHandler {
                     case "org.freedesktop.DBus.Error.InvalidArgs":
                     case "org.freedesktop.DBus.Error.Failed":
                         if (parameters.length == 1) {
-                            log.error(error + ": \"" + parameters[0] + "\"");
+                            log.error(error + ": \"" + parameters[0] + "\"", new DBusException(error));
                         } else {
-                            log.error(error + ": " + Arrays.deepToString(parameters));
+                            log.error(error + ": " + Arrays.deepToString(parameters), new DBusException(error));
                         }
                         return Optional.empty();
                     case "org.freedesktop.DBus.Local.Disconnected":

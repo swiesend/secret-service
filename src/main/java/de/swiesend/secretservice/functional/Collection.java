@@ -42,6 +42,8 @@ public class Collection implements CollectionInterface {
 
     private boolean isPrompting = true;
 
+    private boolean isClosed = false;
+
 
     public Collection() {
         this(Optional.empty());
@@ -547,11 +549,14 @@ public class Collection implements CollectionInterface {
 
     @Override
     public void close() throws Exception {
-        clear();
-        log.trace("closed collection");
-        if (clearSessionAtClose) {
-            session.close();
+        if (!isClosed) {
+            clear();
+            if (clearSessionAtClose) {
+                session.close();
+            }
         }
+        log.trace("closed collection");
+        isClosed = true;
     }
 
     private Map<ObjectPath, String> getLabels() {

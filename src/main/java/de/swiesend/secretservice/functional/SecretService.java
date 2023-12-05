@@ -17,14 +17,14 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 public class SecretService extends ServiceInterface {
 
     private static final Logger log = LoggerFactory.getLogger(SecretService.class);
+    private static Optional<SystemInterface> maybeSystem = Optional.empty();
     private Map<UUID, SessionInterface> sessions = new HashMap<>();
     private de.swiesend.secretservice.Service service;
-
-    private static Optional<SystemInterface> maybeSystem = Optional.empty();
-
     private boolean isGnomeKeyringAvailable;
 
     private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
+
+    private boolean isClosed = false;
 
     private SecretService(SystemInterface system, AvailableServices available) {
         this.service = new Service(system.getConnection());
@@ -87,16 +87,20 @@ public class SecretService extends ServiceInterface {
 
     @Override
     public void close() throws Exception {
-        List<SessionInterface> values = getSessions();
-        if (values != null) {
-            for (SessionInterface session : values) {
-                unregisterSession(session);
-                session.close();
+        if (!isClosed) {
+            List<SessionInterface> values = getSessions();
+            if (values != null) {
+                for (SessionInterface session : values) {
+                    unregisterSession(session);
+                    session.close();
+                }
+            }
+            if (maybeSystem.isPresent()) {
+                maybeSystem.get().close();
             }
         }
-        if (maybeSystem.isPresent()) {
-            maybeSystem.get().close();
-        }
+        log.trace("closed service");
+        isClosed = true;
     }
 
     public de.swiesend.secretservice.Service getService() {
