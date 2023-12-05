@@ -504,7 +504,10 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean unlockWithUserPermission() {
-        if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
+        // TODO: locking all collections, maybe lock only
+        //       the default collections to protect it from malicious access
+        if (!isUnlockedOnceWithUserPermission) lock();
+        // if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
         unlock();
         if (collection.isLocked()) {
             log.error("The collection was not unlocked with user permission.");
