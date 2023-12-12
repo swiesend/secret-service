@@ -35,7 +35,11 @@ public class MessageHandler {
                     service,
                     path,
                     iface,
-                    method, (byte) 0, signature, args);
+                    method,
+                    (byte) 0,
+                    signature,
+                    args
+            );
 
             connection.sendMessage(message);
 
