@@ -1,15 +1,16 @@
 package de.swiesend.secretservice.simple;
 
 import de.swiesend.secretservice.*;
+import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
+import de.swiesend.secretservice.interfaces.Prompt.Completed;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.types.Variant;
-import de.swiesend.secretservice.interfaces.Prompt.Completed;
-import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,8 +37,8 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 public final class SimpleCollection extends de.swiesend.secretservice.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
-    private static Thread shutdownHook = setupShutdownHook();
     private static DBusConnection connection = getConnection();
+    private static final Thread shutdownHook = setupShutdownHook();
     private TransportEncryption transport = null;
     private Service service = null;
     private Session session = null;
@@ -86,11 +87,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 try {
                     encrypted = transport.encrypt(password);
                 } catch (NoSuchAlgorithmException |
-                        NoSuchPaddingException |
-                        InvalidAlgorithmParameterException |
-                        InvalidKeyException |
-                        BadPaddingException |
-                        IllegalBlockSizeException e) {
+                         NoSuchPaddingException |
+                         InvalidAlgorithmParameterException |
+                         InvalidKeyException |
+                         BadPaddingException |
+                         IllegalBlockSizeException e) {
                     log.error("Could not establish transport encryption.", e);
                 }
             }
@@ -138,11 +139,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     private static DBusConnection getConnection() {
         try {
             return DBusConnectionBuilder.forSessionBus().withShared(false).build();
-        } catch (DBusException e) {
+        } catch (DBusException | DBusExecutionException e) {
             if (e == null) {
                 log.warn("Could not communicate properly with the D-Bus.");
             } else {
-                log.warn("Could not communicate properly with the D-Bus: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")");
+                log.warn("Could not communicate properly with the D-Bus [" + e.getClass().getSimpleName() + "]: " + e.getMessage());
             }
         }
         return null;
@@ -288,10 +289,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
             }
         } catch (NoSuchAlgorithmException |
-                InvalidAlgorithmParameterException |
-                InvalidKeySpecException |
-                InvalidKeyException |
-                DBusException e) {
+                 InvalidAlgorithmParameterException |
+                 InvalidKeySpecException |
+                 InvalidKeyException |
+                 DBusException e) {
             throw new IOException("Could not initiate transport encryption.", e);
         }
     }
@@ -485,11 +486,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 }
             }
         } catch (NoSuchAlgorithmException |
-                NoSuchPaddingException |
-                InvalidAlgorithmParameterException |
-                InvalidKeyException |
-                BadPaddingException |
-                IllegalBlockSizeException e) {
+                 NoSuchPaddingException |
+                 InvalidAlgorithmParameterException |
+                 InvalidKeyException |
+                 BadPaddingException |
+                 IllegalBlockSizeException e) {
             log.error("Could not encrypt the secret.", e);
         }
 
@@ -544,11 +545,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         if (password != null) try (Secret secret = transport.encrypt(password)) {
             item.setSecret(secret);
         } catch (NoSuchAlgorithmException |
-                NoSuchPaddingException |
-                InvalidAlgorithmParameterException |
-                InvalidKeyException |
-                BadPaddingException |
-                IllegalBlockSizeException e) {
+                 NoSuchPaddingException |
+                 InvalidAlgorithmParameterException |
+                 InvalidKeyException |
+                 BadPaddingException |
+                 IllegalBlockSizeException e) {
             log.error("Could not encrypt the secret.", e);
         }
     }
@@ -618,11 +619,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         try (final Secret secret = item.getSecret(session.getPath())) {
             decrypted = transport.decrypt(secret);
         } catch (NoSuchPaddingException |
-                NoSuchAlgorithmException |
-                InvalidAlgorithmParameterException |
-                InvalidKeyException |
-                BadPaddingException |
-                IllegalBlockSizeException e) {
+                 NoSuchAlgorithmException |
+                 InvalidAlgorithmParameterException |
+                 InvalidKeyException |
+                 BadPaddingException |
+                 IllegalBlockSizeException e) {
             log.error("Could not decrypt the secret.", e);
         }
         return decrypted;
