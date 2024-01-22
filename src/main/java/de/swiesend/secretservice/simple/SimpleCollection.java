@@ -18,6 +18,7 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.security.AccessControlException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -614,7 +615,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         unlock();
 
         final Item item = getItem(objectPath);
-
+        //If the secret is locked, we first need to ask for permission to access it.
+        if (item.isLocked()){
+            Pair<List<ObjectPath>, ObjectPath> unlock = service.unlock(List.of(Static.Convert.toObjectPath(item.getObjectPath())));
+            if(unlock.a.isEmpty()){
+                Completed await = prompt.await(unlock.b, DEFAULT_PROMPT_TIMEOUT);
+            }
+        }
         char[] decrypted = null;
         try (final Secret secret = item.getSecret(session.getPath())) {
             decrypted = transport.decrypt(secret);
