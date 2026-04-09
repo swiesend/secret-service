@@ -119,10 +119,15 @@ module de.swiesend.secretservice {
 
 Semantic versioning with format: `{MAJOR}.{MINOR}.{PATCH}[-{SNAPSHOT|alpha|beta|rc}.?{INC}?]`
 
+The current release is `2.0.1-alpha`. The 2.0.0 line introduced JPMS (`module-info.java`), updated major dependencies (dbus-java 4.x, hkdf 2.x, slf4j 2.x), and moved interfaces into the `de.swiesend.secretservice` package hierarchy. Earlier 1.x releases (e.g., `1.8.1-jdk17`) predate modularization.
+
 ## Git Conventions
 
 - Commit messages: capitalized, descriptive subject line. Reference issues with `Resolves: #N` or link format
-- Branches: `main` for production, feature branches with slash notation (e.g., `claude/feature-name`)
+- Branches:
+  - **`main`** - Production branch; holds the current released/alpha code (2.0.1-alpha)
+  - **`develop-2.x.x`** - Long-lived development branch for the 2.x.x interface design. New 2.x features and API changes are developed here before merging to `main`. Check this branch for in-progress work on the next 2.x release
+  - **Feature branches** - Slash notation (e.g., `claude/feature-name`, `purejava/modularize`)
 
 ## Security Considerations
 
