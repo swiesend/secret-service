@@ -31,7 +31,7 @@ This allows callers to hold a single service and open/close sessions as needed, 
 
 **Problem:** The current API uses mutable state, null returns, and checked exceptions extensively, making it difficult to compose operations safely.
 
-**Direction:** The 2.x API aims to use `Optional` returns and a more composable style. An open design challenge is the interplay between `Optional` and `AutoCloseable` -- resources wrapped in `Optional` do not integrate naturally with try-with-resources ([PR #32](https://github.com/swiesend/secret-service/pull/32) discussion).
+**Direction:** The 2.x API aims to use `Optional` returns and a more composable style. An open design challenge is the interplay between `Optional` and `AutoCloseable` -- resources wrapped in `Optional` do not integrate naturally with try-with-resources ([PR #32](https://github.com/swiesend/secret-service/pull/32) discussion). See the **Secure cleanup constraint** below for why this is a security concern, not just an ergonomic one.
 
 ### 3. Broader secret service provider compatibility
 
@@ -65,7 +65,7 @@ This allows callers to hold a single service and open/close sessions as needed, 
 
 ## Known design tensions
 
-- **`Optional` vs `AutoCloseable`:** The functional API wants to return `Optional<Secret>`, but `Secret` implements `AutoCloseable` for secure cleanup. `Optional` has no built-in resource management, so callers must manually handle the lifecycle of the contained value. This remains an open design question.
+- **`Optional` vs `AutoCloseable` -- secure cleanup constraint:** The functional API wants to return `Optional<Secret>`, but `Secret` implements `AutoCloseable` for a security-critical reason: `Secret.close()` zeroes the underlying `byte[] value` via `Arrays.fill(bytes, (byte) 0)` to prevent sensitive material from lingering in heap memory. `Optional` has no built-in resource management -- callers using `.map()`, `.ifPresent()`, or `.orElse()` can easily consume the value without ever calling `close()`, leaving secret bytes uncleared in memory until GC. Any functional API that returns `Optional<Secret>` (or similar wrappers) must guarantee that the contained `Secret` is closed on every code path, including when the caller discards the `Optional` or an exception interrupts processing. Possible approaches include a callback-style API (e.g., `withSecret(path, secret -> ...)` that closes after the callback), a custom `CloseableOptional` wrapper, or requiring callers to use `try-with-resources` on the unwrapped value. This remains an open design question, but the constraint is firm: **no API shape is acceptable if it makes it easy to leak secret bytes in memory**.
 - **Static connection vs instance connection:** The 1.x `SimpleCollection` uses a static `DBusConnection` shared across all instances with a JVM shutdown hook. The 2.x API needs to move to instance-scoped connections without breaking the simple "just works" experience for basic usage.
 - **Backward compatibility:** The 2.0.0-alpha already broke package names (necessary for JPMS). The functional API will be a new package (`functional`), so the existing `SimpleCollection` can coexist during a transition period.
 
