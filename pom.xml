@@ -11,7 +11,7 @@
     <!-- Pre-Release:       {MAJOR}.{MINOR}.{PATCH}-{alpha|beta}.?{INC}? -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-rc.{INC} -->
     <!-- Release:           {MAJOR}.{MINOR}.{PATCH}-?{JDKVERSION}? -->
-    <version>2.0.0-alpha</version>
+    <version>2.0.1-alpha</version>
     <packaging>jar</packaging>
 
     <name>secret-service</name>

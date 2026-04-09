@@ -8,6 +8,7 @@ import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
@@ -126,11 +127,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     private static DBusConnection getConnection() {
         try {
             return DBusConnectionBuilder.forSessionBus().withShared(false).build();
-        } catch (DBusException e) {
+        } catch (DBusException | DBusExecutionException e) {
             if (e == null) {
                 log.warn("Could not communicate properly with the D-Bus.");
             } else {
-                log.warn("Could not communicate properly with the D-Bus: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")");
+                log.warn("Could not communicate properly with the D-Bus [" + e.getClass().getSimpleName() + "]: " + e.getMessage());
             }
         }
         return null;
