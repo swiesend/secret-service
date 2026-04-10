@@ -29,7 +29,6 @@ public class Collection implements CollectionInterface {
     SessionInterface session = null;
     ServiceInterface service = null;
     DBusConnection connection = null;
-    private Duration timeout = null;
     private Boolean isUnlockedOnceWithUserPermission = false;
     private Optional<String> label = Optional.empty();
     private String id = null;
@@ -143,7 +142,6 @@ public class Collection implements CollectionInterface {
         this.session = resolved.get();
         this.service = session.getService();
         this.connection = service.getService().getConnection();
-        this.timeout = session.getService().getTimeout();
         this.prompt = new Prompt(session.getService().getService());
         if (service.isGnomeKeyringAvailable()) {
             this.withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(session.getService().getService());
@@ -260,7 +258,7 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
         if (!("/".equals(path.getPath()))) {
-            return Optional.ofNullable(prompt.await(path, timeout))
+            return Optional.ofNullable(prompt.await(path, service.getTimeout()))
                     .filter(completed -> !completed.dismissed)
                     .map(success -> new ObjectPath(success.getSource(), success.result.getValue().toString()));
         } else {
@@ -447,7 +445,7 @@ public class Collection implements CollectionInterface {
         if (!item.isLocked()) {
             Pair<List<ObjectPath>, ObjectPath> lock = service.getService().lock(List.of(item.getPath())).get();
             log.debug("lock item: {}", lock);
-            de.swiesend.secretservice.interfaces.Prompt.Completed result = prompt.await(lock.b, timeout);
+            de.swiesend.secretservice.interfaces.Prompt.Completed result = prompt.await(lock.b, service.getTimeout());
             log.debug("lock item prompt: {}", result);
         }
         return true;
@@ -460,7 +458,7 @@ public class Collection implements CollectionInterface {
             service.getService().unlock(List.of(item.getPath())).ifPresent(unlock -> {
                 log.debug("unlock item: {}", unlock);
                 if(unlock.a.isEmpty()){
-                    de.swiesend.secretservice.interfaces.Prompt.Completed await = prompt.await(unlock.b, timeout);
+                    de.swiesend.secretservice.interfaces.Prompt.Completed await = prompt.await(unlock.b, service.getTimeout());
                     log.info(String.format("Unlocked Item: %s", await.result.getValue()));
                 }
             });
@@ -506,10 +504,10 @@ public class Collection implements CollectionInterface {
         List<ObjectPath> items = collection.getItems().get();
         if (items == null) return Optional.empty();
 
-        Map<String, char[]> passwords = new HashMap();
+        Map<String, char[]> passwords = new HashMap<>();
         for (ObjectPath item : items) {
             String path = item.getPath();
-            passwords.put(path, getSecret(path).get());
+            getSecret(path).ifPresent(secret -> passwords.put(path, secret));
         }
 
         return Optional.of(passwords);
