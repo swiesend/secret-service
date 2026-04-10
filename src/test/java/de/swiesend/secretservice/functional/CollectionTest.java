@@ -284,21 +284,28 @@ class CollectionTest {
 
     @Test
     void withSecretWrappingThirdPartyDigest() throws NoSuchAlgorithmException {
-        // Example: wrapping a java.security.MessageDigest call inside the callback.
-        // This simulates how you would use a third-party library that needs the secret
-        // as input -- the secret never leaves the callback scope.
+        // Example: wrapping a java.security.MessageDigest call inside the callback
+        // as input while avoiding creation of an intermediate String.
         String item = collection.createItem("api-key", "my-secret-api-key").get();
 
         MessageDigest md = MessageDigest.getInstance("SHA-256");
 
         Optional<byte[]> hash = collection.withSecret(item, secret -> {
-            // Convert the secret to bytes, hash it, then let the callback return the hash.
-            // The original char[] secret is auto-cleared after this callback returns.
-            byte[] secretBytes = new String(secret).getBytes(StandardCharsets.UTF_8);
+            // Encode the secret directly to bytes, hash it, then return the hash.
+            // The original char[] secret is auto-cleared after this callback returns,
+            // and the temporary byte buffers are cleared in the finally block below.
+            // Note: avoid new String(secret) here — String is immutable and cannot be
+            // cleared, which would defeat the in-memory clearing benefit of withSecret().
+            java.nio.ByteBuffer encodedSecret = StandardCharsets.UTF_8.encode(java.nio.CharBuffer.wrap(secret));
+            byte[] secretBytes = new byte[encodedSecret.remaining()];
+            encodedSecret.get(secretBytes);
             try {
                 return md.digest(secretBytes);
             } finally {
                 Arrays.fill(secretBytes, (byte) 0);
+                if (encodedSecret.hasArray()) {
+                    Arrays.fill(encodedSecret.array(), (byte) 0);
+                }
             }
         });
 
