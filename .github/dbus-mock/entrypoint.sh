@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# dbus-java-transport-native-unixsocket requires path-based unix sockets,
-# not abstract sockets (which are the default on Linux).
-# Create a custom D-Bus session config with path-based listening.
-cat > /tmp/dbus-session-path.conf << 'DBUSCONF'
+# dbus-java-transport-native-unixsocket requires path-based unix sockets
+# (unix:path=...), not abstract sockets (unix:abstract=...) which are
+# the Linux default. Use an explicit socket path to guarantee this.
+
+DBUS_SOCKET="/tmp/dbus-test-socket"
+rm -f "$DBUS_SOCKET"
+
+cat > /tmp/dbus-session.conf << DBUSCONF
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
   <type>custom</type>
-  <listen>unix:tmpdir=/tmp</listen>
+  <listen>unix:path=${DBUS_SOCKET}</listen>
   <auth>EXTERNAL</auth>
   <policy context="default">
     <allow send_destination="*" eavesdrop="true"/>
@@ -19,13 +23,20 @@ cat > /tmp/dbus-session-path.conf << 'DBUSCONF'
 </busconfig>
 DBUSCONF
 
-# Start D-Bus daemon with path-based socket
-DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --config-file=/tmp/dbus-session-path.conf --print-address --fork)
-export DBUS_SESSION_BUS_ADDRESS
-echo "D-Bus session bus: $DBUS_SESSION_BUS_ADDRESS"
+# Start D-Bus daemon with explicit path-based socket
+dbus-daemon --config-file=/tmp/dbus-session.conf --fork --print-pid
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${DBUS_SOCKET}"
+echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+
+# Verify D-Bus is reachable
+dbus-send --session --dest=org.freedesktop.DBus \
+  --type=method_call --print-reply \
+  /org/freedesktop/DBus org.freedesktop.DBus.ListNames \
+  || { echo "ERROR: D-Bus not reachable"; exit 1; }
 
 # Start gnome-keyring-daemon in unlocked mode (empty password)
 echo "" | gnome-keyring-daemon --unlock --components=secrets
+echo "gnome-keyring-daemon started"
 
 # Run the provided command, defaulting to Maven test
 if [ $# -eq 0 ]; then
