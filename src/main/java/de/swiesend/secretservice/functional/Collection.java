@@ -204,7 +204,7 @@ public class Collection implements CollectionInterface {
 
     private void waitForCollectionCreatedSignal() {
         try {
-            Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
+            Thread.sleep(DEFAULT_DELAY_MILLIS);
         } catch (InterruptedException e) {
             log.error("Unexpected interrupt while waiting for a CollectionCreated signal.", e);
         }
@@ -547,7 +547,7 @@ public class Collection implements CollectionInterface {
             service.getService().lock(lockable());
             log.info("Locked collection: \"" + collection.getLabel().get() + "\" (" + collection.getObjectPath() + ")");
             try {
-                Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
+                Thread.sleep(DEFAULT_DELAY_MILLIS);
             } catch (InterruptedException e) {
                 log.error("Unexpected interrupt while waiting for a collection to lock.", e);
             }
