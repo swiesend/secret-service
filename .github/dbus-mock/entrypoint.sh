@@ -20,6 +20,8 @@ cat > /tmp/dbus-session.conf << DBUSCONF
     <allow eavesdrop="true"/>
     <allow own="*"/>
   </policy>
+  <!-- Required for gnome-keyring-daemon service activation -->
+  <standard_session_servicedirs/>
 </busconfig>
 DBUSCONF
 
@@ -36,7 +38,14 @@ dbus-send --session --dest=org.freedesktop.DBus \
 
 # Start gnome-keyring-daemon in unlocked mode (empty password)
 echo "" | gnome-keyring-daemon --unlock --components=secrets
-echo "gnome-keyring-daemon started"
+sleep 1
+
+# Verify Secret Service is registered on the bus
+dbus-send --session --dest=org.freedesktop.secrets \
+  --type=method_call --print-reply \
+  /org/freedesktop/secrets org.freedesktop.DBus.Peer.Ping \
+  || { echo "ERROR: org.freedesktop.secrets not available"; exit 1; }
+echo "gnome-keyring-daemon ready"
 
 # Run the provided command, defaulting to Maven test
 if [ $# -eq 0 ]; then
