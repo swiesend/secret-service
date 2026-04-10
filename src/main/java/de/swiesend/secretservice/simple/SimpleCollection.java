@@ -299,6 +299,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
             log.debug("Closed delegate collection properly.");
         } catch (Exception e) {
             log.error("Failed to close delegate collection.", e);
+        } finally {
+            try {
+                service.close();
+                log.debug("Closed secret service properly.");
+            } catch (Exception e) {
+                log.error("Failed to close secret service.", e);
+            }
         }
     }
 
