@@ -2,7 +2,7 @@ name: Regression Tests
 
 on:
   push:
-    branches: [main, develop-2.x.x]
+    branches: [main, develop-2.x.x, claude/**]
   pull_request:
     branches: [main, develop-2.x.x]
 
