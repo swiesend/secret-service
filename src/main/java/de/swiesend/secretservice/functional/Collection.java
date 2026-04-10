@@ -536,7 +536,9 @@ public class Collection implements CollectionInterface {
 
     @Override
     public Optional<Map<String, char[]>> getSecrets() {
-        unlockWithUserPermission();
+        if (!unlockWithUserPermission()) {
+            return Optional.empty();
+        }
 
         Optional<List<ObjectPath>> maybeItems = collection.getItems();
         if (maybeItems.isEmpty()) return Optional.empty();
