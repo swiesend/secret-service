@@ -106,7 +106,7 @@ public class Example {
     public void collection() throws Exception {
         char[] secret = null;
 
-        try (CollectionInterface collection = new Collection("test")) {
+        try (CollectionInterface collection = Collection.open("test").get()) {
             Map<String, String> attributes = Map.of("key", "value");
             String item1 = collection.createItem("s1", "s1", attributes).orElseThrow();
             secret = collection.getSecret(item1).orElseThrow();
@@ -130,7 +130,7 @@ public class Example {
     @Test
     // TODO: add unlockItem()
     public void unlockItem() throws Exception {
-        try (CollectionInterface collection = new Collection("test")) {
+        try (CollectionInterface collection = Collection.open("test").get()) {
             Map<String, String> attributes = Map.of("key", "asdf");
             String item1 = collection.createItem("item-1", "secret", attributes).get();
             collection.lockItem(item1);  // TODO: lock item does not apply immediately...

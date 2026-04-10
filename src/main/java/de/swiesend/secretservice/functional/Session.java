@@ -73,16 +73,20 @@ public class Session implements SessionInterface {
 
     @Override
     public Optional<CollectionInterface> collection(String label, Optional<CharSequence> maybePassword) {
-        CollectionInterface collection = new Collection(label, maybePassword, Optional.of(this));
-        this.collections.add(collection);
-        return Optional.of(collection);
+        return Collection.open(label, maybePassword, Optional.of(this))
+                .map(collection -> {
+                    this.collections.add(collection);
+                    return collection;
+                });
     }
 
     @Override
     public Optional<CollectionInterface> defaultCollection() {
-        CollectionInterface collection = new Collection(Optional.of(this));
-        this.collections.add(collection);
-        return Optional.of(collection);
+        return Collection.openDefault(Optional.of(this))
+                .map(collection -> {
+                    this.collections.add(collection);
+                    return collection;
+                });
     }
 
     @Override

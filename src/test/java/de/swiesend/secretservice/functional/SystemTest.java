@@ -30,7 +30,7 @@ class SystemTest {
 
     @Test
     void isConnected() {
-        assertTrue(System.isConnected());
+        assertTrue(((System) system).isConnected());
     }
 
     @Test

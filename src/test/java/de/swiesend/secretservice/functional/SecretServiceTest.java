@@ -39,7 +39,7 @@ public class SecretServiceTest {
     @Test
     void isOrgGnomeKeyringAvailable() {
         SystemInterface system = System.connect().get();
-        assertTrue(SecretService.isAvailable(system, new AvailableServices(system)));
+        assertTrue(ServiceInterface.isAvailable(system, new AvailableServices(system)));
     }
 
     // TODO: check if needed at all

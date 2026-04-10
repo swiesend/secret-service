@@ -44,56 +44,102 @@ public class Collection implements CollectionInterface {
 
     private boolean isClosed = false;
 
-
-    public Collection() {
-        this(Optional.empty());
-        this.clearSessionAtClose = true;
+    private Collection() {
     }
 
-    public Collection(Optional<SessionInterface> maybeSession) {
+    /**
+     * Open the default collection, creating a new session automatically.
+     *
+     * @return the default collection, or empty if the service is unavailable
+     */
+    public static Optional<CollectionInterface> openDefault() {
+        return openDefault(Optional.empty());
+    }
+
+    /**
+     * Open the default collection with an optional existing session.
+     *
+     * @param maybeSession an existing session to reuse, or empty to create a new one
+     * @return the default collection, or empty if the service is unavailable
+     */
+    public static Optional<CollectionInterface> openDefault(Optional<SessionInterface> maybeSession) {
+        Collection c = new Collection();
         if (maybeSession.isEmpty()) {
-            this.clearSessionAtClose = true;
+            c.clearSessionAtClose = true;
         }
-        init(maybeSession);
-        this.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-        this.collection = new de.swiesend.secretservice.Collection(path, connection);
-        this.label = collection.getLabel();
-        this.id = collection.getId();
+        if (!c.init(maybeSession)) {
+            return Optional.empty();
+        }
+        c.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
+        c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
+        c.label = c.collection.getLabel();
+        c.id = c.collection.getId();
+        return Optional.of(c);
     }
 
-    public Collection(String label) {
-        this(label, Optional.empty(), Optional.empty());
-        this.clearSessionAtClose = true;
+    /**
+     * Open or create a named collection, creating a new session automatically.
+     *
+     * @param label the collection label
+     * @return the collection, or empty if it could not be acquired
+     */
+    public static Optional<CollectionInterface> open(String label) {
+        return open(label, Optional.empty(), Optional.empty());
     }
 
-    public Collection(String label, Optional<CharSequence> maybePassword) {
-        this(label, maybePassword, Optional.empty());
-        this.clearSessionAtClose = true;
+    /**
+     * Open or create a named collection with an optional password.
+     *
+     * @param label         the collection label
+     * @param maybePassword optional collection password
+     * @return the collection, or empty if it could not be acquired
+     */
+    public static Optional<CollectionInterface> open(String label, Optional<CharSequence> maybePassword) {
+        return open(label, maybePassword, Optional.empty());
     }
 
-    public Collection(String label, Optional<CharSequence> maybePassword, Optional<SessionInterface> maybeSession) {
+    /**
+     * Open or create a named collection with an optional password and session.
+     *
+     * @param label         the collection label
+     * @param maybePassword optional collection password
+     * @param maybeSession  an existing session to reuse, or empty to create a new one
+     * @return the collection, or empty if it could not be acquired
+     */
+    public static Optional<CollectionInterface> open(String label, Optional<CharSequence> maybePassword, Optional<SessionInterface> maybeSession) {
+        Collection c = new Collection();
         if (maybeSession.isEmpty()) {
-            this.clearSessionAtClose = true;
+            c.clearSessionAtClose = true;
         }
-        init(maybeSession);
-        this.encryptedCollectionPassword = maybePassword.flatMap(
-                password -> this.session.getEncryptedSession().encrypt(password)
+        if (!c.init(maybeSession)) {
+            return Optional.empty();
+        }
+        c.encryptedCollectionPassword = maybePassword.flatMap(
+                password -> c.session.getEncryptedSession().encrypt(password)
         );
 
-        // TODO: the constructor may not throw an error...
-        this.collection = getOrCreateCollection(label).orElseThrow(() -> new NoSuchElementException(
-                String.format("Could not acquire collection with name %s", label)
-        ));
-        this.path = collection.getPath();
-        this.label = Optional.ofNullable(label);
-        this.id = collection.getId();
+        Optional<de.swiesend.secretservice.Collection> maybeCollection = c.getOrCreateCollection(label);
+        if (maybeCollection.isEmpty()) {
+            log.warn("Could not acquire collection with name {}", label);
+            return Optional.empty();
+        }
+        c.collection = maybeCollection.get();
+        c.path = c.collection.getPath();
+        c.label = Optional.ofNullable(label);
+        c.id = c.collection.getId();
+        return Optional.of(c);
     }
 
-    private void init(Optional<SessionInterface> maybeSession) {
+    private boolean init(Optional<SessionInterface> maybeSession) {
         if (maybeSession.isEmpty()) {
             this.clearSessionAtClose = true;
         }
-        this.session = maybeSession.or(() -> SecretService.create().flatMap(service -> service.openSession())).get();
+        Optional<SessionInterface> resolved = maybeSession.or(() -> SecretService.create().flatMap(ServiceInterface::openSession));
+        if (resolved.isEmpty()) {
+            log.error("Could not establish a session.");
+            return false;
+        }
+        this.session = resolved.get();
         this.service = session.getService();
         this.connection = service.getService().getConnection();
         this.timeout = session.getService().getTimeout();
@@ -101,6 +147,7 @@ public class Collection implements CollectionInterface {
         if (service.isGnomeKeyringAvailable()) {
             this.withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(session.getService().getService());
         }
+        return true;
     }
 
     private Optional<de.swiesend.secretservice.Collection> getOrCreateCollection(String label) {
@@ -128,7 +175,7 @@ public class Collection implements CollectionInterface {
             Optional<ObjectPath> maybePath = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
             if (maybePath.isPresent()) {
                 path = maybePath.get();
-            } // TODO: maybe else case?
+            }
         }
 
         if (path == null) {
@@ -398,9 +445,9 @@ public class Collection implements CollectionInterface {
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
             Pair<List<ObjectPath>, ObjectPath> lock = service.getService().lock(List.of(item.getPath())).get();
-            java.lang.System.out.println("lock item: " + lock);
+            log.debug("lock item: {}", lock);
             de.swiesend.secretservice.interfaces.Prompt.Completed result = prompt.await(lock.b, timeout);
-            java.lang.System.out.println("lock item prompt: " + result);
+            log.debug("lock item prompt: {}", result);
         }
         return true;
     }
@@ -410,7 +457,7 @@ public class Collection implements CollectionInterface {
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (item.isLocked()) {
             service.getService().unlock(List.of(item.getPath())).ifPresent(unlock -> {
-                java.lang.System.out.println("unlock item: " + unlock);
+                log.debug("unlock item: {}", unlock);
                 if(unlock.a.isEmpty()){
                     de.swiesend.secretservice.interfaces.Prompt.Completed await = prompt.await(unlock.b, timeout);
                     log.info(String.format("Unlocked Item: %s", await.result.getValue()));
@@ -427,14 +474,13 @@ public class Collection implements CollectionInterface {
 
         return getItem(objectPath)
                 .flatMap(item -> {
-                    // unlockItem(item.getObjectPath());
                     ObjectPath sessionPath = session.getSession().getPath();
                     return item.getSecret(sessionPath);
                 })
                 .flatMap(secret -> {
-                    Optional<char[]> decrypted = session.getEncryptedSession().decrypt(secret); // TODO: should this be final?
-                    secret.clear();
-                    return decrypted;
+                    try (secret) {
+                        return session.getEncryptedSession().decrypt(secret);
+                    }
                 });
     }
 
