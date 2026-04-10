@@ -66,8 +66,27 @@ public interface CollectionInterface extends AutoCloseable {
 
     Optional<String> getId();
 
+    /**
+     * Retrieve a decrypted secret by its object path.
+     *
+     * <p><b>Security note:</b> The caller is responsible for clearing the returned {@code char[]}
+     * after use (e.g., {@code Arrays.fill(chars, '\0')}) to prevent sensitive material from
+     * lingering in heap memory. The underlying {@code Secret} object is closed automatically.</p>
+     *
+     * @param objectPath the D-Bus object path of the item
+     * @return the decrypted secret as a char array, or empty if the item does not exist or is locked
+     */
     Optional<char[]> getSecret(String objectPath);
 
+    /**
+     * Retrieve all decrypted secrets in this collection.
+     *
+     * <p><b>Security note:</b> The caller is responsible for clearing each returned {@code char[]}
+     * after use (e.g., {@code Arrays.fill(chars, '\0')}) to prevent sensitive material from
+     * lingering in heap memory. Requires user permission to unlock the collection.</p>
+     *
+     * @return a map of item object paths to their decrypted secrets, or empty if unavailable
+     */
     Optional<Map<String, char[]>> getSecrets();
 
     boolean isLocked();
