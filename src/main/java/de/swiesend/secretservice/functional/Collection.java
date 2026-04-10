@@ -517,8 +517,10 @@ public class Collection implements CollectionInterface {
     public Optional<Map<String, char[]>> getSecrets() {
         unlockWithUserPermission();
 
-        List<ObjectPath> items = collection.getItems().get();
-        if (items == null) return Optional.empty();
+        Optional<List<ObjectPath>> maybeItems = collection.getItems();
+        if (maybeItems.isEmpty()) return Optional.empty();
+
+        List<ObjectPath> items = maybeItems.get();
 
         Map<String, char[]> passwords = new HashMap<>();
         for (ObjectPath item : items) {
