@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.security.AccessControlException;
 import java.time.Duration;
 import java.util.*;
 
@@ -20,7 +19,7 @@ public class SimpleCollectionTest {
     @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
     public void deleteDefaultCollection() throws IOException {
         SimpleCollection defaultCollection = new SimpleCollection();
-        assertThrows(AccessControlException.class, defaultCollection::delete);
+        assertThrows(SecurityException.class, defaultCollection::delete);
     }
 
     @Test
@@ -232,8 +231,8 @@ public class SimpleCollectionTest {
         try {
             @SuppressWarnings("unused")
             Map<String, char[]> ignored = collection.getSecrets();
-        } catch (AccessControlException e) {
-            log.info("Expected AccessControlException:", e);
+        } catch (SecurityException e) {
+            log.info("Expected SecurityException:", e);
         }
 
         // clean within 120 seconds
@@ -241,8 +240,8 @@ public class SimpleCollectionTest {
         collection.setTimeout(longish);
         try {
             collection.deleteItem(item);
-        } catch (AccessControlException e) {
-            log.info("Unexpected AccessControlException:", e);
+        } catch (SecurityException e) {
+            log.info("Unexpected SecurityException:", e);
         }
     }
 

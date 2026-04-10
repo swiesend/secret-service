@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.security.AccessControlException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.RejectedExecutionException;
@@ -397,14 +396,14 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * <p>
      * {@link SimpleCollection#deleteItems(List)}
      *
-     * @throws AccessControlException if the user does not provide the correct credentials.
+     * @throws SecurityException if the user does not provide the correct credentials.
      */
     @Override
-    public void unlockWithUserPermission() throws AccessControlException {
+    public void unlockWithUserPermission() throws SecurityException {
         if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
         unlock();
         if (collection.isLocked()) {
-            throw new AccessControlException("The collection was not unlocked with user permission.");
+            throw new SecurityException("The collection was not unlocked with user permission.");
         }
     }
 
@@ -435,12 +434,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * Delete this collection.
      */
     @Override
-    public void delete() throws AccessControlException {
+    public void delete() throws SecurityException {
         if (!isDefault()) {
             ObjectPath promptPath = collection.delete().get();
             performPrompt(promptPath);
         } else {
-            throw new AccessControlException("Default collections may not be deleted with the simple API.");
+            throw new SecurityException("Default collections may not be deleted with the simple API.");
         }
     }
 
@@ -625,7 +624,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @return Mapping of DBus object paths and plain chars or null
      */
     @Override
-    public Map<String, char[]> getSecrets() throws AccessControlException {
+    public Map<String, char[]> getSecrets() throws SecurityException {
         unlockWithUserPermission();
 
         List<ObjectPath> items = collection.getItems().get();
@@ -650,8 +649,8 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @param objectPath The DBus object path of the item
      */
     @Override
-    public void deleteItem(String objectPath) throws AccessControlException {
-        if (Utils.isNullOrEmpty(objectPath)) throw new AccessControlException("Cannot delete an unspecified item.");
+    public void deleteItem(String objectPath) throws SecurityException {
+        if (Utils.isNullOrEmpty(objectPath)) throw new SecurityException("Cannot delete an unspecified item.");
 
         unlockWithUserPermission();
 
@@ -670,7 +669,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @param objectPaths The DBus object paths of the items
      */
     @Override
-    public void deleteItems(List<String> objectPaths) throws AccessControlException {
+    public void deleteItems(List<String> objectPaths) throws SecurityException {
         unlockWithUserPermission();
         for (String item : objectPaths) {
             deleteItem(item);
