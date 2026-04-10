@@ -41,10 +41,22 @@ public class SecretService implements ServiceInterface {
     }
 
     public static Optional<ServiceInterface> create(Optional<SystemInterface> maybeSystem) {
-        return maybeSystem
-                .map(system -> new Pair<>(system, new AvailableServices(system)))
-                .filter(pair -> ServiceInterface.isAvailable(pair.a, pair.b))
-                .map(pair -> new SecretService(pair.a, pair.b, maybeSystem));
+        if (maybeSystem.isEmpty()) {
+            return Optional.empty();
+        }
+        SystemInterface system = maybeSystem.get();
+        AvailableServices available = new AvailableServices(system);
+
+        if (!ServiceInterface.isAvailable(system, available)) {
+            try {
+                system.close();
+            } catch (Exception e) {
+                log.warn("Failed to close system after availability check.", e);
+            }
+            return Optional.empty();
+        }
+
+        return Optional.of(new SecretService(system, available, maybeSystem));
     }
 
     @Override
