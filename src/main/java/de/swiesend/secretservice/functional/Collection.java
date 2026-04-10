@@ -134,10 +134,26 @@ public class Collection implements CollectionInterface {
         if (maybeSession.isEmpty()) {
             this.clearSessionAtClose = true;
         }
-        Optional<SessionInterface> resolved = maybeSession.or(() -> SecretService.create().flatMap(ServiceInterface::openSession));
-        if (resolved.isEmpty()) {
-            log.error("Could not establish a session.");
-            return false;
+        Optional<SessionInterface> resolved;
+        if (maybeSession.isPresent()) {
+            resolved = maybeSession;
+        } else {
+            Optional<ServiceInterface> maybeService = SecretService.create();
+            if (maybeService.isEmpty()) {
+                log.error("Could not create the secret service.");
+                return false;
+            }
+            ServiceInterface createdService = maybeService.get();
+            resolved = createdService.openSession();
+            if (resolved.isEmpty()) {
+                log.error("Could not open a session.");
+                try {
+                    createdService.close();
+                } catch (Exception e) {
+                    log.warn("Failed to close service after session failure.", e);
+                }
+                return false;
+            }
         }
         this.session = resolved.get();
         this.service = session.getService();
