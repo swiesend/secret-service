@@ -3,6 +3,7 @@ package de.swiesend.secretservice.functional.interfaces;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 public interface CollectionInterface extends AutoCloseable {
 
@@ -71,12 +72,35 @@ public interface CollectionInterface extends AutoCloseable {
      *
      * <p><b>Security note:</b> The caller is responsible for clearing the returned {@code char[]}
      * after use (e.g., {@code Arrays.fill(chars, '\0')}) to prevent sensitive material from
-     * lingering in heap memory. The underlying {@code Secret} object is closed automatically.</p>
+     * lingering in heap memory. Prefer {@link #withSecret(String, Function)} which handles
+     * cleanup automatically.</p>
      *
      * @param objectPath the D-Bus object path of the item
      * @return the decrypted secret as a char array, or empty if the item does not exist or is locked
      */
     Optional<char[]> getSecret(String objectPath);
+
+    /**
+     * Access a decrypted secret within a callback, guaranteeing the secret bytes are cleared
+     * from memory after the callback returns (or throws).
+     *
+     * <p>This is the recommended way to access secrets. The library decrypts the secret,
+     * passes the {@code char[]} to the callback, and zeroes the array in a {@code finally}
+     * block -- the caller never needs to manage cleanup.</p>
+     *
+     * <p>Example usage:</p>
+     * <pre>{@code
+     * Optional<Boolean> authenticated = collection.withSecret(itemPath, secret -> {
+     *     return checkPassword(secret);
+     * });
+     * }</pre>
+     *
+     * @param objectPath the D-Bus object path of the item
+     * @param callback   a function that receives the decrypted secret and returns a result
+     * @param <R>        the return type of the callback
+     * @return the callback's result wrapped in Optional, or empty if the secret could not be retrieved
+     */
+    <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback);
 
     /**
      * Retrieve all decrypted secrets in this collection.

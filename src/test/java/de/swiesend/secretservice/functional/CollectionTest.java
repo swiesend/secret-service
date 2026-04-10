@@ -10,11 +10,13 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class CollectionTest {
 
@@ -222,6 +224,110 @@ class CollectionTest {
         Optional<char[]> maybeSecret1 = collection.getSecret(item1);
         assertTrue(maybeSecret1.isPresent());
         assertEquals("secret-1", new String(maybeSecret1.get()));
+    }
+
+    @Test
+    void withSecret() {
+        String item = collection.createItem("item-1", "secret-1").get();
+
+        // Use the secret within the callback -- it is auto-cleared after
+        Optional<String> result = collection.withSecret(item, secret -> {
+            return new String(secret);
+        });
+        assertTrue(result.isPresent());
+        assertEquals("secret-1", result.get());
+    }
+
+    @Test
+    void withSecretClearsAfterCallback() {
+        String item = collection.createItem("item-1", "secret-1").get();
+
+        // Capture a reference to the char[] from inside the callback
+        char[][] holder = new char[1][];
+        collection.withSecret(item, secret -> {
+            holder[0] = secret;
+            // secret is valid here
+            assertEquals("secret-1", new String(secret));
+            return true;
+        });
+
+        // After the callback, the array should be zeroed
+        for (char c : holder[0]) {
+            assertEquals('\0', c, "Secret bytes should be zeroed after withSecret callback");
+        }
+    }
+
+    @Test
+    void withSecretClearsOnException() {
+        String item = collection.createItem("item-1", "secret-1").get();
+
+        char[][] holder = new char[1][];
+        try {
+            collection.withSecret(item, secret -> {
+                holder[0] = secret;
+                throw new RuntimeException("simulated failure");
+            });
+        } catch (RuntimeException expected) {
+            // expected
+        }
+
+        // Even after an exception, the array should be zeroed
+        for (char c : holder[0]) {
+            assertEquals('\0', c, "Secret bytes should be zeroed even when callback throws");
+        }
+    }
+
+    @Test
+    void withSecretReturnsEmptyForMissingItem() {
+        Optional<String> result = collection.withSecret("/nonexistent/path", secret -> {
+            return new String(secret);
+        });
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void withSecretWrappingThirdPartyDigest() throws NoSuchAlgorithmException {
+        // Example: wrapping a java.security.MessageDigest call inside the callback.
+        // This simulates how you would use a third-party library that needs the secret
+        // as input -- the secret never leaves the callback scope.
+        String item = collection.createItem("api-key", "my-secret-api-key").get();
+
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+
+        Optional<byte[]> hash = collection.withSecret(item, secret -> {
+            // Convert the secret to bytes, hash it, then let the callback return the hash.
+            // The original char[] secret is auto-cleared after this callback returns.
+            byte[] secretBytes = new String(secret).getBytes(StandardCharsets.UTF_8);
+            try {
+                return md.digest(secretBytes);
+            } finally {
+                Arrays.fill(secretBytes, (byte) 0);
+            }
+        });
+
+        assertTrue(hash.isPresent());
+        assertEquals(32, hash.get().length); // SHA-256 produces 32 bytes
+    }
+
+    @Test
+    void withSecretWrappingStringComparison() {
+        // Example: comparing a stored secret against a user-provided password.
+        // The secret never escapes the callback -- only the boolean result does.
+        String item = collection.createItem("login", "correct-password").get();
+
+        Optional<Boolean> matches = collection.withSecret(item, secret -> {
+            return Arrays.equals(secret, "correct-password".toCharArray());
+        });
+
+        assertTrue(matches.isPresent());
+        assertTrue(matches.get());
+
+        Optional<Boolean> noMatch = collection.withSecret(item, secret -> {
+            return Arrays.equals(secret, "wrong-password".toCharArray());
+        });
+
+        assertTrue(noMatch.isPresent());
+        assertFalse(noMatch.get());
     }
 
     @Test

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Function;
 
 import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 
@@ -482,6 +483,20 @@ public class Collection implements CollectionInterface {
                         return session.getEncryptedSession().decrypt(secret);
                     }
                 });
+    }
+
+    @Override
+    public <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback) {
+        Optional<char[]> maybeSecret = getSecret(objectPath);
+        if (maybeSecret.isEmpty()) {
+            return Optional.empty();
+        }
+        char[] secret = maybeSecret.get();
+        try {
+            return Optional.ofNullable(callback.apply(secret));
+        } finally {
+            Arrays.fill(secret, '\0');
+        }
     }
 
     @Override
