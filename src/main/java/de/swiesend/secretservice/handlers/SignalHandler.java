@@ -168,7 +168,7 @@ public class SignalHandler implements DBusSigHandler {
             List<S> signals = null;
             while (true) {
                 if (Thread.currentThread().isInterrupted()) return null;
-                Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
+                Thread.sleep(DEFAULT_DELAY_MILLIS);
                 current = getCount();
                 if (current != last) {
                     signals = getHandledSignals(signal, path);
@@ -190,7 +190,7 @@ public class SignalHandler implements DBusSigHandler {
                 } else if (now - start > nanos) {
                     throw new TimeoutException();
                 }
-                Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
+                Thread.sleep(DEFAULT_DELAY_MILLIS);
             }
         } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
             maybePrompt.ifPresentOrElse(

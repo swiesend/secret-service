@@ -66,17 +66,17 @@ public class PromptTest {
         SignalHandler handler = context.service.getSignalHandler();
         Collection defaultCollection = new Collection("login", context.service.getConnection());
         boolean expected = defaultCollection.isLocked();
-        Thread.currentThread().sleep(500L);
+        Thread.sleep(500L);
 
         Pair<List<ObjectPath>, ObjectPath> response = context.service.unlock(cs).get();
         ObjectPath prompt = response.b;
         assertDoesNotThrow(() ->context.prompt.prompt(prompt)); // Should not throw NoSuchObject
         DBusSignal signal = handler.getLastHandledSignal();
-        Thread.currentThread().sleep(500L);
+        Thread.sleep(500L);
         assertFalse(signal instanceof Prompt.Completed);
 
         context.prompt.dismiss();
-        Thread.currentThread().sleep(500L); // await signal
+        Thread.sleep(500L); // await signal
         Prompt.Completed completed = handler.getLastHandledSignal(Prompt.Completed.class, prompt.getPath());
         assertNotNull(completed);
         assertEquals(expected, completed.dismissed);

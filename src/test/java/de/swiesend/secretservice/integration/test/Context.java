@@ -187,7 +187,7 @@ public class Context {
     public void after() {
         try {
             service.getConnection().disconnect();
-            Thread.currentThread().sleep(150L);
+            Thread.sleep(150L);
         } catch (InterruptedException e) {
             log.error("Could not disconnect properly from the D-Bus.", e);
         }

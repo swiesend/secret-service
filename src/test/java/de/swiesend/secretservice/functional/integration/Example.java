@@ -4,6 +4,7 @@ import de.swiesend.secretservice.functional.Collection;
 import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -106,7 +107,7 @@ public class Example {
     public void collection() throws Exception {
         char[] secret = null;
 
-        try (CollectionInterface collection = new Collection("test")) {
+        try (CollectionInterface collection = Collection.open("test").get()) {
             Map<String, String> attributes = Map.of("key", "value");
             String item1 = collection.createItem("s1", "s1", attributes).orElseThrow();
             secret = collection.getSecret(item1).orElseThrow();
@@ -128,12 +129,12 @@ public class Example {
     }
 
     @Test
-    // TODO: add unlockItem()
+    @Disabled("lockItem does not apply immediately in gnome-keyring; needs sleep-based workaround")
     public void unlockItem() throws Exception {
-        try (CollectionInterface collection = new Collection("test")) {
+        try (CollectionInterface collection = Collection.open("test").get()) {
             Map<String, String> attributes = Map.of("key", "asdf");
             String item1 = collection.createItem("item-1", "secret", attributes).get();
-            collection.lockItem(item1);  // TODO: lock item does not apply immediately...
+            collection.lockItem(item1);
             Thread.sleep(1000);
             // dismiss the prompt
             assert collection.getSecret(item1).isEmpty();

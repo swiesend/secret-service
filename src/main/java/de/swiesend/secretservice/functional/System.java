@@ -12,14 +12,14 @@ import java.util.Optional;
 /**
  * Manages the D-Bus connection on the system.
  */
-public class System extends SystemInterface {
+public class System implements SystemInterface {
 
     private static final Logger log = LoggerFactory.getLogger(System.class);
 
-    private static DBusConnection connection = null;
+    private final DBusConnection connection;
 
     private System(DBusConnection connection) {
-        System.connection = connection;
+        this.connection = connection;
     }
 
     /**
@@ -37,12 +37,8 @@ public class System extends SystemInterface {
         return Optional.empty();
     }
 
-    public static boolean isConnected() {
-        if (connection == null) {
-            return false;
-        } else {
-            return connection.isConnected();
-        }
+    public boolean isConnected() {
+        return connection != null && connection.isConnected();
     }
 
     @Override

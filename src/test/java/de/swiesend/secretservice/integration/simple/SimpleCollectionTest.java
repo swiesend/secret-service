@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.security.AccessControlException;
 import java.time.Duration;
 import java.util.*;
 
@@ -20,7 +19,7 @@ public class SimpleCollectionTest {
     @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
     public void deleteDefaultCollection() throws IOException {
         SimpleCollection defaultCollection = new SimpleCollection();
-        assertThrows(AccessControlException.class, defaultCollection::delete);
+        assertThrows(SecurityException.class, defaultCollection::delete);
     }
 
     @Test
@@ -232,8 +231,8 @@ public class SimpleCollectionTest {
         try {
             @SuppressWarnings("unused")
             Map<String, char[]> ignored = collection.getSecrets();
-        } catch (AccessControlException e) {
-            log.info("Expected AccessControlException:", e);
+        } catch (SecurityException e) {
+            log.info("Expected SecurityException:", e);
         }
 
         // clean within 120 seconds
@@ -241,8 +240,8 @@ public class SimpleCollectionTest {
         collection.setTimeout(longish);
         try {
             collection.deleteItem(item);
-        } catch (AccessControlException e) {
-            log.info("Unexpected AccessControlException:", e);
+        } catch (SecurityException e) {
+            log.info("Unexpected SecurityException:", e);
         }
     }
 
@@ -259,18 +258,11 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("disconnect() affects the global static DBusConnection and cannot be undone within the static lifetime")
     public void disconnect() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
         assertTrue(collection.isConnected());
         assertTrue(SimpleCollection.isConnected());
-        // FIXME: in order to test this private method one needs to uncomment the `SimpleCollection.disconnect()`
-        //        statement. But this affects the global DBus-Connection and cannot be undo within in the static
-        //        lifetime. If one wants to run all tests together it is highly recommended remove all
-        //        `SimpleCollection.disconnect()` statements in order to avoid unexpected behavior.
-        // SimpleCollection.disconnect();
-        // assertFalse(collection.isConnected());
-        // assertFalse(org.freedesktop.secret.simple.SimpleCollection.isConnected());
 
         // always false, as static methods cannot override interfaces.
         assertFalse(de.swiesend.secretservice.simple.interfaces.SimpleCollection.isConnected());
