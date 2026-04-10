@@ -504,7 +504,7 @@ public class Collection implements CollectionInterface {
         unlockWithUserPermission();
 
         List<ObjectPath> items = collection.getItems().get();
-        if (items == null) return null;
+        if (items == null) return Optional.empty();
 
         Map<String, char[]> passwords = new HashMap();
         for (ObjectPath item : items) {
@@ -513,6 +513,22 @@ public class Collection implements CollectionInterface {
         }
 
         return Optional.of(passwords);
+    }
+
+    @Override
+    public <R> Optional<R> withSecrets(Function<Map<String, char[]>, R> callback) {
+        Optional<Map<String, char[]>> maybeSecrets = getSecrets();
+        if (maybeSecrets.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, char[]> secrets = maybeSecrets.get();
+        try {
+            return Optional.ofNullable(callback.apply(secrets));
+        } finally {
+            for (char[] value : secrets.values()) {
+                Arrays.fill(value, '\0');
+            }
+        }
     }
 
     @Override

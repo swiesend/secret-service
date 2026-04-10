@@ -6,6 +6,8 @@ public interface SystemInterface extends AutoCloseable {
 
     DBusConnection getConnection();
 
+    boolean isConnected();
+
     boolean disconnect();
 
 }
