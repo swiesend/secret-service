@@ -447,7 +447,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public void deleteItem(String objectPath) throws SecurityException {
         if (Static.Utils.isNullOrEmpty(objectPath)) throw new SecurityException("Cannot delete an unspecified item.");
-        delegate.deleteItem(objectPath);
+        if (!delegate.deleteItem(objectPath)) {
+            throw new SecurityException("Failed to delete item. User permission may be denied or the collection may be locked.");
+        }
     }
 
     /**
@@ -461,7 +463,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public void deleteItems(List<String> objectPaths) throws SecurityException {
-        delegate.deleteItems(objectPaths);
+        if (!delegate.deleteItems(objectPaths)) {
+            throw new SecurityException("Failed to delete one or more items. User permission may be denied or the collection may be locked.");
+        }
     }
 
     @Override
