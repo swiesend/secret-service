@@ -675,7 +675,10 @@ public class Collection implements CollectionInterface {
         if (!isClosed) {
             clear();
             if (clearSessionAtClose) {
-                session.close();
+                // Close the service (which cascades to registered sessions and the
+                // underlying SystemInterface/D-Bus connection). Closing only the session
+                // would leak the D-Bus connection created internally by init().
+                service.close();
             }
         }
         log.trace("closed collection");
