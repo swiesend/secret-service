@@ -42,11 +42,6 @@ public class SecretServiceTest {
         assertTrue(ServiceInterface.isAvailable(system, new AvailableServices(system)));
     }
 
-    // TODO: check if needed at all
-    @Test
-    void clear() {
-    }
-
     @Test
     void openSession() {
         assertTrue(secretService.openSession().isPresent());

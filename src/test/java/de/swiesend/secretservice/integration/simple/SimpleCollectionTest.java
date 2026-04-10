@@ -258,18 +258,11 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("disconnect() affects the global static DBusConnection and cannot be undone within the static lifetime")
     public void disconnect() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
         assertTrue(collection.isConnected());
         assertTrue(SimpleCollection.isConnected());
-        // FIXME: in order to test this private method one needs to uncomment the `SimpleCollection.disconnect()`
-        //        statement. But this affects the global DBus-Connection and cannot be undo within in the static
-        //        lifetime. If one wants to run all tests together it is highly recommended remove all
-        //        `SimpleCollection.disconnect()` statements in order to avoid unexpected behavior.
-        // SimpleCollection.disconnect();
-        // assertFalse(collection.isConnected());
-        // assertFalse(org.freedesktop.secret.simple.SimpleCollection.isConnected());
 
         // always false, as static methods cannot override interfaces.
         assertFalse(de.swiesend.secretservice.simple.interfaces.SimpleCollection.isConnected());

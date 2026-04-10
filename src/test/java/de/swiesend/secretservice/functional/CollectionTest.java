@@ -111,8 +111,7 @@ class CollectionTest {
     }
 
     @Test
-    @Disabled
-    // TODO: test password abort
+    @Disabled("Requires interactive prompt dismissal to test password abort")
     void deleteCollectionWithoutPassword() {
         CollectionInterface collectionWithoutPassword = service.openSession().flatMap(session ->
                 session.collection("test-no-password-collection", Optional.empty())
@@ -209,8 +208,6 @@ class CollectionTest {
     void getId() {
         assertEquals("test_2dcollection", collection.getId().get());
     }
-
-    // collection.lockItem(item1); // TODO: test lockItem()
 
     @Test
     void getSecret() {

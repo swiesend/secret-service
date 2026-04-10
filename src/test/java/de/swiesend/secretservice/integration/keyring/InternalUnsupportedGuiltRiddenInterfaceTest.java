@@ -68,8 +68,8 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         List<ObjectPath> lock = new ArrayList();
         lock.add(collection.getPath());
         service.lock(lock);
+        Thread.currentThread().sleep(100L);
 
-        // TODO: fix occasional: org.gnome.keyring.Error.Denied: "The password was invalid"
         assertTrue(iugri.unlockWithMasterPassword(collection.getPath(), master));
         assertTrue(iugri.changeWithMasterPassword(collection.getPath(), master, original));
     }

@@ -28,7 +28,7 @@ public class TransportEncryption implements AutoCloseable {
     public static final int PRIVATE_VALUE_BITS = 1024;
     public static final int AES_BITS = 128;
     private static final Logger log = LoggerFactory.getLogger(TransportEncryption.class);
-    private de.swiesend.secretservice.Service service; // TODO: should adhere to the interface
+    private de.swiesend.secretservice.Service service;
     private DHParameterSpec dhParameters = null;
     private KeyPair keypair = null;
     private PublicKey publicKey = null;
@@ -174,11 +174,16 @@ public class TransportEncryption implements AutoCloseable {
             return session;
         }
 
+        /**
+         * Encrypt a CharSequence. The byte representation is cleared after encryption.
+         * Note: the CharSequence parameter itself cannot be reliably cleared since it may be
+         * an immutable String. Callers handling sensitive data should prefer the byte[]-based
+         * overload or use the withSecret() callback API which manages cleanup automatically.
+         */
         public Optional<Secret> encrypt(CharSequence plain) {
             final byte[] bytes = Secret.toBytes(plain);
             Optional<Secret> secret = encrypt(bytes, StandardCharsets.UTF_8);
             Secret.clear(bytes);
-            plain = null; // TODO: find a better way to clear the CharSequence
             return secret;
         }
 
@@ -228,7 +233,6 @@ public class TransportEncryption implements AutoCloseable {
             if (sessionKey == null) {
                 log.error("Missing session key. Call Opened.generateSessionKey() first.");
             }
-            // TODO: should decrypted be a final value? How to handle the finally Secret.clear?
             byte[] decrypted = new byte[0];
             try {
                 IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());

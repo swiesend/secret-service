@@ -581,10 +581,9 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean unlockWithUserPermission() {
-        // TODO: locking all collections, maybe lock only
-        //       the default collections to protect it from malicious access
+        // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
+        // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
         if (!isUnlockedOnceWithUserPermission) lock();
-        // if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
         unlock();
         if (collection.isLocked()) {
             log.error("The collection was not unlocked with user permission.");
@@ -668,7 +667,6 @@ public class Collection implements CollectionInterface {
         return Arrays.asList(collection.getPath());
     }
 
-    // TODO: add concept to Prompt class..
     public boolean disablePrompt() {
         isPrompting = false;
         return true;
