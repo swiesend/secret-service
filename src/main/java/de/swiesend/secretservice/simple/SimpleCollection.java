@@ -247,10 +247,22 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
     private void init() throws IOException {
         if (!isAvailable()) throw new IOException("The secret service is not available.");
-        service = SecretService.create()
+        ServiceInterface createdService = SecretService.create()
                 .orElseThrow(() -> new IOException("Could not create the secret service."));
-        session = service.openSession()
-                .orElseThrow(() -> new IOException("Could not open an encrypted session."));
+        SessionInterface openedSession;
+        try {
+            openedSession = createdService.openSession()
+                    .orElseThrow(() -> new IOException("Could not open an encrypted session."));
+        } catch (RuntimeException | IOException e) {
+            try {
+                createdService.close();
+            } catch (Exception closeException) {
+                log.warn("Failed to close secret service after session initialization failure.", closeException);
+            }
+            throw e;
+        }
+        service = createdService;
+        session = openedSession;
         service.setTimeout(timeout);
     }
 
