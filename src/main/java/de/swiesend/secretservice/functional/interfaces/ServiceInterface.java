@@ -51,15 +51,15 @@ public abstract class ServiceInterface implements AutoCloseable {
         if (connection.isConnected()) {
             try {
                 if (!available.services.contains(Activatable.DBUS)) {
-                    log.error("Missing D-Bus service: " + Activatable.DBUS.name);
+                    log.error("Missing required D-Bus service: " + Activatable.DBUS.name);
                     return false;
                 }
                 if (!available.services.contains(Activatable.SECRETS)) {
-                    log.error("Missing D-Bus service: " + Activatable.SECRETS.name);
+                    log.error("Missing required D-Bus service: " + Activatable.SECRETS.name);
                     return false;
                 }
                 if (!available.services.contains(Activatable.GNOME_KEYRING)) {
-                    log.warn("Proceeding without D-Bus service: " + Activatable.GNOME_KEYRING.name);
+                    log.warn("Proceeding without optional D-Bus service: " + Activatable.GNOME_KEYRING.name);
                 }
 
                 // The following calls intent to open a session without actually generating a full session.

@@ -164,12 +164,23 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
-                List<String> names = Arrays.asList(bus.ListNames());
-                if (!(names.containsAll(Arrays.asList(
-                        Static.DBus.Service.DBUS,
-                        Static.Service.SECRETS,
-                        de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)))) {
+
+                // Check both running services and activatable services.
+                // A service is available if it appears in either list.
+                Set<String> available = new HashSet<>();
+                available.addAll(Arrays.asList(bus.ListNames()));
+                available.addAll(Arrays.asList(bus.ListActivatableNames()));
+
+                // Required: org.freedesktop.DBus, org.freedesktop.secrets
+                if (!available.contains(Static.DBus.Service.DBUS) || !available.contains(Static.Service.SECRETS)) {
+                    log.error("Missing required D-Bus service. Available: " + available);
                     return false;
+                }
+
+                // Optional: org.gnome.keyring
+                if (!available.contains(de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
+                    log.warn("Proceeding without optional D-Bus service: " +
+                            de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING);
                 }
 
                 // The following calls intent to open a session without actually generating a session.
@@ -205,9 +216,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
-                List<String> names = Arrays.asList(bus.ListNames());
-                if (!(names.contains(
-                        de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING))) {
+
+                // Check both running and activatable services
+                Set<String> available = new HashSet<>();
+                available.addAll(Arrays.asList(bus.ListNames()));
+                available.addAll(Arrays.asList(bus.ListActivatableNames()));
+                if (!available.contains(
+                        de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
                     return false;
                 }
             } catch (DBusException | ExceptionInInitializerError e) {
