@@ -8,9 +8,7 @@ import org.freedesktop.dbus.interfaces.DBus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.EnumSet;
-import java.util.List;
+import java.util.*;
 
 public class AvailableServices {
 
@@ -26,21 +24,30 @@ public class AvailableServices {
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
-                List<String> activatableServices = Arrays.asList(bus.ListActivatableNames());
 
-                if (!activatableServices.contains(Static.DBus.Service.DBUS)) {
-                    log.error("Missing D-Bus service: " + Static.DBus.Service.DBUS);
+                // Check both running services and activatable services.
+                // A service is available if it appears in either list.
+                Set<String> available = new HashSet<>();
+                available.addAll(Arrays.asList(bus.ListNames()));
+                available.addAll(Arrays.asList(bus.ListActivatableNames()));
+
+                // Required: org.freedesktop.DBus
+                if (!available.contains(Static.DBus.Service.DBUS)) {
+                    log.error("Missing required D-Bus service: " + Static.DBus.Service.DBUS);
                 } else {
                     services.add(Activatable.DBUS);
                 }
 
-                if (!activatableServices.contains(Static.Service.SECRETS)) {
-                    log.error("Missing D-Bus service: " + Static.Service.SECRETS);
+                // Required: org.freedesktop.secrets
+                if (!available.contains(Static.Service.SECRETS)) {
+                    log.error("Missing required D-Bus service: " + Static.Service.SECRETS);
                 } else {
                     services.add(Activatable.SECRETS);
                 }
-                if (!activatableServices.contains(de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
-                    log.warn("Proceeding without D-Bus service: " + de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING);
+
+                // Optional: org.gnome.keyring
+                if (!available.contains(de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
+                    log.warn("Proceeding without optional D-Bus service: " + de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING);
                 } else {
                     services.add(Activatable.GNOME_KEYRING);
                 }
