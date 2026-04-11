@@ -642,7 +642,7 @@ public class Collection implements CollectionInterface {
                 return result;
             }
         }
-        log.debug("Could not unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+        log.debug("Could not unlock collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
         return false;
     }
 
