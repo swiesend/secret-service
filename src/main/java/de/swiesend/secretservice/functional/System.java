@@ -84,8 +84,6 @@ public class System implements SystemInterface {
 
     @Override
     public void close() throws Exception {
-        if (ownsConnection) {
-            connection.close();
-        }
+        disconnect();
     }
 }
