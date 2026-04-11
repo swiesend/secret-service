@@ -63,6 +63,7 @@ public class Collection implements CollectionInterface {
      * @return the default collection, or empty if the service is unavailable
      */
     public static Optional<CollectionInterface> openDefault(Optional<SessionInterface> maybeSession) {
+        Objects.requireNonNull(maybeSession, "maybeSession must not be null; use Optional.empty() instead");
         Collection c = new Collection();
         if (maybeSession.isEmpty()) {
             c.clearSessionAtClose = true;
@@ -107,6 +108,11 @@ public class Collection implements CollectionInterface {
      * @return the collection, or empty if it could not be acquired
      */
     public static Optional<CollectionInterface> open(String label, Optional<CharSequence> maybePassword, Optional<SessionInterface> maybeSession) {
+        if (label == null || label.isBlank()) {
+            throw new IllegalArgumentException("The collection label must not be null or blank.");
+        }
+        Objects.requireNonNull(maybePassword, "maybePassword must not be null; use Optional.empty() instead");
+        Objects.requireNonNull(maybeSession, "maybeSession must not be null; use Optional.empty() instead");
         Collection c = new Collection();
         if (maybeSession.isEmpty()) {
             c.clearSessionAtClose = true;
