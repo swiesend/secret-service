@@ -2,7 +2,7 @@ package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.Secret;
 import de.swiesend.secretservice.Static;
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.Charset;
@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SecretTest {
 
-    private static ObjectPath session = new ObjectPath("", Static.ObjectPaths.session("1"));
+    private static DBusPath session = new DBusPath("", Static.ObjectPaths.session("1"));
     private static final String parameters = "";
     private static final String value = "secret";
 
