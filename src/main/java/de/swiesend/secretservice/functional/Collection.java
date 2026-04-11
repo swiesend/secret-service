@@ -518,15 +518,19 @@ public class Collection implements CollectionInterface {
         }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (item.isLocked()) {
-            service.getService().unlock(List.of(item.getPath())).ifPresent(unlock -> {
-                log.debug("unlock item: {}", unlock);
-                if(unlock.a.isEmpty()){
-                    de.swiesend.secretservice.interfaces.Prompt.Completed await = prompt.await(unlock.b, service.getTimeout());
-                    log.info(String.format("Unlocked Item: %s", await.result.getValue()));
-                }
-            });
+            Optional<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlock(List.of(item.getPath()));
+            if (maybeUnlock.isEmpty()) {
+                log.error("Could not unlock item: {}", itemPath);
+                return false;
+            }
+            Pair<List<DBusPath>, DBusPath> unlock = maybeUnlock.get();
+            log.debug("unlock item: {}", unlock);
+            if (unlock.a.isEmpty()) {
+                de.swiesend.secretservice.interfaces.Prompt.Completed await = prompt.await(unlock.b, service.getTimeout());
+                log.info("Unlocked Item: {}", await.result.getValue());
+            }
         }
-        return true;
+        return !item.isLocked();
     }
 
     @Override
