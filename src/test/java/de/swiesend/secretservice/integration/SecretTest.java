@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SecretTest {
 
-    private static DBusPath session = new DBusPath("", Static.ObjectPaths.session("1"));
+    private static DBusPath session = new DBusPath(Static.ObjectPaths.session("1"));
     private static final String parameters = "";
     private static final String value = "secret";
 

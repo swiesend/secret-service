@@ -170,7 +170,7 @@ public class Static {
         }
 
         public static DBusPath toObjectPath(String path) {
-            return new DBusPath("", path);
+            return new DBusPath(path);
         }
 
         public static Optional<DBusPath> toObjectPath(Object obj) {
