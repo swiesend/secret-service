@@ -54,6 +54,9 @@ public class System implements SystemInterface {
      */
     public static SystemInterface wrap(DBusConnection connection) {
         java.util.Objects.requireNonNull(connection, "connection must not be null");
+        if (!connection.isConnected()) {
+            throw new IllegalStateException("Cannot wrap a disconnected DBusConnection.");
+        }
         return new System(connection, false);
     }
 
