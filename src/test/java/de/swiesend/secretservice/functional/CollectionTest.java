@@ -241,12 +241,15 @@ class CollectionTest {
 
         // Capture a reference to the char[] from inside the callback
         char[][] holder = new char[1][];
-        collection.withSecret(item, secret -> {
+        Optional<Boolean> result = collection.withSecret(item, secret -> {
             holder[0] = secret;
             // secret is valid here
             assertEquals("secret-1", new String(secret));
             return true;
         });
+
+        assertTrue(result.isPresent(), "withSecret should have returned a result");
+        assertNotNull(holder[0], "Callback should have captured the secret array");
 
         // After the callback, the array should be zeroed
         for (char c : holder[0]) {
@@ -267,6 +270,8 @@ class CollectionTest {
         } catch (RuntimeException expected) {
             // expected
         }
+
+        assertNotNull(holder[0], "Callback should have captured the secret array before throwing");
 
         // Even after an exception, the array should be zeroed
         for (char c : holder[0]) {
