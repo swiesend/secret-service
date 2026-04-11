@@ -22,6 +22,10 @@ public interface ServiceInterface extends AutoCloseable {
      * @return true if the secret service is available, otherwise false and will log an error message.
      */
     static boolean isAvailable(SystemInterface system, AvailableServices available) {
+        if (system == null || available == null) {
+            log.error("Cannot check availability: system and available must not be null.");
+            return false;
+        }
         DBusConnection connection = system.getConnection();
         if (connection.isConnected()) {
             try {

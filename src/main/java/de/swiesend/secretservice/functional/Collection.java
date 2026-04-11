@@ -410,6 +410,10 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean deleteItems(List<String> objectPaths) {
+        if (objectPaths == null || objectPaths.isEmpty()) {
+            log.error("Cannot delete unspecified items.");
+            return false;
+        }
         unlockWithUserPermission();
 
         boolean allDeleted = true;
@@ -426,7 +430,7 @@ public class Collection implements CollectionInterface {
 
     @Override
     public Optional<Map<String, String>> getAttributes(String objectPath) {
-        if (Static.Utils.isNullOrEmpty(objectPath)) return null;
+        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
         return getItem(objectPath).flatMap(item -> item.getAttributes());
     }
@@ -452,6 +456,10 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean setItemLabel(String objectPath, String label) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return false;
+        if (label == null) {
+            log.error("The label may not be null.");
+            return false;
+        }
         unlock();
         return getItem(objectPath)
                 .map(item -> item.setLabel(label))
@@ -460,6 +468,10 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean setLabel(String label) {
+        if (label == null) {
+            log.error("The label may not be null.");
+            return false;
+        }
         boolean success = collection.setLabel(label);
         if (success) {
             this.label = Optional.ofNullable(label);
@@ -479,6 +491,10 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean lockItem(String itemPath) {
+        if (Static.Utils.isNullOrEmpty(itemPath)) {
+            log.error("Cannot lock an unspecified item.");
+            return false;
+        }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
             Optional<Pair<List<ObjectPath>, ObjectPath>> maybeLock = service.getService().lock(List.of(item.getPath()));
@@ -496,6 +512,10 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean unlockItem(String itemPath) {
+        if (Static.Utils.isNullOrEmpty(itemPath)) {
+            log.error("Cannot unlock an unspecified item.");
+            return false;
+        }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (item.isLocked()) {
             service.getService().unlock(List.of(item.getPath())).ifPresent(unlock -> {
@@ -528,6 +548,7 @@ public class Collection implements CollectionInterface {
 
     @Override
     public <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback) {
+        Objects.requireNonNull(callback, "callback must not be null");
         Optional<char[]> maybeSecret = getSecret(objectPath);
         if (maybeSecret.isEmpty()) {
             return Optional.empty();
@@ -562,6 +583,7 @@ public class Collection implements CollectionInterface {
 
     @Override
     public <R> Optional<R> withSecrets(Function<Map<String, char[]>, R> callback) {
+        Objects.requireNonNull(callback, "callback must not be null");
         Optional<Map<String, char[]>> maybeSecrets = getSecrets();
         if (maybeSecrets.isEmpty()) {
             return Optional.empty();

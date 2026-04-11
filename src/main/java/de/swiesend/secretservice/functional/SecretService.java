@@ -41,7 +41,7 @@ public class SecretService implements ServiceInterface {
     }
 
     public static Optional<ServiceInterface> create(Optional<SystemInterface> maybeSystem) {
-        if (maybeSystem.isEmpty()) {
+        if (maybeSystem == null || maybeSystem.isEmpty()) {
             return Optional.empty();
         }
         SystemInterface system = maybeSystem.get();

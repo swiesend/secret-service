@@ -52,6 +52,7 @@ public class System implements SystemInterface {
      * @return a SystemInterface backed by the given connection
      */
     public static SystemInterface wrap(DBusConnection connection) {
+        java.util.Objects.requireNonNull(connection, "connection must not be null");
         return new System(connection, false);
     }
 
