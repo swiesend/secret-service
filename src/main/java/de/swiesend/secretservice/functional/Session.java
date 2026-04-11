@@ -34,6 +34,7 @@ public class Session implements SessionInterface {
     }
 
     public static Optional<SessionInterface> open(ServiceInterface service) {
+        java.util.Objects.requireNonNull(service, "service must not be null");
 
         Service dbusService = service.getService();
 
