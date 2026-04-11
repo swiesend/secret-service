@@ -6,7 +6,6 @@ import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
@@ -36,7 +35,7 @@ public class Collection implements CollectionInterface {
     private Prompt prompt = null;
     private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
 
-    private ObjectPath path = null;
+    private DBusPath path = null;
 
     private boolean clearSessionAtClose = false;
 
@@ -172,7 +171,7 @@ public class Collection implements CollectionInterface {
     }
 
     private Optional<de.swiesend.secretservice.Collection> getOrCreateCollection(String label) {
-        Optional<ObjectPath> maybePath = getCollectionPath(label);
+        Optional<DBusPath> maybePath = getCollectionPath(label);
 
         if (maybePath.isEmpty()) {
             maybePath = createNewCollection(label);
@@ -181,19 +180,19 @@ public class Collection implements CollectionInterface {
         return maybePath.flatMap(path -> getCollectionFromPath(path, label));
     }
 
-    private Optional<ObjectPath> createNewCollection(String label) {
-        ObjectPath path = null;
+    private Optional<DBusPath> createNewCollection(String label) {
+        DBusPath path = null;
         Map<String, Variant> properties = de.swiesend.secretservice.Collection.createProperties(label);
 
         if (encryptedCollectionPassword.isEmpty()) {
-            Optional<ObjectPath> maybePath = createCollectionWithPrompt(properties);
+            Optional<DBusPath> maybePath = createCollectionWithPrompt(properties);
             if (maybePath.isPresent()) {
                 path = maybePath.get();
             } else {
                 return Optional.empty();
             }
         } else if (service.isGnomeKeyringAvailable()) {
-            Optional<ObjectPath> maybePath = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
+            Optional<DBusPath> maybePath = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
             if (maybePath.isPresent()) {
                 path = maybePath.get();
             }
@@ -231,13 +230,13 @@ public class Collection implements CollectionInterface {
         }
     }
 
-    private Optional<ObjectPath> createCollectionWithPrompt(Map<String, Variant> properties) {
-        Optional<Pair<ObjectPath, ObjectPath>> maybeResponse = service.getService().createCollection(properties);
+    private Optional<DBusPath> createCollectionWithPrompt(Map<String, Variant> properties) {
+        Optional<Pair<DBusPath, DBusPath>> maybeResponse = service.getService().createCollection(properties);
         if (maybeResponse.isEmpty()) {
             log.error("Could not create collection.");
             return Optional.empty();
         }
-        Pair<ObjectPath, ObjectPath> response = maybeResponse.get();
+        Pair<DBusPath, DBusPath> response = maybeResponse.get();
         if (!"/".equals(response.a.getPath())) {
             return Optional.of(response.a);
         } else {
@@ -245,7 +244,7 @@ public class Collection implements CollectionInterface {
         }
     }
 
-    private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(ObjectPath path, String label) {
+    private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(DBusPath path, String label) {
         if (path == null) {
             log.error(String.format("Could not acquire collection with label: \"%s\"", label));
             return Optional.empty();
@@ -255,12 +254,12 @@ public class Collection implements CollectionInterface {
         return Optional.of(collection);
     }
 
-    private Optional<ObjectPath> getCollectionPath(String label) {
-        Map<ObjectPath, String> labels = getLabels();
+    private Optional<DBusPath> getCollectionPath(String label) {
+        Map<DBusPath, String> labels = getLabels();
 
-        ObjectPath path = null;
-        for (Map.Entry<ObjectPath, String> entry : labels.entrySet()) {
-            ObjectPath p = entry.getKey();
+        DBusPath path = null;
+        for (Map.Entry<DBusPath, String> entry : labels.entrySet()) {
+            DBusPath p = entry.getKey();
             String l = entry.getValue();
             if (label.equals(l)) {
                 path = p;
@@ -280,7 +279,7 @@ public class Collection implements CollectionInterface {
         }
     }
 
-    private Optional<ObjectPath> performPrompt(ObjectPath path) {
+    private Optional<DBusPath> performPrompt(DBusPath path) {
         if (!isPrompting) {
             log.trace("dismissed the prompt");
             return Optional.empty();
@@ -288,7 +287,7 @@ public class Collection implements CollectionInterface {
         if (!("/".equals(path.getPath()))) {
             return Optional.ofNullable(prompt.await(path, service.getTimeout()))
                     .filter(completed -> !completed.dismissed)
-                    .map(success -> new ObjectPath(success.getSource(), success.result.getValue().toString()));
+                    .map(success -> new DBusPath(success.getSource(), success.result.getValue().toString()));
         } else {
             return Optional.empty();
         }
@@ -393,13 +392,13 @@ public class Collection implements CollectionInterface {
         }
         Item item = maybeItem.get();
 
-        Optional<ObjectPath> maybePromptPath = item.delete();
+        Optional<DBusPath> maybePromptPath = item.delete();
         if (maybePromptPath.isEmpty()) {
             log.error("Could not delete item: {}", objectPath);
             return false;
         }
-        ObjectPath promptPath = maybePromptPath.get();
-        Optional<ObjectPath> performedPrompt = performPrompt(promptPath);
+        DBusPath promptPath = maybePromptPath.get();
+        Optional<DBusPath> performedPrompt = performPrompt(promptPath);
         if (service.isGnomeKeyringAvailable() && performedPrompt.isEmpty()) {
             // gnome-keyring returns no path;
             return true;
@@ -498,12 +497,12 @@ public class Collection implements CollectionInterface {
         }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
-            Optional<Pair<List<ObjectPath>, ObjectPath>> maybeLock = service.getService().lock(List.of(item.getPath()));
+            Optional<Pair<List<DBusPath>, DBusPath>> maybeLock = service.getService().lock(List.of(item.getPath()));
             if (maybeLock.isEmpty()) {
                 log.error("Could not lock item: {}", itemPath);
                 return false;
             }
-            Pair<List<ObjectPath>, ObjectPath> lock = maybeLock.get();
+            Pair<List<DBusPath>, DBusPath> lock = maybeLock.get();
             log.debug("lock item: {}", lock);
             de.swiesend.secretservice.interfaces.Prompt.Completed result = prompt.await(lock.b, service.getTimeout());
             log.debug("lock item prompt: {}", result);
@@ -537,7 +536,7 @@ public class Collection implements CollectionInterface {
 
         return getItem(objectPath)
                 .flatMap(item -> {
-                    ObjectPath sessionPath = session.getSession().getPath();
+                    DBusPath sessionPath = session.getSession().getPath();
                     return item.getSecret(sessionPath);
                 })
                 .flatMap(secret -> {
@@ -568,13 +567,13 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
 
-        Optional<List<ObjectPath>> maybeItems = collection.getItems();
+        Optional<List<DBusPath>> maybeItems = collection.getItems();
         if (maybeItems.isEmpty()) return Optional.empty();
 
-        List<ObjectPath> items = maybeItems.get();
+        List<DBusPath> items = maybeItems.get();
 
         Map<String, char[]> passwords = new HashMap<>();
-        for (ObjectPath item : items) {
+        for (DBusPath item : items) {
             String path = item.getPath();
             getSecret(path).ifPresent(secret -> passwords.put(path, secret));
         }
@@ -615,7 +614,7 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean lock() {
         if (collection != null && !collection.isLocked()) {
-            Optional<Pair<List<ObjectPath>, ObjectPath>> result = service.getService().lock(lockable());
+            Optional<Pair<List<DBusPath>, DBusPath>> result = service.getService().lock(lockable());
             if (result.isEmpty()) {
                 log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
                 return false;
@@ -634,9 +633,9 @@ public class Collection implements CollectionInterface {
     private boolean unlock() {
         if (collection != null && collection.isLocked()) {
             if (encryptedCollectionPassword.isEmpty() || isDefault()) {
-                Optional<Pair<List<ObjectPath>, ObjectPath>> maybeResponse = service.getService().unlock(lockable());
+                Optional<Pair<List<DBusPath>, DBusPath>> maybeResponse = service.getService().unlock(lockable());
                 if (maybeResponse.isPresent()) {
-                    ObjectPath promptPath = maybeResponse.get().b;
+                    DBusPath promptPath = maybeResponse.get().b;
                     if (performPrompt(promptPath).isPresent() && !collection.isLocked()) {
                         isUnlockedOnceWithUserPermission = true;
                         log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
@@ -727,14 +726,14 @@ public class Collection implements CollectionInterface {
         isClosed = true;
     }
 
-    private Map<ObjectPath, String> getLabels() {
-        Optional<List<ObjectPath>> maybeCollections = service.getService().getCollections();
+    private Map<DBusPath, String> getLabels() {
+        Optional<List<DBusPath>> maybeCollections = service.getService().getCollections();
         if (maybeCollections.isEmpty()) {
             return Collections.emptyMap();
         }
 
-        Map<ObjectPath, String> labels = new HashMap<>();
-        for (ObjectPath path : maybeCollections.get()) {
+        Map<DBusPath, String> labels = new HashMap<>();
+        for (DBusPath path : maybeCollections.get()) {
             de.swiesend.secretservice.Collection c = new de.swiesend.secretservice.Collection(path, connection, null);
             c.getLabel().ifPresent(l -> labels.put(path, l));
         }
@@ -743,7 +742,7 @@ public class Collection implements CollectionInterface {
     }
 
     private boolean existsLabel(String label) {
-        Map<ObjectPath, String> labels = getLabels();
+        Map<DBusPath, String> labels = getLabels();
         return labels.containsValue(label);
     }
 
@@ -755,7 +754,7 @@ public class Collection implements CollectionInterface {
         }
     }
 
-    private List<ObjectPath> lockable() {
+    private List<DBusPath> lockable() {
         return Arrays.asList(collection.getPath());
     }
 

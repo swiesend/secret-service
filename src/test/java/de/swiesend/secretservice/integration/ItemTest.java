@@ -3,7 +3,6 @@ package de.swiesend.secretservice.integration;
 import de.swiesend.secretservice.*;
 import de.swiesend.secretservice.integration.test.Context;
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.types.UInt64;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
@@ -37,10 +36,10 @@ public class ItemTest {
     @Test
     @DisplayName("delete item")
     public void delete() {
-        List<ObjectPath> items = context.collection.getItems().get();
+        List<DBusPath> items = context.collection.getItems().get();
         assertEquals(1, items.size());
 
-        ObjectPath prompt = context.item.delete().get();
+        DBusPath prompt = context.item.delete().get();
         // expect: no prompt
         assertEquals("/", prompt.getPath());
 
@@ -81,7 +80,7 @@ public class ItemTest {
 
         DBusPath alias = new DBusPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         Collection login = new Collection(alias, context.service.getConnection());
-        List<ObjectPath> items = login.getItems().get();
+        List<DBusPath> items = login.getItems().get();
         Item item = new Item(items.get(0), context.service);
         Secret secret = item.getSecret(context.session.getPath()).get();
         log.info("'" + new String(secret.getSecretValue()) + "' [" + new String(secret.getSecretParameters()) + "]");
@@ -153,7 +152,7 @@ public class ItemTest {
 
         attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
-        Pair<List<ObjectPath>, List<ObjectPath>> result = context.service.searchItems(attributes).get();
+        Pair<List<DBusPath>, List<DBusPath>> result = context.service.searchItems(attributes).get();
         log.info(result.toString());
         assertEquals(1, result.a.size());
     }
