@@ -268,4 +268,62 @@ public class SimpleCollectionTest {
         assertFalse(de.swiesend.secretservice.simple.interfaces.SimpleCollection.isConnected());
     }
 
+    @Test
+    @DisplayName("SimpleCollection.close() cleans up sessions but keeps the static D-Bus connection alive")
+    public void closeKeepsStaticConnection() throws IOException {
+        assertTrue(SimpleCollection.isConnected(), "Static connection should be alive before test");
+
+        SimpleCollection collection = new SimpleCollection("test", "test");
+        collection.close();
+
+        // The static D-Bus connection is wrapped (non-owning) by the functional layer,
+        // so closing the collection/service should NOT disconnect it.
+        assertTrue(SimpleCollection.isConnected(),
+                "Static D-Bus connection should remain alive after SimpleCollection.close()");
+        assertTrue(SimpleCollection.isAvailable(),
+                "Secret service should still be available after SimpleCollection.close()");
+    }
+
+    @Test
+    @DisplayName("SimpleCollection can be reopened after close — sessions are independent")
+    public void reopenAfterClose() throws IOException {
+        SimpleCollection first = new SimpleCollection("test", "test");
+        String item = first.createItem("reopen-test", "secret-value");
+        first.close();
+
+        // Open a new instance after closing the first — should work because the
+        // static D-Bus connection is still alive
+        SimpleCollection second = new SimpleCollection("test", "test");
+        char[] secret = second.getSecret(item);
+        assertEquals("secret-value", new String(secret));
+
+        second.deleteItem(item);
+        second.delete();
+        second.close();
+    }
+
+    @Test
+    @DisplayName("Multiple SimpleCollection instances share the same static D-Bus connection")
+    public void multipleInstancesShareConnection() throws IOException {
+        SimpleCollection col1 = new SimpleCollection("test", "test");
+        SimpleCollection col2 = new SimpleCollection("test", "test");
+
+        String item = col1.createItem("shared-test", "secret");
+        // col2 can see it because they share the same D-Bus connection
+        char[] secret = col2.getSecret(item);
+        assertEquals("secret", new String(secret));
+
+        col1.deleteItem(item);
+        col1.delete();
+
+        // Closing one doesn't affect the other's ability to operate
+        col1.close();
+        assertTrue(SimpleCollection.isConnected(),
+                "Static connection should survive closing one instance");
+
+        col2.close();
+        assertTrue(SimpleCollection.isConnected(),
+                "Static connection should survive closing all instances");
+    }
+
 }
