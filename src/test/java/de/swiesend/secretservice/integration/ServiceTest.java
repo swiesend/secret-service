@@ -92,7 +92,7 @@ public class ServiceTest {
             context.prompt.await(deletePrompt);
         }
 
-        List<DBusPath> before = context.service.getCollections().orElse(new ArrayList());
+        List<DBusPath> before = context.service.getCollections().orElse(new ArrayList<>());
 
         Map<String, Variant> properties = Collection.createProperties("test");
         Pair<DBusPath, DBusPath> response = context.service.createCollection(properties).get();
@@ -121,7 +121,7 @@ public class ServiceTest {
     public void searchItems() {
         context.ensureItem();
 
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
 
         Pair<List<DBusPath>, List<DBusPath>> response = context.service.searchItems(attributes).get();
@@ -146,7 +146,7 @@ public class ServiceTest {
         // unlock a collection
         context.ensureCollection();
 
-        ArrayList<DBusPath> lockables = new ArrayList();
+        ArrayList<DBusPath> lockables = new ArrayList<>();
         lockables.add(context.collection.getPath());
 
         response = context.service.lock(lockables).get();
@@ -209,7 +209,7 @@ public class ServiceTest {
         //   * alias/default == collection/login (if not assigned otherwise)
         //   * collection/login
         //   * collection/session
-        ArrayList<DBusPath> collections = new ArrayList();
+        ArrayList<DBusPath> collections = new ArrayList<>();
         collections.add(Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION));
         collections.add(Static.Convert.toObjectPath(Static.ObjectPaths.LOGIN_COLLECTION));
         collections.add(Static.Convert.toObjectPath(Static.ObjectPaths.SESSION_COLLECTION));

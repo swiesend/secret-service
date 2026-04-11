@@ -69,7 +69,7 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
      *  {@link Item#createProperties(String label, Map attributes)}<br>
      */
     public static Map<String, Variant> createProperties(String label) {
-        HashMap<String, Variant> properties = new HashMap();
+        HashMap<String, Variant> properties = new HashMap<>();
         properties.put(LABEL, new Variant<>(label));
         return properties;
     }

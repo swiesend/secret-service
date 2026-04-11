@@ -130,7 +130,7 @@ public class ItemTest {
             assertEquals("org.freedesktop.Secret.Generic", attributes.get("xdg:schema"));
         }
 
-        attributes = new HashMap();
+        attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
         attributes.put("Attribute2", "Replaced");
         attributes.put("Attribute3", "Added");
@@ -150,7 +150,7 @@ public class ItemTest {
             assertEquals("org.freedesktop.Secret.Generic", attributes.get("xdg:schema"));
         }
 
-        attributes = new HashMap();
+        attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
         Pair<List<DBusPath>, List<DBusPath>> result = context.service.searchItems(attributes).get();
         log.info(result.toString());
