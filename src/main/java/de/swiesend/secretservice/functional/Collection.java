@@ -507,7 +507,7 @@ public class Collection implements CollectionInterface {
             de.swiesend.secretservice.interfaces.Prompt.Completed result = prompt.await(lock.b, service.getTimeout());
             log.debug("lock item prompt: {}", result);
         }
-        return true;
+        return item.isLocked();
     }
 
     @Override
