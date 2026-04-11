@@ -1,7 +1,6 @@
 package de.swiesend.secretservice.interfaces;
 
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
@@ -28,20 +27,20 @@ public interface Collection extends DBusInterface {
      * Delete this collection.
      *
      * @return prompt   &mdash; A prompt to delete the collection, or the special value '/' when no prompt is necessary.
-     * @see ObjectPath
+     * @see DBusPath
      */
-    Optional<ObjectPath> delete();
+    Optional<DBusPath> delete();
 
     /**
      * Search for items in this collection matching the lookup attributes.
      *
      * @param attributes Attributes to match.
      * @return results     &mdash; Items that matched the attributes.
-     * @see ObjectPath
+     * @see DBusPath
      * @see Secret
      * @see Item
      */
-    Optional<List<ObjectPath>> searchItems(Map<String, String> attributes);
+    Optional<List<DBusPath>> searchItems(Map<String, String> attributes);
 
     /**
      * Create an item with the given attributes, secret and label. If replace is set, then it replaces an item already
@@ -83,11 +82,11 @@ public interface Collection extends DBusInterface {
      * {@link de.swiesend.secretservice.Collection#createProperties(String label)}<br>
      * {@link de.swiesend.secretservice.Item#createProperties(String label, Map attributes)}<br>
      * @see Pair
-     * @see ObjectPath
+     * @see DBusPath
      * @see Secret
      * @see Item
      */
-    Optional<Pair<ObjectPath, ObjectPath>> createItem(Map<String, Variant> properties, Secret secret, boolean replace);
+    Optional<Pair<DBusPath, DBusPath>> createItem(Map<String, Variant> properties, Secret secret, boolean replace);
 
     /**
      * <b>Items</b> is a D-Bus Property.
@@ -96,7 +95,7 @@ public interface Collection extends DBusInterface {
      *
      * @return Items in this collection.
      */
-    Optional<List<ObjectPath>> getItems();
+    Optional<List<DBusPath>> getItems();
 
     /**
      * <b>Label</b> is a D-Bus Property.

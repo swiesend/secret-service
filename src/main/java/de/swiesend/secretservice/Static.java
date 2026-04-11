@@ -1,7 +1,6 @@
 package de.swiesend.secretservice;
 
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -170,29 +169,29 @@ public class Static {
             return new String(bytes, StandardCharsets.UTF_8);
         }
 
-        public static ObjectPath toObjectPath(String path) {
-            return new ObjectPath("", path);
+        public static DBusPath toObjectPath(String path) {
+            return new DBusPath("", path);
         }
 
-        public static Optional<ObjectPath> toObjectPath(Object obj) {
+        public static Optional<DBusPath> toObjectPath(Object obj) {
             try {
-                return Optional.of((ObjectPath) obj);
+                return Optional.of((DBusPath) obj);
             } catch (ClassCastException e) {
                 return Optional.empty();
             }
         }
 
-        public static List<String> toStrings(List<ObjectPath> paths) {
+        public static List<String> toStrings(List<DBusPath> paths) {
             ArrayList<String> ps = new ArrayList();
-            for (ObjectPath p : paths) {
+            for (DBusPath p : paths) {
                 ps.add(p.getPath());
             }
             return ps;
         }
 
-        public static List<DBusPath> toDBusPaths(List<ObjectPath> paths) {
+        public static List<DBusPath> toDBusPaths(List<DBusPath> paths) {
             ArrayList<DBusPath> ps = new ArrayList();
-            for (ObjectPath p : paths) {
+            for (DBusPath p : paths) {
                 ps.add(p);
             }
             return ps;

@@ -5,7 +5,6 @@ import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.Static;
 import de.swiesend.secretservice.handlers.Messaging;
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.types.Variant;
 
 import java.util.Map;
@@ -29,13 +28,13 @@ public class InternalUnsupportedGuiltRiddenInterface extends Messaging implement
     }
 
     @Override
-    public Optional<ObjectPath> changeWithPrompt(DBusPath collection) {
+    public Optional<DBusPath> changeWithPrompt(DBusPath collection) {
         return send("ChangeWithPrompt", "o", collection)
                 .flatMap(response -> Static.Convert.toObjectPath(response[0]));
     }
 
     @Override
-    public Optional<ObjectPath> createWithMasterPassword(Map<String, Variant> properties, Secret master) {
+    public Optional<DBusPath> createWithMasterPassword(Map<String, Variant> properties, Secret master) {
         return send("CreateWithMasterPassword", "a{sv}(oayays)", properties, master)
                 .flatMap(response -> Static.Convert.toObjectPath(response[0]));
     }

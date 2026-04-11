@@ -2,7 +2,7 @@ package de.swiesend.secretservice.integration.keyring;
 
 import de.swiesend.secretservice.*;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
@@ -36,8 +36,8 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     public void beforeEach() throws DBusException {
         connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         service = new Service(connection);
-        Pair<Variant<byte[]>, ObjectPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant("")).get();
-        ObjectPath sessionPath = pair.b;
+        Pair<Variant<byte[]>, DBusPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant("")).get();
+        DBusPath sessionPath = pair.b;
         iugri = new InternalUnsupportedGuiltRiddenInterface(service);
         original = new Secret(sessionPath, "".getBytes(), "test".getBytes());
         master = new Secret(sessionPath, "".getBytes(), "master-secret".getBytes());
@@ -53,7 +53,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     @Test
     public void changeWithMasterPassword() throws InterruptedException {
 
-        List<ObjectPath> collections = service.getCollections().get();
+        List<DBusPath> collections = service.getCollections().get();
         List<String> cs = Static.Convert.toStrings(collections);
         if (!cs.contains("/org/freedesktop/secrets/collection/test")) {
             HashMap<String, Variant> properties = new HashMap();
@@ -65,7 +65,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         iugri.changeWithMasterPassword(collection.getPath(), original, master);
         Thread.sleep(100L);
 
-        List<ObjectPath> lock = new ArrayList();
+        List<DBusPath> lock = new ArrayList();
         lock.add(collection.getPath());
         service.lock(lock);
         Thread.sleep(100L);
@@ -85,11 +85,11 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     @Test
     public void createWithMasterPassword() throws InterruptedException {
 
-        List<ObjectPath> collections = service.getCollections().get();
+        List<DBusPath> collections = service.getCollections().get();
         List<String> cs = Static.Convert.toStrings(collections);
 
         if (cs.contains("/org/freedesktop/secrets/collection/test")) {
-            ObjectPath deleted = collection.delete().get();
+            DBusPath deleted = collection.delete().get();
             assertEquals("/", deleted.getPath());
             Thread.sleep(100L); // await signal: Service.CollectionDeleted
         }
@@ -107,7 +107,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
 
     @Test
     public void unlockWithMasterPassword() throws InterruptedException {
-        List<ObjectPath> lock = new ArrayList();
+        List<DBusPath> lock = new ArrayList();
         lock.add(collection.getPath());
         service.lock(lock);
         Thread.sleep(100L); // await signal: Service.CollectionChanged

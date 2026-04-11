@@ -1,7 +1,7 @@
 package de.swiesend.secretservice;
 
 import de.swiesend.secretservice.handlers.Messaging;
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +33,7 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
     }
 
     @Override
-    public boolean prompt(ObjectPath prompt) {
+    public boolean prompt(DBusPath prompt) {
         objectPath = prompt.getPath();
 
         String windowID = "";
@@ -63,7 +63,7 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
      * @return Completed or null if user input exceeds the default timeout.
      * @see Completed
      */
-    public Completed await(ObjectPath path, Duration timeout) {
+    public Completed await(DBusPath path, Duration timeout) {
         if ("/".equals(path.getPath())) {
             return sh.getLastHandledSignal(Completed.class);
         } else {
@@ -88,7 +88,7 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
      * @return Completed or null if user input exceeds the default timeout.
      * @see Completed
      */
-    public Completed await(ObjectPath path) {
+    public Completed await(DBusPath path) {
         return await(path, DEFAULT_PROMPT_TIMEOUT);
     }
 
