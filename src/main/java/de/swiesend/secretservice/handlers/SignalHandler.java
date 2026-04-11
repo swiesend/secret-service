@@ -193,6 +193,9 @@ public class SignalHandler implements DBusSigHandler {
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
             }
         } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             maybePrompt.ifPresentOrElse(
                     (prompt) -> {
                         prompt.dismiss();
