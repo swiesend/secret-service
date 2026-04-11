@@ -32,15 +32,14 @@ public class MessageHandler {
 
     public Optional<Object[]> send(String service, String path, String iface, String method, String signature, Object... args) {
         try {
-            org.freedesktop.dbus.messages.Message message = new MethodCall(
-                    service,
-                    path,
-                    iface,
-                    method, (byte) 0, signature, args);
+            MethodCall message = new MethodCall(service, path, iface, method);
+            if (signature != null && !signature.isEmpty()) {
+                message.append(signature, args);
+            }
 
             connection.sendMessage(message);
 
-            org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(MAX_DELAY_MILLIS);
+            org.freedesktop.dbus.messages.Message response = message.getReply(MAX_DELAY_MILLIS);
             if (log.isTraceEnabled()) log.trace("Response: " + response);
 
             Object[] parameters = null;
