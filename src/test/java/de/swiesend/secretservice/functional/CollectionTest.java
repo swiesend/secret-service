@@ -228,11 +228,11 @@ class CollectionTest {
         String item = collection.createItem("item-1", "secret-1").get();
 
         // Use the secret within the callback -- it is auto-cleared after
-        Optional<String> result = collection.withSecret(item, secret -> {
-            return new String(secret);
+        Optional<Boolean> result = collection.withSecret(item, secret -> {
+            return Arrays.equals(secret, "secret-1".toCharArray());
         });
         assertTrue(result.isPresent());
-        assertEquals("secret-1", result.get());
+        assertTrue(result.get());
     }
 
     @Test
@@ -244,7 +244,7 @@ class CollectionTest {
         Optional<Boolean> result = collection.withSecret(item, secret -> {
             holder[0] = secret;
             // secret is valid here
-            assertEquals("secret-1", new String(secret));
+            assertTrue(Arrays.equals(secret, "secret-1".toCharArray()));
             return true;
         });
 
@@ -281,8 +281,8 @@ class CollectionTest {
 
     @Test
     void withSecretReturnsEmptyForMissingItem() {
-        Optional<String> result = collection.withSecret("/nonexistent/path", secret -> {
-            return new String(secret);
+        Optional<Boolean> result = collection.withSecret("/nonexistent/path", secret -> {
+            return true;
         });
         assertTrue(result.isEmpty());
     }
