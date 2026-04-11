@@ -7,6 +7,7 @@ import org.freedesktop.dbus.exceptions.DBusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Optional;
 
 /**
@@ -67,8 +68,13 @@ public class System implements SystemInterface {
 
     synchronized public boolean disconnect() {
         if (ownsConnection) {
-            connection.disconnect();
-            return !connection.isConnected();
+            try {
+                connection.close();
+            } catch (IOException e) {
+                log.warn("Failed to close D-Bus connection.", e);
+                return false;
+            }
+            return true;
         }
         return false;
     }
@@ -76,7 +82,7 @@ public class System implements SystemInterface {
     @Override
     public void close() throws Exception {
         if (ownsConnection) {
-            disconnect();
+            connection.close();
         }
     }
 }
