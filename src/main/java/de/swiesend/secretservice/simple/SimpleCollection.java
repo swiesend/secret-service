@@ -5,6 +5,7 @@ import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
+import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
@@ -247,7 +248,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
     private void init() throws IOException {
         if (!isAvailable()) throw new IOException("The secret service is not available.");
-        ServiceInterface createdService = SecretService.create()
+        // Wrap the static connection so the functional layer shares it rather than
+        // opening its own. The wrapped SystemInterface does not own the connection,
+        // so the static disconnect()/shutdown-hook lifecycle remains in control.
+        SystemInterface system = de.swiesend.secretservice.functional.System.wrap(connection);
+        ServiceInterface createdService = SecretService.create(Optional.of(system))
                 .orElseThrow(() -> new IOException("Could not create the secret service."));
         SessionInterface openedSession;
         try {
