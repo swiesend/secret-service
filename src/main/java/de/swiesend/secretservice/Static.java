@@ -189,14 +189,6 @@ public class Static {
             return ps;
         }
 
-        public static List<DBusPath> toDBusPaths(List<DBusPath> paths) {
-            ArrayList<DBusPath> ps = new ArrayList<>();
-            for (DBusPath p : paths) {
-                ps.add(p);
-            }
-            return ps;
-        }
-
     }
 
     public static class Utils {
