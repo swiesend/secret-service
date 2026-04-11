@@ -33,7 +33,6 @@ public class MessageHandler {
     public Optional<Object[]> send(String service, String path, String iface, String method, String signature, Object... args) {
         try {
             org.freedesktop.dbus.messages.Message message = new MethodCall(
-                    (byte) 0, // endianness: use native
                     service,
                     path,
                     iface,
