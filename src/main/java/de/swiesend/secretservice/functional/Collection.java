@@ -589,10 +589,13 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
         Map<String, char[]> secrets = maybeSecrets.get();
+        // Snapshot all values before the callback so that even if the callback
+        // mutates the map (removes entries, clears it), we still zero every array.
+        List<char[]> allValues = new ArrayList<>(secrets.values());
         try {
-            return Optional.ofNullable(callback.apply(secrets));
+            return Optional.ofNullable(callback.apply(Collections.unmodifiableMap(secrets)));
         } finally {
-            for (char[] value : secrets.values()) {
+            for (char[] value : allValues) {
                 Arrays.fill(value, '\0');
             }
         }
