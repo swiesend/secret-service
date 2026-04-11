@@ -96,9 +96,14 @@ public interface CollectionInterface extends AutoCloseable {
      * }</pre>
      *
      * @param objectPath the D-Bus object path of the item
-     * @param callback   a function that receives the decrypted secret and returns a result
+     * @param callback   a function that receives the decrypted secret and returns a non-null result.
+     *                   If the callback returns {@code null}, the result is indistinguishable from
+     *                   a missing secret (both yield {@code Optional.empty()}). Callbacks that need
+     *                   to express "no value" should return a wrapper type (e.g., {@code Optional<T>})
+     *                   or a sentinel value instead of {@code null}.
      * @param <R>        the return type of the callback
-     * @return the callback's result wrapped in Optional, or empty if the secret could not be retrieved
+     * @return the callback's result wrapped in Optional, or empty if the secret could not be
+     *         retrieved <b>or</b> the callback returned {@code null}
      */
     <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback);
 
@@ -133,8 +138,12 @@ public interface CollectionInterface extends AutoCloseable {
      * }</pre>
      *
      * @param callback a function that receives the map of object paths to decrypted secrets
+     *                 and returns a non-null result. If the callback returns {@code null}, the
+     *                 result is indistinguishable from a retrieval failure (both yield
+     *                 {@code Optional.empty()}).
      * @param <R>      the return type of the callback
-     * @return the callback's result wrapped in Optional, or empty if secrets could not be retrieved
+     * @return the callback's result wrapped in Optional, or empty if secrets could not be
+     *         retrieved <b>or</b> the callback returned {@code null}
      */
     <R> Optional<R> withSecrets(Function<Map<String, char[]>, R> callback);
 
