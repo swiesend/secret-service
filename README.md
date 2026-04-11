@@ -65,7 +65,7 @@ Authorization:
 
 ## Usage
 
-The library provides a simplified high-level API, which sends only transport encrypted secrets over the D-Bus.
+The library provides two API layers, both using transport-encrypted secrets over the D-Bus.
 
 ### Dependency
 
@@ -85,101 +85,141 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 </dependency>
 ```
 
-### High-Level API
+### Functional API (Recommended)
+
+The functional API uses instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle management.
+
+#### Basic Usage
 
 ```java
-public class Example {
+try (ServiceInterface service = SecretService.create().get()) {
+    CollectionInterface collection = service
+            .openSession()
+            .flatMap(session -> session.collection("My Collection", Optional.empty()))
+            .get();
 
-    @Test
-    @DisplayName("Create a password in the user's default collection (/org/freedesktop/secrets/aliases/default).")
-    public void createPasswordInDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection()) {
-            String item = collection.createItem("My Item", "secret");
+    // Store a secret
+    String item = collection.createItem("My Item", "secret").get();
 
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
+    // Retrieve a secret safely using the callback API
+    // The char[] is automatically zeroed after the callback returns.
+    collection.withSecret(item, secret -> {
+        // Use the secret here — it never escapes this scope.
+        return Arrays.equals(secret, "secret".toCharArray());
+    });
 
-            collection.deleteItem(item);
-        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
-    }
-
-    @Test
-    @DisplayName("Create a password in a non-default collection (/org/freedesktop/secrets/collection/xxx).")
-    public void createPasswordInNonDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-            String item = collection.createItem("My Item", "secret");
-
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
-
-            collection.deleteItem(item);
-            collection.delete();
-        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
-    }
-
-    @Test
-    @DisplayName("Create a password with additional attributes.")
-    public void createPasswordWithAttributes() throws IOException, AccessControlException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-            // define unique attributes
-            Map<String, String> attributes = new HashMap();
-            attributes.put("uuid", "42");
-
-            // create and forget
-            collection.createItem("My Item", "secret", attributes);
-
-            // find by attributes
-            List<String> items = collection.getItems(attributes);
-            assertEquals(1, items.size());
-            String item = items.get(0);
-
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
-            assertEquals("42", collection.getAttributes(item).get("uuid"));
-
-            collection.deleteItem(item);
-            collection.delete();
-        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
-    }
-
-    // The D-Bus connection gets closed at the end of the static lifetime of `SimpleCollection` by a shutdown hook.
-
+    // Clean up
+    collection.deleteItem(item);
+    collection.delete();
 }
 ```
 
-__Closing the D-Bus connection:__
+#### Secure Secret Access with Callbacks
 
-The D-Bus connection is closed eventually at end of the static lifetime of `SimpleCollection` with a shutdown hook and not by auto-close. One can also close the D-Bus connection manually by calling `SimpleCollection.disconnect()`, but once disconnected it is not possible to reconnect.
+The `withSecret()` and `withSecrets()` methods guarantee that decrypted secrets are zeroed from memory after the callback returns (or throws). This prevents sensitive data from lingering on the heap.
 
-__SimpleCollection-Interface:__
+```java
+try (ServiceInterface service = SecretService.create().get()) {
+    CollectionInterface collection = service
+            .openSession()
+            .flatMap(session -> session.collection("My Collection", Optional.of("collection-password")))
+            .get();
 
-For Further methods and attributes checkout the [SimpleCollection-Interface](src/main/java/org/freedesktop/secret/simple/interfaces/SimpleCollection.java).
+    Map<String, String> attributes = Map.of("application", "my-app", "uuid", "42");
+    String item = collection.createItem("API Key", "my-secret-api-key", attributes).get();
+
+    // Hash a secret without exposing it — only the hash escapes the callback.
+    MessageDigest md = MessageDigest.getInstance("SHA-256");
+    Optional<byte[]> hash = collection.withSecret(item, secret -> {
+        ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(secret));
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        try {
+            return md.digest(bytes);
+        } finally {
+            Arrays.fill(bytes, (byte) 0);
+            if (encoded.hasArray()) Arrays.fill(encoded.array(), (byte) 0);
+        }
+    });
+
+    // Compare a secret against user input — only a boolean escapes.
+    Optional<Boolean> matches = collection.withSecret(item, secret -> {
+        return Arrays.equals(secret, userInput);
+    });
+
+    collection.deleteItem(item);
+    collection.delete();
+}
+```
+
+#### Standalone Collection (No Manual Session Management)
+
+```java
+// Opens its own D-Bus connection, session, and encryption — all cleaned up on close().
+try (CollectionInterface collection = Collection.open("My Collection").get()) {
+    String item = collection.createItem("My Item", "secret", Map.of("key", "value")).get();
+
+    // Find items by attributes
+    List<String> found = collection.getItems(Map.of("key", "value")).get();
+
+    collection.deleteItem(item);
+    collection.delete();
+}
+```
+
+### SimpleCollection API (Legacy)
+
+The `SimpleCollection` API preserves the original 1.x interface for backward compatibility. It uses a static shared D-Bus connection with a JVM shutdown hook.
+
+New code should prefer the functional API above.
+
+```java
+try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
+    // define unique attributes
+    Map<String, String> attributes = new HashMap<>();
+    attributes.put("uuid", "42");
+
+    // create and forget
+    collection.createItem("My Item", "secret", attributes);
+
+    // find by attributes
+    List<String> items = collection.getItems(attributes);
+    String item = items.get(0);
+
+    char[] actual = collection.getSecret(item);
+    assertEquals("secret", new String(actual));
+    Arrays.fill(actual, '\0'); // caller must clear manually
+
+    collection.deleteItem(item);
+    collection.delete();
+}
+// The D-Bus connection is closed at JVM shutdown, not by close().
+// Call SimpleCollection.disconnect() to close it manually.
+```
 
 __Transport Encryption:__
 
-For the details of the transport encryption see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
-[Transport Encryption Example](src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)
+Both APIs use transport encryption (DH key exchange + AES-128-CBC) automatically.
+For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
+[Transport Encryption Example](src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
 
 ### Low-Level API
 
 The low-level API gives access to all defined D-Bus `Methods`, `Properties` and `Signals` of the Secret Service interface:
 
-* [Service](src/main/java/org/freedesktop/secret/Service.java)
-* [Collection](src/main/java/org/freedesktop/secret/Collection.java)
-* [Item](src/main/java/org/freedesktop/secret/Item.java)
-* [Session](src/main/java/org/freedesktop/secret/Session.java)
-* [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
+* [Service](src/main/java/de/swiesend/secretservice/Service.java)
+* [Collection](src/main/java/de/swiesend/secretservice/Collection.java)
+* [Item](src/main/java/de/swiesend/secretservice/Item.java)
+* [Session](src/main/java/de/swiesend/secretservice/Session.java)
+* [Prompt](src/main/java/de/swiesend/secretservice/Prompt.java)
 
 For the usage of the low-level API see the tests:
 
-* [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
-* [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
-* [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
-* [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
-* [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
+* [ServiceTest](src/test/java/de/swiesend/secretservice/integration/ServiceTest.java)
+* [CollectionTest](src/test/java/de/swiesend/secretservice/integration/CollectionTest.java)
+* [ItemTest](src/test/java/de/swiesend/secretservice/integration/ItemTest.java)
+* [SessionTest](src/test/java/de/swiesend/secretservice/integration/SessionTest.java)
+* [PromptTest](src/test/java/de/swiesend/secretservice/integration/PromptTest.java)
 
 #### D-Bus Interfaces
 
