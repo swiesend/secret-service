@@ -22,6 +22,22 @@ public class SecretServiceTest {
 
     private SecretService secretService = null;
 
+    /**
+     * Wait for a DBusConnection to reach the expected connected state.
+     * DBusConnection.disconnect() is asynchronous, so assertions need to
+     * poll briefly rather than checking immediately after close().
+     */
+    private static void awaitConnectionState(DBusConnection connection, boolean expectedConnected, String message) throws InterruptedException {
+        long deadline = java.lang.System.currentTimeMillis() + 2000;
+        while (java.lang.System.currentTimeMillis() < deadline) {
+            if (connection.isConnected() == expectedConnected) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+        assertEquals(expectedConnected, connection.isConnected(), message);
+    }
+
     @BeforeEach
     void beforeEach() {
         secretService = (SecretService) SecretService.create().get();
@@ -93,7 +109,7 @@ public class SecretServiceTest {
         // Close the service — should cascade: sessions → system → D-Bus connection
         service.close();
 
-        assertFalse(connection.isConnected(),
+        awaitConnectionState(connection, false,
                 "Owned D-Bus connection should be disconnected after service.close()");
     }
 
@@ -116,7 +132,7 @@ public class SecretServiceTest {
 
         // Clean up: the owner disconnects
         ownedSystem.close();
-        assertFalse(connection.isConnected(),
+        awaitConnectionState(connection, false,
                 "Connection should be disconnected after the owning system closes");
     }
 
@@ -140,7 +156,7 @@ public class SecretServiceTest {
 
         // Now close the service to clean up
         service.close();
-        assertFalse(connection.isConnected(),
+        awaitConnectionState(connection, false,
                 "Connection should be disconnected after service.close()");
     }
 
