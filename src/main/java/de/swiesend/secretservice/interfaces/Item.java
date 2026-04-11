@@ -1,6 +1,6 @@
 package de.swiesend.secretservice.interfaces;
 
-import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.types.UInt64;
@@ -28,7 +28,7 @@ public interface Item extends DBusInterface {
      *
      * @return Prompt   &mdash; A prompt objectpath, or the special value '/' if no prompt is necessary.
      */
-    Optional<DBusPath> delete();
+    Optional<ObjectPath> delete();
 
     /**
      * Retrieve the secret for this item.
@@ -36,7 +36,7 @@ public interface Item extends DBusInterface {
      * @param session The session to use to encode the secret.
      * @return secret   &mdash; The secret retrieved.
      */
-    Optional<Secret> getSecret(DBusPath session);
+    Optional<Secret> getSecret(ObjectPath session);
 
     /**
      * Set the secret for this item.

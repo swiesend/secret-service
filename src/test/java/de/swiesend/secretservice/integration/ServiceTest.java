@@ -2,7 +2,7 @@ package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.*;
 import de.swiesend.secretservice.Collection;
-import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.errors.NoSuchObject;
@@ -37,13 +37,13 @@ public class ServiceTest {
     public void openSession() {
         context.ensureService();
 
-        Optional<Pair<Variant<byte[]>, DBusPath>> response = context.service.openSession(Static.Algorithm.PLAIN, new Variant(""));
+        Optional<Pair<Variant<byte[]>, ObjectPath>> response = context.service.openSession(Static.Algorithm.PLAIN, new Variant(""));
         log.info(response.toString());
 
         assertEquals("s", response.get().a.getSig());
         assertEquals("", response.get().a.getValue(), "the value of an empty byte[] behaves odd as it returns a String.");
 
-        DBusPath sessionPath = response.get().b;
+        ObjectPath sessionPath = response.get().b;
         assertTrue(sessionPath.getPath().startsWith("/org/freedesktop/secrets/session/s"));
     }
 
@@ -71,14 +71,14 @@ public class ServiceTest {
         };
         assertEquals(128, input.length);
 
-        Optional<Pair<Variant<byte[]>, DBusPath>> response = context.service.openSession(
+        Optional<Pair<Variant<byte[]>, ObjectPath>> response = context.service.openSession(
                 Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant(input));
         log.info(response.toString());
 
         byte[] peerPublicKey = response.get().a.getValue();
         assertEquals(128, peerPublicKey.length);
 
-        DBusPath sessionPath = response.get().b;
+        ObjectPath sessionPath = response.get().b;
         assertTrue(sessionPath.getPath().startsWith(Static.ObjectPaths.SESSION + "/s"));
     }
 
@@ -87,19 +87,19 @@ public class ServiceTest {
     public void createCollection() {
         context.ensureCollection();
 
-        DBusPath deletePrompt = context.collection.delete().orElse(new DBusPath("", "/"));
+        ObjectPath deletePrompt = context.collection.delete().orElse(new ObjectPath("", "/"));
         if (!deletePrompt.getPath().equals("/")) {
             context.prompt.await(deletePrompt);
         }
 
-        List<DBusPath> before = context.service.getCollections().orElse(new ArrayList());
+        List<ObjectPath> before = context.service.getCollections().orElse(new ArrayList());
 
         Map<String, Variant> properties = Collection.createProperties("test");
-        Pair<DBusPath, DBusPath> response = context.service.createCollection(properties).get();
+        Pair<ObjectPath, ObjectPath> response = context.service.createCollection(properties).get();
         log.info(response.toString());
 
-        DBusPath collectionPath = response.a;
-        DBusPath createPrompt = response.b;
+        ObjectPath collectionPath = response.a;
+        ObjectPath createPrompt = response.b;
         if (collectionPath.getPath().equals("/")) {
             assertTrue(createPrompt.getPath().startsWith("/org/freedesktop/secrets/prompt/p"));
             context.prompt.await(createPrompt);
@@ -107,7 +107,7 @@ public class ServiceTest {
             assertEquals("/", createPrompt.getPath());
         }
 
-        List<DBusPath> after = context.service.getCollections().get();
+        List<ObjectPath> after = context.service.getCollections().get();
         DBusSignal[] handled = context.prompt.getSignalHandler().getHandled();
         Prompt.Completed completed = (Prompt.Completed) handled[0];
         if (completed.dismissed) {
@@ -124,7 +124,7 @@ public class ServiceTest {
         Map<String, String> attributes = new HashMap();
         attributes.put("Attribute1", "Value1");
 
-        Pair<List<DBusPath>, List<DBusPath>> response = context.service.searchItems(attributes).get();
+        Pair<List<ObjectPath>, List<ObjectPath>> response = context.service.searchItems(attributes).get();
         List<String> unlocked = toStrings(response.a);
         List<String> locked = toStrings(response.b);
 
@@ -137,16 +137,16 @@ public class ServiceTest {
     @Disabled
     public void unlockCollections() {
 
-        Pair<List<DBusPath>, DBusPath> response;
-        List<DBusPath> locked;
-        List<DBusPath> unlocked;
-        DBusPath prompt;
+        Pair<List<ObjectPath>, ObjectPath> response;
+        List<ObjectPath> locked;
+        List<ObjectPath> unlocked;
+        ObjectPath prompt;
         Prompt.Completed completed;
 
         // unlock a collection
         context.ensureCollection();
 
-        ArrayList<DBusPath> lockables = new ArrayList();
+        ArrayList<ObjectPath> lockables = new ArrayList();
         lockables.add(context.collection.getPath());
 
         response = context.service.lock(lockables).get();
@@ -174,11 +174,11 @@ public class ServiceTest {
     public void unlockItems() {
         context.ensureItem();
 
-        Pair<List<DBusPath>, DBusPath> response;
-        List<DBusPath> locked, unlocked;
-        DBusPath prompt;
+        Pair<List<ObjectPath>, ObjectPath> response;
+        List<ObjectPath> locked, unlocked;
+        ObjectPath prompt;
 
-        List<DBusPath> items = context.collection.getItems().get();
+        List<ObjectPath> items = context.collection.getItems().get();
 
         response = context.service.lock(items).get();
         log.info(response.toString());
@@ -209,24 +209,24 @@ public class ServiceTest {
         //   * alias/default == collection/login (if not assigned otherwise)
         //   * collection/login
         //   * collection/session
-        ArrayList<DBusPath> collections = new ArrayList();
+        ArrayList<ObjectPath> collections = new ArrayList();
         collections.add(Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION));
         collections.add(Static.Convert.toObjectPath(Static.ObjectPaths.LOGIN_COLLECTION));
         collections.add(Static.Convert.toObjectPath(Static.ObjectPaths.SESSION_COLLECTION));
 
-        Pair<List<DBusPath>, DBusPath> response = context.service.lock(collections).get();
+        Pair<List<ObjectPath>, ObjectPath> response = context.service.lock(collections).get();
         log.info(response.toString());
 
-        List<DBusPath> locked = response.a;
+        List<ObjectPath> locked = response.a;
         assertEquals(Static.ObjectPaths.DEFAULT_COLLECTION, locked.get(0).getPath());
         assertEquals(Static.ObjectPaths.LOGIN_COLLECTION, locked.get(1).getPath());
         assertEquals(Static.ObjectPaths.SESSION_COLLECTION, locked.get(2).getPath());
 
-        DBusPath prompt = response.b;
+        ObjectPath prompt = response.b;
         assertEquals("/", prompt.getPath());
 
         for (int i = 0; i < collections.size(); i++) {
-            List<DBusPath> collection = Arrays.asList(new DBusPath[]{collections.get(i)});
+            List<ObjectPath> collection = Arrays.asList(new ObjectPath[]{collections.get(i)});
             response = context.service.unlock(collection).get();
             prompt = response.b;
             if (!prompt.getPath().equals("/")) {
@@ -246,20 +246,20 @@ public class ServiceTest {
     public void changeLock() {
         context.ensureSession();
 
-        DBusPath obj;
-        DBusPath result;
+        ObjectPath obj;
+        ObjectPath result;
 
-        obj = new DBusPath("", Static.ObjectPaths.DEFAULT_COLLECTION);
+        obj = new ObjectPath("", Static.ObjectPaths.DEFAULT_COLLECTION);
         result = context.service.changeLock(obj).get();
         log.info(result.toString());
         assertTrue(result.getPath().startsWith("/org/freedesktop/secrets/prompt/"));
 
-        obj = new DBusPath("", Static.ObjectPaths.LOGIN_COLLECTION);
+        obj = new ObjectPath("", Static.ObjectPaths.LOGIN_COLLECTION);
         result = context.service.changeLock(obj).get();
         log.info(result.toString());
         assertTrue(result.getPath().startsWith("/org/freedesktop/secrets/prompt/"));
 
-        obj = new DBusPath("", Static.ObjectPaths.SESSION_COLLECTION);
+        obj = new ObjectPath("", Static.ObjectPaths.SESSION_COLLECTION);
         result = context.service.changeLock(obj).get();
         log.info(result.toString());
         assertTrue(result.getPath().startsWith("/org/freedesktop/secrets/prompt/"));
@@ -269,8 +269,8 @@ public class ServiceTest {
     public void getSecrets() {
         context.ensureItem();
 
-        List<DBusPath> items = context.collection.getItems().get();
-        Map<DBusPath, Secret> result = context.service.getSecrets(items, context.session.getPath()).get();
+        List<ObjectPath> items = context.collection.getItems().get();
+        Map<ObjectPath, Secret> result = context.service.getSecrets(items, context.session.getPath()).get();
         log.info(result.toString());
 
         assertEquals(1, result.size());
@@ -280,7 +280,7 @@ public class ServiceTest {
     public void readAlias() {
         context.ensureCollection();
 
-        DBusPath collection;
+        ObjectPath collection;
 
         collection = context.service.readAlias("default").get();
         log.info(collection.toString());
@@ -306,7 +306,7 @@ public class ServiceTest {
     public void setAlias() {
         context.ensureCollection();
 
-        DBusPath collection;
+        ObjectPath collection;
 
         // change the default alias to point to the test collection
         context.service.setAlias("default", context.collection.getPath());
@@ -315,7 +315,7 @@ public class ServiceTest {
         assertEquals(context.collection.getPath().getPath(), collection.getPath());
 
         // repair the default alias
-        DBusPath login = Static.Convert.toObjectPath(Static.ObjectPaths.LOGIN_COLLECTION);
+        ObjectPath login = Static.Convert.toObjectPath(Static.ObjectPaths.LOGIN_COLLECTION);
         context.service.setAlias("default", login);
         collection = context.service.readAlias("default").get();
         log.info("default: " + collection);
@@ -326,7 +326,7 @@ public class ServiceTest {
     public void getCollections() {
         context.ensureCollection();
 
-        List<DBusPath> collections = context.service.getCollections().get();
+        List<ObjectPath> collections = context.service.getCollections().get();
         log.info(Arrays.toString(collections.toArray()));
 
         List<String> cs = toStrings(collections);

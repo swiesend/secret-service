@@ -1,6 +1,6 @@
 package de.swiesend.secretservice.interfaces;
 
-import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
@@ -49,7 +49,7 @@ public interface Prompt extends DBusInterface {
      * 
      * @see Completed
      */
-    boolean prompt(DBusPath prompt);
+    boolean prompt(ObjectPath prompt);
 
     /**
      * Dismiss the prompt.

@@ -1,7 +1,7 @@
 package de.swiesend.secretservice;
 
 import at.favre.lib.hkdf.HKDF;
-import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
@@ -126,7 +126,7 @@ public class TransportEncryption implements AutoCloseable {
                 // transform peer's raw Y to a public key
                 yb = pair.a.getValue();
 
-                DBusPath sessionPath = pair.b;
+                ObjectPath sessionPath = pair.b;
                 session = new Session(sessionPath, service);
                 return Optional.of(new OpenedSession());
             });
