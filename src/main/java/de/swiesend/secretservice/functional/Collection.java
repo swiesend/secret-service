@@ -226,7 +226,8 @@ public class Collection implements CollectionInterface {
         try {
             Thread.sleep(DEFAULT_DELAY_MILLIS);
         } catch (InterruptedException e) {
-            log.error("Unexpected interrupt while waiting for a CollectionCreated signal.", e);
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while waiting for a CollectionCreated signal.", e);
         }
     }
 
@@ -614,12 +615,17 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean lock() {
         if (collection != null && !collection.isLocked()) {
-            service.getService().lock(lockable());
+            Optional<Pair<List<ObjectPath>, ObjectPath>> result = service.getService().lock(lockable());
+            if (result.isEmpty()) {
+                log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
+                return false;
+            }
             log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
             try {
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
             } catch (InterruptedException e) {
-                log.error("Unexpected interrupt while waiting for a collection to lock.", e);
+                Thread.currentThread().interrupt();
+                log.error("Interrupted while waiting for collection to lock.", e);
             }
         }
         return collection.isLocked();
@@ -653,7 +659,12 @@ public class Collection implements CollectionInterface {
     public boolean unlockWithUserPermission() {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
-        if (!isUnlockedOnceWithUserPermission) lock();
+        if (!isUnlockedOnceWithUserPermission) {
+            if (!lock()) {
+                log.error("Failed to lock collection before prompting for user permission.");
+                return false;
+            }
+        }
         unlock();
         if (collection.isLocked()) {
             log.error("The collection was not unlocked with user permission.");
