@@ -42,7 +42,7 @@ public class PromptTest {
     @Disabled
     public void prompt() {
         DBusPath defaultCollection = Static.Convert.toObjectPath(DEFAULT_COLLECTION);
-        ArrayList<DBusPath> cs = new ArrayList();
+        ArrayList<DBusPath> cs = new ArrayList<>();
         cs.add(defaultCollection);
 
         log.info("lock default collection");

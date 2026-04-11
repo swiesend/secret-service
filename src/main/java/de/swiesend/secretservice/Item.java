@@ -73,7 +73,7 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
      *      {@link de.swiesend.secretservice.interfaces.Service#createCollection(Map properties, String alias)}<br>
      */
     public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
-        Map<String, Variant> properties = new HashMap();
+        Map<String, Variant> properties = new HashMap<>();
         properties.put(LABEL, new Variant(label));
         if (attributes != null) {
             properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));

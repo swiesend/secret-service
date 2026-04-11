@@ -53,7 +53,7 @@ public class SimpleCollectionTest {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("uuid", UUID.randomUUID().toString());
 
         String item = collection.createItem("item", "secret", attributes);
@@ -74,7 +74,7 @@ public class SimpleCollectionTest {
     public void updatePassword() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
 
         // create password
         attributes.put("uuid", UUID.randomUUID().toString());
@@ -112,7 +112,7 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         // create password
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("uuid", UUID.randomUUID().toString());
         log.info("attributes: " + attributes);
         String item = collection.createItem("item", "secret", attributes);

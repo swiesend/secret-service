@@ -54,7 +54,7 @@ public class CollectionTest {
     @Test
     public void searchItems() {
         // search by attribute
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
 
         List<DBusPath> items = context.collection.searchItems(attributes).get();
@@ -67,7 +67,7 @@ public class CollectionTest {
     public void createItem() {
         Secret secret = context.encryption.encrypt("super secret").get();
 
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
         Map<String, Variant> properties = Item.createProperties("TestItem", attributes);
 

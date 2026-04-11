@@ -182,7 +182,7 @@ public class Static {
         }
 
         public static List<String> toStrings(List<DBusPath> paths) {
-            ArrayList<String> ps = new ArrayList();
+            ArrayList<String> ps = new ArrayList<>();
             for (DBusPath p : paths) {
                 ps.add(p.getPath());
             }
@@ -190,7 +190,7 @@ public class Static {
         }
 
         public static List<DBusPath> toDBusPaths(List<DBusPath> paths) {
-            ArrayList<DBusPath> ps = new ArrayList();
+            ArrayList<DBusPath> ps = new ArrayList<>();
             for (DBusPath p : paths) {
                 ps.add(p);
             }
