@@ -92,14 +92,16 @@ The functional API uses instance-scoped connections, `Optional` returns, and `Au
 #### Basic Usage
 
 ```java
-try (ServiceInterface service = SecretService.create().get()) {
+try (ServiceInterface service = SecretService.create()
+        .orElseThrow(() -> new IOException("Secret service not available"))) {
     CollectionInterface collection = service
             .openSession()
             .flatMap(session -> session.collection("My Collection", Optional.empty()))
-            .get();
+            .orElseThrow(() -> new IOException("Could not open collection"));
 
     // Store a secret
-    String item = collection.createItem("My Item", "secret").get();
+    String item = collection.createItem("My Item", "secret")
+            .orElseThrow(() -> new IOException("Could not create item"));
 
     // Retrieve a secret safely using the callback API
     // The char[] is automatically zeroed after the callback returns.
@@ -119,14 +121,16 @@ try (ServiceInterface service = SecretService.create().get()) {
 The `withSecret()` and `withSecrets()` methods guarantee that decrypted secrets are zeroed from memory after the callback returns (or throws). This prevents sensitive data from lingering on the heap.
 
 ```java
-try (ServiceInterface service = SecretService.create().get()) {
+try (ServiceInterface service = SecretService.create()
+        .orElseThrow(() -> new IOException("Secret service not available"))) {
     CollectionInterface collection = service
             .openSession()
             .flatMap(session -> session.collection("My Collection", Optional.of("collection-password")))
-            .get();
+            .orElseThrow(() -> new IOException("Could not open collection"));
 
     Map<String, String> attributes = Map.of("application", "my-app", "uuid", "42");
-    String item = collection.createItem("API Key", "my-secret-api-key", attributes).get();
+    String item = collection.createItem("API Key", "my-secret-api-key", attributes)
+            .orElseThrow(() -> new IOException("Could not create item"));
 
     // Hash a secret without exposing it — only the hash escapes the callback.
     MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -156,11 +160,13 @@ try (ServiceInterface service = SecretService.create().get()) {
 
 ```java
 // Opens its own D-Bus connection, session, and encryption — all cleaned up on close().
-try (CollectionInterface collection = Collection.open("My Collection").get()) {
-    String item = collection.createItem("My Item", "secret", Map.of("key", "value")).get();
+try (CollectionInterface collection = Collection.open("My Collection")
+        .orElseThrow(() -> new IOException("Could not open collection"))) {
+    String item = collection.createItem("My Item", "secret", Map.of("key", "value"))
+            .orElseThrow(() -> new IOException("Could not create item"));
 
     // Find items by attributes
-    List<String> found = collection.getItems(Map.of("key", "value")).get();
+    List<String> found = collection.getItems(Map.of("key", "value")).orElse(List.of());
 
     collection.deleteItem(item);
     collection.delete();
