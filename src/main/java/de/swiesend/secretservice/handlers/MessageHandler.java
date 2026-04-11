@@ -3,13 +3,11 @@ package de.swiesend.secretservice.handlers;
 import de.swiesend.secretservice.Static;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
-import org.freedesktop.dbus.messages.Message;
 import org.freedesktop.dbus.messages.MethodCall;
 import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.Optional;
 
@@ -22,19 +20,6 @@ public class MessageHandler {
     private DBusConnection connection;
     private boolean fireAndForget = true;
 
-    private static final Constructor<MethodCall> METHOD_CALL_CTOR;
-
-    static {
-        try {
-            METHOD_CALL_CTOR = MethodCall.class.getDeclaredConstructor(
-                    byte.class, String.class, String.class, String.class,
-                    String.class, byte.class, String.class, Object[].class);
-            METHOD_CALL_CTOR.setAccessible(true);
-        } catch (NoSuchMethodException e) {
-            throw new ExceptionInInitializerError(e);
-        }
-    }
-
     public MessageHandler(DBusConnection connection) {
         this.connection = connection;
     }
@@ -46,12 +31,15 @@ public class MessageHandler {
 
     public Optional<Object[]> send(String service, String path, String iface, String method, String signature, Object... args) {
         try {
-            MethodCall message = METHOD_CALL_CTOR.newInstance(
-                    (byte) 0, service, path, iface, method, (byte) 0, signature, args);
+            org.freedesktop.dbus.messages.Message message = new MethodCall(
+                    service,
+                    path,
+                    iface,
+                    method, (byte) 0, signature, args);
 
             connection.sendMessage(message);
 
-            Message response = message.getReply(MAX_DELAY_MILLIS);
+            org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(MAX_DELAY_MILLIS);
             if (log.isTraceEnabled()) log.trace("Response: " + response);
 
             Object[] parameters = null;
@@ -61,7 +49,7 @@ public class MessageHandler {
                     log.debug("Response parameters for method " + iface + "/" + method + ": " + Arrays.deepToString(parameters));
             }
 
-            if (response instanceof org.freedesktop.dbus.messages.Error) {
+            if (response instanceof org.freedesktop.dbus.errors.Error) {
                 String error = response.getName();
                 switch (error) {
                     case "org.freedesktop.Secret.Error.NoSession":
@@ -106,7 +94,7 @@ public class MessageHandler {
                         if (log.isDebugEnabled()) log.debug(error);
                         return Optional.empty();
                     default:
-                        log.error("Unexpected org.freedesktop.dbus.messages.Error: \"" + error + "\" with parameters: " + Arrays.deepToString(parameters));
+                        log.error("Unexpected D-Bus error: \"" + error + "\" with parameters: " + Arrays.deepToString(parameters));
                         return Optional.empty();
                 }
             } else {
@@ -120,8 +108,6 @@ public class MessageHandler {
             log.error("Unexpected D-Bus response: ", e);
         } catch (RuntimeException e) {
             log.error("Unexpected: ", e);
-        } catch (ReflectiveOperationException e) {
-            log.error("Failed to create MethodCall via reflection: ", e);
         }
         return Optional.empty();
     }
