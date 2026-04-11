@@ -287,7 +287,7 @@ public class Collection implements CollectionInterface {
         if (!("/".equals(path.getPath()))) {
             return Optional.ofNullable(prompt.await(path, service.getTimeout()))
                     .filter(completed -> !completed.dismissed)
-                    .map(success -> new DBusPath(success.getSource(), success.result.getValue().toString()));
+                    .map(success -> new DBusPath(success.result.getValue().toString()));
         } else {
             return Optional.empty();
         }

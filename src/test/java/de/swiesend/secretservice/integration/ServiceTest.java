@@ -87,7 +87,7 @@ public class ServiceTest {
     public void createCollection() {
         context.ensureCollection();
 
-        DBusPath deletePrompt = context.collection.delete().orElse(new DBusPath("", "/"));
+        DBusPath deletePrompt = context.collection.delete().orElse(new DBusPath("/"));
         if (!deletePrompt.getPath().equals("/")) {
             context.prompt.await(deletePrompt);
         }
@@ -249,17 +249,17 @@ public class ServiceTest {
         DBusPath obj;
         DBusPath result;
 
-        obj = new DBusPath("", Static.ObjectPaths.DEFAULT_COLLECTION);
+        obj = new DBusPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         result = context.service.changeLock(obj).get();
         log.info(result.toString());
         assertTrue(result.getPath().startsWith("/org/freedesktop/secrets/prompt/"));
 
-        obj = new DBusPath("", Static.ObjectPaths.LOGIN_COLLECTION);
+        obj = new DBusPath(Static.ObjectPaths.LOGIN_COLLECTION);
         result = context.service.changeLock(obj).get();
         log.info(result.toString());
         assertTrue(result.getPath().startsWith("/org/freedesktop/secrets/prompt/"));
 
-        obj = new DBusPath("", Static.ObjectPaths.SESSION_COLLECTION);
+        obj = new DBusPath(Static.ObjectPaths.SESSION_COLLECTION);
         result = context.service.changeLock(obj).get();
         log.info(result.toString());
         assertTrue(result.getPath().startsWith("/org/freedesktop/secrets/prompt/"));
