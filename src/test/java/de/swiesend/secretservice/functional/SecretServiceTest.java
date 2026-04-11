@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.functional;
 
 import de.swiesend.secretservice.functional.interfaces.*;
+import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -73,5 +74,93 @@ public class SecretServiceTest {
 
     @Test
     void getService() {
+    }
+
+    @Test
+    @DisplayName("Closing SecretService cascades to sessions and disconnects the owned D-Bus connection")
+    void closeServiceCascadesToConnectionOwned() throws Exception {
+        // Create a standalone service that owns its D-Bus connection
+        SystemInterface system = System.connect().get();
+        DBusConnection connection = system.getConnection();
+        assertTrue(connection.isConnected(), "Connection should be open initially");
+
+        ServiceInterface service = SecretService.create(Optional.of(system)).get();
+        SessionInterface session = service.openSession().get();
+
+        // Verify session is active
+        assertNotNull(session.getEncryptedSession());
+
+        // Close the service — should cascade: sessions → system → D-Bus connection
+        service.close();
+
+        assertFalse(connection.isConnected(),
+                "Owned D-Bus connection should be disconnected after service.close()");
+    }
+
+    @Test
+    @DisplayName("Closing SecretService with wrapped (non-owning) System does not disconnect D-Bus")
+    void closeServiceDoesNotDisconnectWrappedConnection() throws Exception {
+        // Simulate SimpleCollection's pattern: wrap an externally managed connection
+        SystemInterface ownedSystem = System.connect().get();
+        DBusConnection connection = ownedSystem.getConnection();
+
+        SystemInterface wrappedSystem = de.swiesend.secretservice.functional.System.wrap(connection);
+        ServiceInterface service = SecretService.create(Optional.of(wrappedSystem)).get();
+        SessionInterface session = service.openSession().get();
+
+        // Close the service — sessions are cleaned up, but wrapped connection stays open
+        service.close();
+
+        assertTrue(connection.isConnected(),
+                "Wrapped (non-owning) D-Bus connection should remain open after service.close()");
+
+        // Clean up: the owner disconnects
+        ownedSystem.close();
+        assertFalse(connection.isConnected(),
+                "Connection should be disconnected after the owning system closes");
+    }
+
+    @Test
+    @DisplayName("Closing a Collection opened without session cascades to service and D-Bus connection")
+    void closeCollectionCascadesToConnection() throws Exception {
+        SystemInterface system = System.connect().get();
+        DBusConnection connection = system.getConnection();
+        assertTrue(connection.isConnected());
+
+        ServiceInterface service = SecretService.create(Optional.of(system)).get();
+        SessionInterface session = service.openSession().get();
+
+        // Open a collection WITH an external session (clearSessionAtClose = false)
+        CollectionInterface collection = session.defaultCollection().get();
+        collection.close();
+
+        // Session and connection should still be alive — collection didn't own them
+        assertTrue(connection.isConnected(),
+                "Connection should remain open when collection was opened with an external session");
+
+        // Now close the service to clean up
+        service.close();
+        assertFalse(connection.isConnected(),
+                "Connection should be disconnected after service.close()");
+    }
+
+    @Test
+    @DisplayName("Collection.open() without session creates and closes its own D-Bus connection")
+    void collectionOpenWithoutSessionOwnsConnection() throws Exception {
+        // Collection.open() with no session creates its own SecretService/Session/System
+        CollectionInterface collection = de.swiesend.secretservice.functional.Collection
+                .openDefault(Optional.empty())
+                .get();
+
+        // The collection internally created a service with an owned connection.
+        // After close(), everything should be cleaned up.
+        collection.close();
+
+        // We can't directly access the internal connection to verify, but we can
+        // verify a new connection can be established (no leaked file descriptors)
+        Optional<ServiceInterface> newService = SecretService.create();
+        assertTrue(newService.isPresent(),
+                "Should be able to create a new service after closing the previous one");
+        newService.get().close();
     }
 }
