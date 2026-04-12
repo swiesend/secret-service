@@ -2,12 +2,12 @@ name: Regression Tests
 
 on:
   push:
-    branches: [main, develop-2.x.x, claude/**]
+    branches: [main, develop-2.x.x]
   pull_request:
     branches: [main, develop-2.x.x]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
