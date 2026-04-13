@@ -640,7 +640,8 @@ public class Collection implements CollectionInterface {
                 Optional<Pair<List<DBusPath>, DBusPath>> maybeResponse = service.getService().unlock(lockable());
                 if (maybeResponse.isPresent()) {
                     DBusPath promptPath = maybeResponse.get().b;
-                    if (performPrompt(promptPath).isPresent() && !collection.isLocked()) {
+                    boolean unlockAccepted = promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent();
+                    if (unlockAccepted && !collection.isLocked()) {
                         isUnlockedOnceWithUserPermission = true;
                         log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
                         return true;
