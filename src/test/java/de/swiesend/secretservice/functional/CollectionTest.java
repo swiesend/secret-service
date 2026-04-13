@@ -60,7 +60,8 @@ class CollectionTest {
             String label = collection.getItemLabel(item).get();
             assertEquals(i, label);
             char[] secret = collection.getSecret(item).get();
-            assertEquals(i, new String(secret));
+            assertArrayEquals(i.toCharArray(), secret);
+            Arrays.fill(secret, '\0');
         }
     }
 
@@ -75,7 +76,8 @@ class CollectionTest {
             assertEquals(i, label);
 
             char[] secret = collection.getSecret(item).get();
-            assertEquals(i, new String(secret));
+            assertArrayEquals(i.toCharArray(), secret);
+            Arrays.fill(secret, '\0');
 
             Map<String, String> actualAttributes = collection.getAttributes(item).get();
             for (Map.Entry<String, String> entry : actualAttributes.entrySet()) {

@@ -10,9 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -116,16 +118,18 @@ public class Example {
             collection.getItems(attributes)
                     .ifPresent(items -> {
                         for (String it : items) {
-                            collection.getSecret(it).ifPresent(s ->
-                                    assertTrue("s1".equals(new String(s)) || "s2".equals(new String(s)))
-                            );
+                            collection.getSecret(it).ifPresent(s -> {
+                                assertTrue(Arrays.equals(s, "s1".toCharArray()) || Arrays.equals(s, "s2".toCharArray()));
+                                Arrays.fill(s, '\0');
+                            });
                         }
                     });
             assertTrue(collection.deleteItem(item1));
             assertTrue(collection.deleteItem(item2));
             assertTrue(collection.delete());
         }
-        assertEquals("s1", new String(secret));
+        assertArrayEquals("s1".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
     }
 
     @Test
