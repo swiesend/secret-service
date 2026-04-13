@@ -57,7 +57,6 @@ public class ItemTest {
 
         byte[] parameters = secret.getSecretParameters();
         if (context.encrypted == false) assertEquals(0, parameters.length);
-        Arrays.fill(parameters, (byte) 0);
 
         if (context.encrypted == false) {
             byte[] value = secret.getSecretValue();
@@ -68,6 +67,7 @@ public class ItemTest {
             assertArrayEquals("super secret".toCharArray(), value);
             Arrays.fill(value, '\0');
         }
+        Arrays.fill(parameters, (byte) 0);
         secret.close();
     }
 
