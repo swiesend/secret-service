@@ -35,7 +35,9 @@ public class SimpleCollectionTest {
 
         String item = collection.createItem("item", "sécrèt");
         assertEquals("item", collection.getLabel(item));
-        assertEquals("sécrèt", new String(collection.getSecret(item)));
+        char[] secret0 = collection.getSecret(item);
+        assertArrayEquals("sécrèt".toCharArray(), secret0);
+        Arrays.fill(secret0, '\0');
         Map<String, String> actualAttributes = collection.getAttributes(item);
         if (actualAttributes.containsKey("xdg:schema")) {
             assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
@@ -58,7 +60,9 @@ public class SimpleCollectionTest {
 
         String item = collection.createItem("item", "secret", attributes);
         assertEquals("item", collection.getLabel(item));
-        assertEquals("secret", new String(collection.getSecret(item)));
+        char[] secret0 = collection.getSecret(item);
+        assertArrayEquals("secret".toCharArray(), secret0);
+        Arrays.fill(secret0, '\0');
         Map<String, String> actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -82,7 +86,9 @@ public class SimpleCollectionTest {
 
         String item = collection.createItem("item", "secret", attributes);
         assertEquals("item", collection.getLabel(item));
-        assertEquals("secret", new String(collection.getSecret(item)));
+        char[] secret0 = collection.getSecret(item);
+        assertArrayEquals("secret".toCharArray(), secret0);
+        Arrays.fill(secret0, '\0');
         Map<String, String> actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -94,7 +100,9 @@ public class SimpleCollectionTest {
         log.info("attributes: " + attributes);
         collection.updateItem(item, "updated item", "updated secret", attributes);
         assertEquals("updated item", collection.getLabel(item));
-        assertEquals("updated secret", new String(collection.getSecret(item)));
+        char[] secret1 = collection.getSecret(item);
+        assertArrayEquals("updated secret".toCharArray(), secret1);
+        Arrays.fill(secret1, '\0');
         actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -135,7 +143,8 @@ public class SimpleCollectionTest {
 
         // test
         char[] password = collection.getSecret(item);
-        assertEquals("secret", new String(password));
+        assertArrayEquals("secret".toCharArray(), password);
+        Arrays.fill(password, '\0');
 
         // after
         collection.deleteItem(item);
@@ -149,7 +158,8 @@ public class SimpleCollectionTest {
 
         // test
         char[] password = collection.getSecret(itemID);
-        assertEquals("secret", new String(password));
+        assertArrayEquals("secret".toCharArray(), password);
+        Arrays.fill(password, '\0');
 
         // after
         collection.deleteItem(itemID);
@@ -167,7 +177,8 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         char[] password = collection.getSecret(itemID);
-        assertEquals("secret", new String(password));
+        assertArrayEquals("secret".toCharArray(), password);
+        Arrays.fill(password, '\0');
 
         // after
         collection.deleteItem(itemID);
