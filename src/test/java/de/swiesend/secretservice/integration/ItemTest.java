@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,18 +55,20 @@ public class ItemTest {
         assertTrue(secret.getSession().getPath().startsWith("/org/freedesktop/secrets/session/s"));
         assertTrue(secret.getContentType().startsWith("text/plain"));
 
-        String parameters = new String(secret.getSecretParameters(), StandardCharsets.UTF_8);
-        log.info(label("parameters", parameters));
-        if (context.encrypted == false) assertEquals("", parameters);
+        byte[] parameters = secret.getSecretParameters();
+        if (context.encrypted == false) assertEquals(0, parameters.length);
+        Arrays.fill(parameters, (byte) 0);
 
-        String value;
         if (context.encrypted == false) {
-            value = new String(secret.getSecretValue(), StandardCharsets.UTF_8);
+            byte[] value = secret.getSecretValue();
+            assertArrayEquals("super secret".getBytes(StandardCharsets.UTF_8), value);
+            Arrays.fill(value, (byte) 0);
         } else {
-            value = new String(context.encryption.decrypt(secret).get());
+            char[] value = context.encryption.decrypt(secret).get();
+            assertArrayEquals("super secret".toCharArray(), value);
+            Arrays.fill(value, '\0');
         }
-        log.info(label("value", value));
-        assertEquals("super secret", value);
+        secret.close();
     }
 
     @Test
@@ -83,7 +86,7 @@ public class ItemTest {
         List<DBusPath> items = login.getItems().get();
         Item item = new Item(items.get(0), context.service);
         Secret secret = item.getSecret(context.session.getPath()).get();
-        log.info("'" + new String(secret.getSecretValue()) + "' [" + new String(secret.getSecretParameters()) + "]");
+        log.info("secret retrieved from foreign collection");
 
     }
 
