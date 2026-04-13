@@ -295,7 +295,8 @@ public class SimpleCollectionTest {
         // static D-Bus connection is still alive
         SimpleCollection second = new SimpleCollection("test", "test");
         char[] secret = second.getSecret(item);
-        assertEquals("secret-value", new String(secret));
+        assertArrayEquals("secret-value".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
 
         second.deleteItem(item);
         second.delete();
@@ -311,7 +312,8 @@ public class SimpleCollectionTest {
         String item = col1.createItem("shared-test", "secret");
         // col2 can see it because they share the same D-Bus connection
         char[] secret = col2.getSecret(item);
-        assertEquals("secret", new String(secret));
+        assertArrayEquals("secret".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
 
         col1.deleteItem(item);
         col1.delete();
