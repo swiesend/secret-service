@@ -4,7 +4,7 @@ import de.swiesend.secretservice.Collection;
 import de.swiesend.secretservice.Item;
 import de.swiesend.secretservice.Pair;
 import de.swiesend.secretservice.Secret;
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.integration.test.Context;
@@ -41,23 +41,23 @@ public class CollectionTest {
     @Test
     @DisplayName("delete test collection")
     public void delete() {
-        List<ObjectPath> expected = context.service.getCollections().get();
-        ObjectPath promptPath = context.collection.delete().get();
+        List<DBusPath> expected = context.service.getCollections().get();
+        DBusPath promptPath = context.collection.delete().get();
         log.info(promptPath.toString());
         assertEquals("/", promptPath.getPath());
         // assertTrue(promptPath.getPath().startsWith("/org/freedesktop/secrets/prompt/p"));
 
-        List<ObjectPath> actual = context.service.getCollections().get();
+        List<DBusPath> actual = context.service.getCollections().get();
         assertEquals(expected.size() - 1, actual.size());
     }
 
     @Test
     public void searchItems() {
         // search by attribute
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
 
-        List<ObjectPath> items = context.collection.searchItems(attributes).get();
+        List<DBusPath> items = context.collection.searchItems(attributes).get();
         log.info(Arrays.toString(items.toArray()));
         assertEquals(1, items.size());
         assertTrue(items.get(0).getPath().startsWith("/org/freedesktop/secrets/collection/test/"));
@@ -67,16 +67,16 @@ public class CollectionTest {
     public void createItem() {
         Secret secret = context.encryption.encrypt("super secret").get();
 
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
         Map<String, Variant> properties = Item.createProperties("TestItem", attributes);
 
-        Pair<ObjectPath, ObjectPath> response = context.collection.createItem(properties, secret, true).get();
+        Pair<DBusPath, DBusPath> response = context.collection.createItem(properties, secret, true).get();
         log.info(response.toString());
         assertTrue(response.a.getPath().startsWith("/org/freedesktop/secrets/collection/test/"));
         assertEquals("/", response.b.getPath());
 
-        List<ObjectPath> items = context.collection.getItems().get();
+        List<DBusPath> items = context.collection.getItems().get();
         assertEquals(1, items.size());
 
         context.collection.createItem(properties, secret, false);
@@ -86,7 +86,7 @@ public class CollectionTest {
 
     @Test
     public void getItems() {
-        List<ObjectPath> items = context.collection.getItems().get();
+        List<DBusPath> items = context.collection.getItems().get();
         log.info(Arrays.toString(items.toArray()));
         assertEquals(1, items.size());
         assertTrue(items.get(0).getPath().startsWith("/org/freedesktop/secrets/collection/test/"));

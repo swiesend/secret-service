@@ -1,7 +1,6 @@
 package de.swiesend.secretservice.gnome.keyring.interfaces;
 
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.types.Variant;
@@ -18,7 +17,7 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
     /**
      * Change the password of a collection.
      * 
-     * @param collection    The ObjectPath of the collection.
+     * @param collection    The DBusPath of the collection.
      * @param original      The current password.
      * @param master        The new password.
      */
@@ -27,11 +26,11 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
     /**
      * Toggle the lock of a collection.
      * 
-     * @param collection    The ObjectPath of the collection.
+     * @param collection    The DBusPath of the collection.
      *
-     * @return The ObjectPath of the collection.
+     * @return The DBusPath of the collection.
      */
-    Optional<ObjectPath> changeWithPrompt(DBusPath collection);
+    Optional<DBusPath> changeWithPrompt(DBusPath collection);
 
     /**
      * Create a collection with a password without prompting.
@@ -39,14 +38,14 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
      * @param properties    The properties of the collection.
      * @param master        The password of the collection.
      * 
-     * @return  The ObjectPath of the created collection.
+     * @return  The DBusPath of the created collection.
      */
-    Optional<ObjectPath> createWithMasterPassword(Map<String, Variant> properties, Secret master);
+    Optional<DBusPath> createWithMasterPassword(Map<String, Variant> properties, Secret master);
 
     /**
      * Unlock a collection without prompting.
      * 
-     * @param collection    The ObjectPath of the collection.
+     * @param collection    The DBusPath of the collection.
      * @param master        The password of the collection.
      */
     boolean unlockWithMasterPassword(DBusPath collection, Secret master);

@@ -14,10 +14,10 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 /**
  * Entrypoint for the functional high-level API. Manages Secret-Service sessions and the D-Bus connection.
  */
-public class SecretService extends ServiceInterface {
+public class SecretService implements ServiceInterface {
 
     private static final Logger log = LoggerFactory.getLogger(SecretService.class);
-    private static Optional<SystemInterface> maybeSystem = Optional.empty();
+    private final Optional<SystemInterface> maybeSystem;
     private Map<UUID, SessionInterface> sessions = new HashMap<>();
     private de.swiesend.secretservice.Service service;
     private boolean isGnomeKeyringAvailable;
@@ -26,7 +26,8 @@ public class SecretService extends ServiceInterface {
 
     private boolean isClosed = false;
 
-    private SecretService(SystemInterface system, AvailableServices available) {
+    private SecretService(SystemInterface system, AvailableServices available, Optional<SystemInterface> maybeSystem) {
+        this.maybeSystem = maybeSystem;
         this.service = new Service(system.getConnection());
         this.isGnomeKeyringAvailable = available.services.contains(Activatable.GNOME_KEYRING);
     }
@@ -35,15 +36,27 @@ public class SecretService extends ServiceInterface {
      * Create a Secret-Service instance with initialized transport encryption.
      */
     public static Optional<ServiceInterface> create() {
-        maybeSystem = System.connect();
-        return create(maybeSystem);
+        Optional<SystemInterface> system = System.connect();
+        return create(system);
     }
 
     public static Optional<ServiceInterface> create(Optional<SystemInterface> maybeSystem) {
-        return maybeSystem
-                .map(system -> new Pair<>(system, new AvailableServices(system)))
-                .filter(pair -> isAvailable(pair.a, pair.b))
-                .map(pair -> new SecretService(pair.a, pair.b));
+        if (maybeSystem == null || maybeSystem.isEmpty()) {
+            return Optional.empty();
+        }
+        SystemInterface system = maybeSystem.get();
+        AvailableServices available = new AvailableServices(system);
+
+        if (!ServiceInterface.isAvailable(system, available)) {
+            try {
+                system.close();
+            } catch (Exception e) {
+                log.warn("Failed to close system after availability check.", e);
+            }
+            return Optional.empty();
+        }
+
+        return Optional.of(new SecretService(system, available, maybeSystem));
     }
 
     @Override

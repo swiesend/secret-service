@@ -1,7 +1,7 @@
 package de.swiesend.secretservice.integration.test;
 
 import de.swiesend.secretservice.*;
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
@@ -102,7 +102,7 @@ public class Context {
                         );
                 session = encryption.getSession();
             } else {
-                Pair<Variant<byte[]>, ObjectPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant<>("")).get();
+                Pair<Variant<byte[]>, DBusPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant<>("")).get();
                 session = new Session(pair.b, service);
             }
         } catch (Exception e) {
@@ -129,7 +129,7 @@ public class Context {
 
         collections = Static.Convert.toStrings(service.getCollections().get());
         if (collections.contains(Static.ObjectPaths.collection("test"))) {
-            ObjectPath deletePrompt = collection.delete().get();
+            DBusPath deletePrompt = collection.delete().get();
             if (!deletePrompt.getPath().equals("/")) {
                 log.error("won't wait for prompt in automated test context.");
                 exit(-3);
@@ -171,15 +171,15 @@ public class Context {
             withoutPrompt.unlockWithMasterPassword(collection.getPath(), password);
         }
 
-        List<ObjectPath> items = collection.getItems().get();
-        for (ObjectPath path : items) {
+        List<DBusPath> items = collection.getItems().get();
+        for (DBusPath path : items) {
             Item i = new Item(path, service);
             i.delete();
         }
 
         Map<String, Variant> properties = Item.createProperties("TestItem", attributes);
-        Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, true).get();
-        ObjectPath itemPath = response.a;
+        Pair<DBusPath, DBusPath> response = collection.createItem(properties, secret, true).get();
+        DBusPath itemPath = response.a;
 
         item = new Item(itemPath, service);
     }
@@ -187,9 +187,11 @@ public class Context {
     public void after() {
         try {
             service.getConnection().disconnect();
-            Thread.currentThread().sleep(150L);
+            Thread.sleep(150L);
         } catch (InterruptedException e) {
             log.error("Could not disconnect properly from the D-Bus.", e);
+            Thread.currentThread().interrupt();
+            return;
         }
     }
 

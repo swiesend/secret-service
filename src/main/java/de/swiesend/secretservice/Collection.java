@@ -1,7 +1,6 @@
 package de.swiesend.secretservice;
 
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
@@ -70,38 +69,38 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
      *  {@link Item#createProperties(String label, Map attributes)}<br>
      */
     public static Map<String, Variant> createProperties(String label) {
-        HashMap<String, Variant> properties = new HashMap();
+        HashMap<String, Variant> properties = new HashMap<>();
         properties.put(LABEL, new Variant<>(label));
         return properties;
     }
 
     @Override
-    public Optional<ObjectPath> delete() {
-        Optional<ObjectPath> prompt = send("Delete", "").flatMap(response ->
-                Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((ObjectPath) response[0])
+    public Optional<DBusPath> delete() {
+        Optional<DBusPath> prompt = send("Delete", "").flatMap(response ->
+                Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((DBusPath) response[0])
         );
         return prompt;
     }
 
     @Override
-    public Optional<List<ObjectPath>> searchItems(Map<String, String> attributes) {
+    public Optional<List<DBusPath>> searchItems(Map<String, String> attributes) {
         return send("SearchItems", "a{ss}", attributes).flatMap(response ->
-                Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((List<ObjectPath>) response[0])
+                Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((List<DBusPath>) response[0])
         );
     }
 
     @Override
-    public Optional<Pair<ObjectPath, ObjectPath>> createItem(Map<String, Variant> properties, Secret secret, boolean replace) {
+    public Optional<Pair<DBusPath, DBusPath>> createItem(Map<String, Variant> properties, Secret secret, boolean replace) {
         return send("CreateItem", "a{sv}(oayays)b", properties, secret, replace).flatMap(response ->
                 (Utils.isNullOrEmpty(response) || response.length != 2) ?
                         Optional.empty() :
-                        Optional.of(new Pair<ObjectPath, ObjectPath>((ObjectPath) response[0], (ObjectPath) response[1])));
+                        Optional.of(new Pair<DBusPath, DBusPath>((DBusPath) response[0], (DBusPath) response[1])));
     }
 
     @Override
-    public Optional<List<ObjectPath>> getItems() {
+    public Optional<List<DBusPath>> getItems() {
         return getProperty("Items").flatMap(variant ->
-                variant == null ? Optional.empty() : Optional.ofNullable((List<ObjectPath>) variant.getValue())
+                variant == null ? Optional.empty() : Optional.ofNullable((List<DBusPath>) variant.getValue())
         );
     }
 

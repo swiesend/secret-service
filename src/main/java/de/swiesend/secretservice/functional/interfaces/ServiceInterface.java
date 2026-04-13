@@ -9,44 +9,23 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
-public abstract class ServiceInterface implements AutoCloseable {
+public interface ServiceInterface extends AutoCloseable {
 
-    private static final Logger log = LoggerFactory.getLogger(ServiceInterface.class);
-
-    public static Optional<ServiceInterface> create() {
-        log.warn("Do not call the interface method, but the implementation.");
-        return Optional.empty();
-    }
-
-    synchronized public static boolean disconnect() {
-        log.warn("Do not call the interface method, but the implementation.");
-        return false;
-    }
-
-    private static Optional<DBusConnection> getConnection() {
-        log.warn("Do not call the interface method, but the implementation.");
-        return Optional.empty();
-    }
-
-    public static boolean isConnected() {
-        log.warn("Do not call the interface method, but the implementation.");
-        return false;
-    }
-
-    private static Optional<Thread> setupShutdownHook() {
-        log.warn("Do not call the interface method, but the implementation.");
-        return Optional.empty();
-    }
+    Logger log = LoggerFactory.getLogger(ServiceInterface.class);
 
     /**
      * Checks if all necessary D-Bus services are provided by the system:<br>
      * <code>org.freedesktop.DBus</code><br>
      * <code>org.freedesktop.secrets</code><br>
-     * <code>org.gnome.keyring<code>
+     * <code>org.gnome.keyring</code>
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
      */
-    public static boolean isAvailable(SystemInterface system, AvailableServices available) {
+    static boolean isAvailable(SystemInterface system, AvailableServices available) {
+        if (system == null || available == null) {
+            log.error("Cannot check availability: system and available must not be null.");
+            return false;
+        }
         DBusConnection connection = system.getConnection();
         if (connection.isConnected()) {
             try {
@@ -85,15 +64,15 @@ public abstract class ServiceInterface implements AutoCloseable {
         }
     }
 
-    abstract public Optional<SessionInterface> openSession();
+    Optional<SessionInterface> openSession();
 
-    abstract public List<SessionInterface> getSessions();
+    List<SessionInterface> getSessions();
 
-    abstract public Duration getTimeout();
+    Duration getTimeout();
 
-    abstract public void setTimeout(Duration timeout);
+    void setTimeout(Duration timeout);
 
-    abstract public de.swiesend.secretservice.Service getService();
+    de.swiesend.secretservice.Service getService();
 
-    abstract public boolean isGnomeKeyringAvailable();
+    boolean isGnomeKeyringAvailable();
 }

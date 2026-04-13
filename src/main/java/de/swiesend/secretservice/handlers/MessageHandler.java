@@ -8,7 +8,6 @@ import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.Optional;
 
@@ -95,7 +94,7 @@ public class MessageHandler {
                         if (log.isDebugEnabled()) log.debug(error);
                         return Optional.empty();
                     default:
-                        log.error("Unexpected org.freedesktop.dbus.errors.Error: \"" + error + "\" with parameters: " + Arrays.deepToString(parameters));
+                        log.error("Unexpected D-Bus error: \"" + error + "\" with parameters: " + Arrays.deepToString(parameters));
                         return Optional.empty();
                 }
             } else {

@@ -1,7 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.*;
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
@@ -74,7 +74,7 @@ public class IntegrationTest {
         } else {
             HashMap<String, Variant> properties = new HashMap<>();
             properties.put("org.freedesktop.Secret.Collection.Label", new Variant<>("test"));
-            ObjectPath collectionPath = noPrompt.createWithMasterPassword(properties, master).get();
+            DBusPath collectionPath = noPrompt.createWithMasterPassword(properties, master).get();
             log.info("created collection: " + collectionPath.getPath());
         }
 
@@ -93,11 +93,11 @@ public class IntegrationTest {
             noPrompt.unlockWithMasterPassword(collection.getPath(), master);
         }
 
-        Pair<ObjectPath, ObjectPath> createItemResponse = collection.createItem(properties, encrypted, true).get();
+        Pair<DBusPath, DBusPath> createItemResponse = collection.createItem(properties, encrypted, true).get();
         log.info("await signal: Collection.ItemCreated");
-        Thread.currentThread().sleep(50L);
+        Thread.sleep(50L);
 
-        ObjectPath itemPath = createItemResponse.a;
+        DBusPath itemPath = createItemResponse.a;
         Item item = new Item(itemPath, service);
         Secret actual = item.getSecret(session.getPath()).get();
 

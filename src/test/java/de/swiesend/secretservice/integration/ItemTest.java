@@ -3,13 +3,13 @@ package de.swiesend.secretservice.integration;
 import de.swiesend.secretservice.*;
 import de.swiesend.secretservice.integration.test.Context;
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.types.UInt64;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,10 +37,10 @@ public class ItemTest {
     @Test
     @DisplayName("delete item")
     public void delete() {
-        List<ObjectPath> items = context.collection.getItems().get();
+        List<DBusPath> items = context.collection.getItems().get();
         assertEquals(1, items.size());
 
-        ObjectPath prompt = context.item.delete().get();
+        DBusPath prompt = context.item.delete().get();
         // expect: no prompt
         assertEquals("/", prompt.getPath());
 
@@ -55,18 +55,20 @@ public class ItemTest {
         assertTrue(secret.getSession().getPath().startsWith("/org/freedesktop/secrets/session/s"));
         assertTrue(secret.getContentType().startsWith("text/plain"));
 
-        String parameters = new String(secret.getSecretParameters(), StandardCharsets.UTF_8);
-        log.info(label("parameters", parameters));
-        if (context.encrypted == false) assertEquals("", parameters);
+        byte[] parameters = secret.getSecretParameters();
+        if (context.encrypted == false) assertEquals(0, parameters.length);
 
-        String value;
         if (context.encrypted == false) {
-            value = new String(secret.getSecretValue(), StandardCharsets.UTF_8);
+            byte[] value = secret.getSecretValue();
+            assertArrayEquals("super secret".getBytes(StandardCharsets.UTF_8), value);
+            Arrays.fill(value, (byte) 0);
         } else {
-            value = new String(context.encryption.decrypt(secret).get());
+            char[] value = context.encryption.decrypt(secret).get();
+            assertArrayEquals("super secret".toCharArray(), value);
+            Arrays.fill(value, '\0');
         }
-        log.info(label("value", value));
-        assertEquals("super secret", value);
+        Arrays.fill(parameters, (byte) 0);
+        secret.close();
     }
 
     @Test
@@ -81,10 +83,10 @@ public class ItemTest {
 
         DBusPath alias = new DBusPath(Static.ObjectPaths.DEFAULT_COLLECTION);
         Collection login = new Collection(alias, context.service.getConnection());
-        List<ObjectPath> items = login.getItems().get();
+        List<DBusPath> items = login.getItems().get();
         Item item = new Item(items.get(0), context.service);
         Secret secret = item.getSecret(context.session.getPath()).get();
-        log.info("'" + new String(secret.getSecretValue()) + "' [" + new String(secret.getSecretParameters()) + "]");
+        log.info("secret retrieved from foreign collection");
 
     }
 
@@ -131,7 +133,7 @@ public class ItemTest {
             assertEquals("org.freedesktop.Secret.Generic", attributes.get("xdg:schema"));
         }
 
-        attributes = new HashMap();
+        attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
         attributes.put("Attribute2", "Replaced");
         attributes.put("Attribute3", "Added");
@@ -151,9 +153,9 @@ public class ItemTest {
             assertEquals("org.freedesktop.Secret.Generic", attributes.get("xdg:schema"));
         }
 
-        attributes = new HashMap();
+        attributes = new HashMap<>();
         attributes.put("Attribute1", "Value1");
-        Pair<List<ObjectPath>, List<ObjectPath>> result = context.service.searchItems(attributes).get();
+        Pair<List<DBusPath>, List<DBusPath>> result = context.service.searchItems(attributes).get();
         log.info(result.toString());
         assertEquals(1, result.a.size());
     }
