@@ -4,7 +4,27 @@ The [secret-service](https://github.com/swiesend/secret-service) library impleme
 
 ## Unreleased
 
-The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.com/swiesend/secret-service/tree/develop-2.x.x) branch.
+## [3.0.0-beta] - 2026-04-17
+
+- `Added`:
+  - Functional API (`de.swiesend.secretservice.functional`) with `SecretService.create()` entry point, instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle.
+  - `withSecret()` / `withSecrets()` callback API for secure secret access with guaranteed zeroing.
+  - `System.connect()` / `System.wrap()` connection ownership model.
+  - CI regression tests via GitHub Actions with Docker-based D-Bus mock and gnome-keyring-daemon.
+  - Project documentation: `CLAUDE.md`, `agents/AGENTS.md`, `docs/vision.md`.
+- `Changed`:
+  - Update `dbus-java` from `4.3.0` to `4.3.1`.
+  - Update `slf4j-api` from `2.0.9` to `2.0.17`.
+  - Update `junit-jupiter` from `5.10.0` to `5.10.5`.
+  - `SimpleCollection` now shares its static D-Bus connection with the functional API via `System.wrap()`.
+  - Replace raw type constructors with diamond operator across codebase.
+- `Fixed`:
+  - Fix D-Bus connection leaks in `Collection.close()` and `SimpleCollection.init()`.
+  - Fix all unsafe `Optional.get()` calls in functional `Collection`.
+  - Fix unlock prompt path handling: treat `"/"` prompt path as successful unlock.
+  - Fix `InterruptedException` handling in `SignalHandler.await()`: restore interrupt flag.
+  - Fix secure secret cleanup: avoid `new String(secret)` from `char[]` in tests.
+  - Validate null parameters across functional API public boundaries.
 
 ## [2.0.1-alpha] - 2024-01-21
 
@@ -188,6 +208,7 @@ The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.
 
 - implement the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/) 
 
+[3.0.0-beta]:   https://github.com/swiesend/secret-service/compare/v2.0.1-alpha...v3.0.0-beta
 [2.0.1-alpha]:  https://github.com/swiesend/secret-service/compare/v2.0.0-alpha...v2.0.1-alpha
 [2.0.0-alpha]:  https://github.com/swiesend/secret-service/compare/v1.8.1-jdk17...v2.0.0-alpha
 [1.8.1-jdk17]:  https://github.com/swiesend/secret-service/compare/v1.8.0-jdk17...v1.8.1-jdk17

@@ -43,7 +43,7 @@ This allows callers to hold a single service and open/close sessions as needed, 
 
 ### 4. Updated dbus-java
 
-**Problem:** The current 2.0.1-alpha pins dbus-java at 4.3.0. Projects that also depend on dbus-java (e.g., `kdewallet`) may pull in 5.x, causing `NoSuchMethodError` at runtime ([#51](https://github.com/swiesend/secret-service/issues/51)).
+**Problem:** The current 3.0.0-beta pins dbus-java at 4.3.1. Projects that also depend on dbus-java (e.g., `kdewallet`) may pull in 5.x, causing `NoSuchMethodError` at runtime ([#51](https://github.com/swiesend/secret-service/issues/51)).
 
 **Direction:** Upgrade to dbus-java 5.x ([PR #48](https://github.com/swiesend/secret-service/pull/48), [PR #50](https://github.com/swiesend/secret-service/pull/50)) to align with the broader ecosystem.
 
@@ -77,4 +77,4 @@ This allows callers to hold a single service and open/close sessions as needed, 
 | 1.8.0-jdk17 | Dec 2022 | JDK 17 requirement, dbus-java 4.x, native sockets |
 | 2.0.0-alpha | Aug 2023 | JPMS module, package rename, hkdf 2.x |
 | 2.0.1-alpha | Jan 2024 | Bugfix (`DBusExecutionException` at startup) |
-| 2.x (next) | TBD | Functional API, dbus-java 5.x, KeePassXC support |
+| 3.0.0-beta | Apr 2026 | Functional API, CI infrastructure, secure cleanup |

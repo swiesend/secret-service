@@ -75,7 +75,7 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>2.0.1-alpha</version>
+    <version>3.0.0-beta</version>
     <exclusions>
         <exclusion>
             <groupId>org.slf4j</groupId>
