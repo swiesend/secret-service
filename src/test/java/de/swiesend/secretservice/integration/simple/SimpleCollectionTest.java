@@ -264,8 +264,9 @@ public class SimpleCollectionTest {
 
     @Test
     public void isLocked() throws IOException {
-        SimpleCollection collection = new SimpleCollection();
+        SimpleCollection collection = new SimpleCollection("test", "test");
         assertFalse(collection.isLocked());
+        collection.delete();
     }
 
     @Test
