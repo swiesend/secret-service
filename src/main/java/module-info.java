@@ -3,6 +3,10 @@ module de.swiesend.secretservice {
     requires at.favre.lib.hkdf;
     requires org.slf4j;
 
+    // BouncyCastle is provided at runtime only; required = static so consumers
+    // who skip the hardened layer (or don't enable PQ) do not pay the dependency.
+    requires static org.bouncycastle.provider;
+
     opens de.swiesend.secretservice to org.freedesktop.dbus;
 
     exports de.swiesend.secretservice;

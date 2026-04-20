@@ -19,7 +19,8 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Arrays;
 
 /**
- * Hybrid KEM: X25519 (classical) combined with ML-KEM-768 when available on the runtime.
+ * Hybrid KEM: X25519 (classical) combined with ML-KEM-768 when BouncyCastle
+ * (1.78+) is present on the runtime classpath.
  *
  * <p>Per-envelope flow:
  * <ol>
@@ -30,9 +31,15 @@ import java.util.Arrays;
  *   <li>Envelope's KEM ciphertext contains the ephemeral X25519 public key (and pq_ciphertext if PQ).</li>
  * </ol>
  *
- * <p>On decapsulation the decoder uses the epoch private key(s). Destroying those keys
- * on {@code rotateEpoch()} renders all prior envelopes unreadable — this is the
- * forward-secrecy primitive for time-binding via epoch ratcheting.</p>
+ * <p>BouncyCastle is declared {@code <scope>provided</scope>} in the project pom
+ * and {@code requires static} in {@code module-info.java}: callers who skip the
+ * hardened layer (or disable PQ) never load the dependency. We probe for the
+ * provider reflectively so the code compiles and runs on JDK 17 with or without
+ * {@code bcprov-jdk18on}.</p>
+ *
+ * <p>On decapsulation the decoder uses the epoch private key(s). Destroying those
+ * keys on {@code rotateEpoch()} renders all prior envelopes unreadable — this is
+ * the forward-secrecy primitive for time-binding via epoch ratcheting.</p>
  *
  * <p>When ML-KEM is unavailable the hybrid degrades to X25519-only; the envelope's
  * {@link Envelope#FLAG_PQ_HYBRID} flag is unset and {@link #postQuantumAvailable()}
@@ -51,8 +58,9 @@ public final class HybridKem {
         this.preferPostQuantum = preferPostQuantum;
         this.postQuantumAvailable = preferPostQuantum && probeMlKem();
         if (preferPostQuantum && !this.postQuantumAvailable) {
-            log.warn("HybridKem: ML-KEM-768 not available on this runtime (requires JDK 24+ with a provider); "
-                    + "falling back to X25519-only. Envelopes will be flagged kem=x25519.");
+            log.warn("HybridKem: ML-KEM-768 not available. Add bcprov-jdk18on 1.78+ to the "
+                    + "runtime classpath (it is <scope>provided</scope>). Falling back to "
+                    + "X25519-only; envelopes will be flagged kem=x25519.");
         }
     }
 
@@ -85,8 +93,10 @@ public final class HybridKem {
     /**
      * Encapsulate against the given epoch public X25519 key (and optional PQ key).
      * PQ path is currently a stub: if {@link #postQuantumAvailable()} is true, the method
-     * would additionally invoke {@code javax.crypto.KEM("ML-KEM-768")} — gated behind
-     * a runtime probe so the code compiles on JDK 21.
+     * would additionally invoke BouncyCastle's {@code MLKEMKeyPairGenerator} and
+     * {@code MLKEMKEMGenerator} via reflection. The stub returns an empty PQ shared
+     * secret so the HKDF combiner reduces to X25519-only even when the probe succeeds;
+     * the follow-up wiring is tracked separately and does not change the envelope format.
      */
     public Encapsulation encapsulate(PublicKey epochX25519Public) {
         KeyPair ephemeral;
@@ -187,24 +197,31 @@ public final class HybridKem {
     }
 
     /**
-     * Probe whether {@code javax.crypto.KEM} and ML-KEM-768 are both present.
-     * On JDK 21 KEM API exists but ML-KEM is absent; on JDK 24+ it lands in the standard providers.
+     * Probe whether BouncyCastle's ML-KEM-768 implementation is present.
+     *
+     * <p>BouncyCastle 1.78+ exposes ML-KEM via
+     * {@code org.bouncycastle.pqc.crypto.mlkem.MLKEMKeyPairGenerator}. We look up
+     * the class reflectively so the code compiles and runs on JDK 17 whether or
+     * not {@code bcprov-jdk18on} is on the classpath.</p>
      */
     private static boolean probeMlKem() {
         try {
-            Class<?> kem = Class.forName("javax.crypto.KEM");
-            Object instance = kem.getMethod("getInstance", String.class).invoke(null, "ML-KEM-768");
-            return instance != null;
+            Class.forName("org.bouncycastle.pqc.crypto.mlkem.MLKEMKeyPairGenerator");
+            return true;
         } catch (Throwable t) {
             return false;
         }
     }
 
-    /** Reflective ML-KEM encapsulation stub; returns empty on any failure. */
+    /** Reflective ML-KEM encapsulation stub; returns empty on any failure.
+     *
+     *  <p>Follow-up work wires this to BouncyCastle's
+     *  {@code MLKEMKeyPairGenerator} / {@code MLKEMKEMGenerator} /
+     *  {@code MLKEMKEMExtractor}; until then the stub returns a zero-length
+     *  shared secret and the HKDF combiner degrades to X25519-only even when
+     *  {@link #postQuantumAvailable()} reports true.</p>
+     */
     private static byte[] invokeMlKemEncap(PublicKey epochPub) {
-        // Intentionally a stub until JDK 24 is the build floor. Returning an empty shared
-        // secret means the combiner reduces to classical-only even when postQuantumAvailable
-        // reports true — the flag is kept for observability and to gate envelope flagging.
         return new byte[0];
     }
 

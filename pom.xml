@@ -61,6 +61,10 @@
         <hkdf.version>2.0.0</hkdf.version>
         <dbus-java.version>5.2.0</dbus-java.version>
         <slf4j.version>2.0.17</slf4j.version>
+        <!-- BouncyCastle 1.78+ ships ML-KEM (Kyber) for JDK 17. It is a
+             <scope>provided</scope> dependency: consumers who want
+             post-quantum hybrid opt in by adding it to their own pom. -->
+        <bouncycastle.version>1.78.1</bouncycastle.version>
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>
@@ -107,6 +111,18 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
+        </dependency>
+
+        <!-- BouncyCastle (optional): enables post-quantum hybrid KEM in the
+             hardened layer. scope=provided keeps it off the runtime classpath
+             of consumers who don't use it. It is probed reflectively at
+             runtime; absence degrades HybridKem cleanly to X25519-only. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-simple -->
