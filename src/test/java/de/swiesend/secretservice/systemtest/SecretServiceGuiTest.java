@@ -1,11 +1,12 @@
 package de.swiesend.secretservice.systemtest;
 
+import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.functional.interfaces.SystemInterface;
-import de.swiesend.secretservice.simple.SimpleCollection;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.interfaces.DBus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,10 +18,8 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -72,7 +71,7 @@ public class SecretServiceGuiTest {
         // Collection panel
         private final ButtonGroup collectionGroup = new ButtonGroup();
         private final JRadioButton rbDefault = new JRadioButton("Default collection");
-        private final JRadioButton rbTest = new JRadioButton("Test collection", true);
+        private final JRadioButton rbTest = new JRadioButton("Custom collection", true);
         private final JTextField tfCollectionLabel = new JTextField("test", 14);
         private final JPasswordField pfCollectionPassword = new JPasswordField("test", 14);
 
@@ -120,10 +119,19 @@ public class SecretServiceGuiTest {
         // Connection status icon
         private final JLabel lblConnectionStatus = new JLabel();
 
+        // System panel — D-Bus status labels
+        private final JLabel lblDbusConnected = new JLabel("—");
+        private final JLabel lblDbusAvailable = new JLabel("—");
+        private final JLabel lblProvider = new JLabel("—");
+
         // GUI-tracked state
         private boolean wasUnlockedOnce = false;
 
-        private SimpleCollection collection;
+        // Functional API references
+        private SystemInterface system;
+        private ServiceInterface service;
+        private SessionInterface session;
+        private CollectionInterface collection;
         private final CountDownLatch closeLatch;
 
         SecretServiceFrame(CountDownLatch closeLatch) {
@@ -159,7 +167,11 @@ public class SecretServiceGuiTest {
             // ── Main tab ──
             JPanel mainTab = new JPanel(new BorderLayout(8, 8));
             mainTab.setBorder(new EmptyBorder(10, 10, 10, 10));
-            mainTab.add(buildCollectionPanel(), BorderLayout.NORTH);
+
+            JPanel topPanel = new JPanel(new BorderLayout(0, 4));
+            topPanel.add(buildSystemPanel(), BorderLayout.NORTH);
+            topPanel.add(buildCollectionPanel(), BorderLayout.SOUTH);
+            mainTab.add(topPanel, BorderLayout.NORTH);
             mainTab.add(buildCenterPanel(), BorderLayout.CENTER);
             mainTab.add(buildLogPanel(), BorderLayout.SOUTH);
             tabs.addTab("Main", mainTab);
@@ -168,6 +180,41 @@ public class SecretServiceGuiTest {
             tabs.addTab("Debug", buildDebugTab());
 
             setContentPane(tabs);
+        }
+
+        private JPanel buildSystemPanel() {
+            JPanel panel = new JPanel();
+            panel.setBorder(new TitledBorder("System"));
+            panel.setLayout(new GridBagLayout());
+            GridBagConstraints gbc = gbc();
+
+            // Row 0: connection icon + Connect / Disconnect
+            gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 6; gbc.anchor = GridBagConstraints.CENTER;
+            JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+            btnRow.add(lblConnectionStatus);
+            btnRow.add(btnConnect);
+            btnRow.add(btnDisconnect);
+            panel.add(btnRow, gbc);
+
+            // Row 1: D-Bus status indicators
+            gbc.gridwidth = 1;
+            gbc.gridx = 0; gbc.gridy = 1; gbc.anchor = GridBagConstraints.EAST;
+            panel.add(new JLabel("D-Bus:"), gbc);
+            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
+            panel.add(lblDbusConnected, gbc);
+
+            gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
+            panel.add(new JLabel("Service:"), gbc);
+            gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
+            panel.add(lblDbusAvailable, gbc);
+
+            gbc.gridx = 4; gbc.anchor = GridBagConstraints.EAST;
+            panel.add(new JLabel("Provider:"), gbc);
+            gbc.gridx = 5; gbc.anchor = GridBagConstraints.WEST;
+            panel.add(lblProvider, gbc);
+
+            updateConnectionIcon(false);
+            return panel;
         }
 
         private JPanel buildCollectionPanel() {
@@ -203,14 +250,6 @@ public class SecretServiceGuiTest {
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
             panel.add(pfCollectionPassword, gbc);
 
-            gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2; gbc.anchor = GridBagConstraints.CENTER;
-            JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-            btnRow.add(lblConnectionStatus);
-            btnRow.add(btnConnect);
-            btnRow.add(btnDisconnect);
-            panel.add(btnRow, gbc);
-
-            updateConnectionIcon(false);
             return panel;
         }
 
@@ -420,28 +459,70 @@ public class SecretServiceGuiTest {
 
         private void doConnect() {
             try {
+                // 1. Connect to D-Bus
+                Optional<SystemInterface> maybeSystem = de.swiesend.secretservice.functional.System.connect();
+                if (maybeSystem.isEmpty()) {
+                    log("ERROR: Could not connect to D-Bus.");
+                    return;
+                }
+                system = maybeSystem.get();
+                log("D-Bus connection established.");
+
+                // 2. Create service (checks availability)
+                Optional<ServiceInterface> maybeService = SecretService.create(Optional.of(system));
+                if (maybeService.isEmpty()) {
+                    log("ERROR: Secret service not available.");
+                    system.disconnect();
+                    system = null;
+                    return;
+                }
+                service = maybeService.get();
+                log("Secret service created. Gnome Keyring: %s", service.isGnomeKeyringAvailable());
+
+                // 3. Open encrypted session
+                Optional<SessionInterface> maybeSession = service.openSession();
+                if (maybeSession.isEmpty()) {
+                    log("ERROR: Could not open session.");
+                    closeServiceQuietly();
+                    return;
+                }
+                session = maybeSession.get();
+                log("Session opened: %s", session.getId());
+
+                // 4. Open collection
+                Optional<CollectionInterface> maybeColl;
                 if (rbDefault.isSelected()) {
-                    collection = new SimpleCollection();
-                    log("Connected to the default collection.");
+                    maybeColl = session.defaultCollection();
                 } else {
                     String label = tfCollectionLabel.getText().trim();
-                    char[] pw = pfCollectionPassword.getPassword();
                     if (label.isEmpty()) {
                         log("ERROR: Collection label must not be empty.");
+                        closeServiceQuietly();
                         return;
                     }
-                    collection = new SimpleCollection(label, new String(pw));
+                    char[] pw = pfCollectionPassword.getPassword();
+                    maybeColl = session.collection(label, Optional.of(new String(pw)));
                     Arrays.fill(pw, '\0');
-                    log("Connected to collection \"%s\".", label);
                 }
+                if (maybeColl.isEmpty()) {
+                    log("ERROR: Could not open collection.");
+                    closeServiceQuietly();
+                    return;
+                }
+                collection = maybeColl.get();
+                String collName = collection.getLabel().orElse("?");
+                log("Connected to collection \"%s\" (id: %s).", collName, collection.getId().orElse("?"));
+
                 boolean locked = collection.isLocked();
                 if (!locked) wasUnlockedOnce = true;
                 log("Locked: %s", locked);
                 setItemControlsEnabled(true);
                 updateConnectionIcon(true);
+                updateDbusStatus();
                 autoSync();
-            } catch (IOException ex) {
+            } catch (Exception ex) {
                 log("CONNECT FAILED: %s", exceptionDetail(ex));
+                closeServiceQuietly();
             }
         }
 
@@ -451,18 +532,27 @@ public class SecretServiceGuiTest {
             clearDetail();
             setItemControlsEnabled(false);
             updateConnectionIcon(false);
+            updateDbusStatus();
             autoSync();
             log("Disconnected.");
         }
 
         private void disconnectQuietly() {
-            if (collection != null) {
+            closeServiceQuietly();
+        }
+
+        private void closeServiceQuietly() {
+            // Closing the service cascades: sessions → collections → system
+            if (service != null) {
                 try {
-                    collection.close();
+                    service.close();
                 } catch (Exception ignored) {
                 }
-                collection = null;
             }
+            service = null;
+            session = null;
+            collection = null;
+            system = null;
         }
 
         // ── Item detail (on selection) ─────────────────────────────
@@ -481,21 +571,19 @@ public class SecretServiceGuiTest {
                 return;
             }
             try {
-                String itemLabel = collection.getLabel(selected);
-                Map<String, String> attrs = collection.getAttributes(selected);
+                String itemLabel = collection.getItemLabel(selected).orElse("<unknown>");
+                Optional<Map<String, String>> maybeAttrs = collection.getAttributes(selected);
 
                 lblDetailPath.setText(selected);
-                lblDetailLabel.setText(itemLabel != null ? itemLabel : "<unknown>");
+                lblDetailLabel.setText(itemLabel);
                 lblDetailSecret.setText("********");  // hidden until Read Secret
 
                 attrsTableModel.setRowCount(0);
-                if (attrs != null) {
-                    // Sort keys for stable display
+                maybeAttrs.ifPresent(attrs ->
                     attrs.entrySet().stream()
                             .sorted(Map.Entry.comparingByKey())
                             .forEach(entry -> attrsTableModel.addRow(
-                                    new Object[]{entry.getKey(), entry.getValue()}));
-                }
+                                    new Object[]{entry.getKey(), entry.getValue()})));
                 log("Selected item: %s (%s)", itemLabel, selected);
             } catch (Exception ex) {
                 log("DETAIL FAILED: %s", exceptionDetail(ex));
@@ -511,14 +599,15 @@ public class SecretServiceGuiTest {
                 return;
             }
             try {
-                char[] secret = collection.getSecret(selected);
-                if (secret != null) {
+                Optional<char[]> maybeSecret = collection.getSecret(selected);
+                if (maybeSecret.isPresent()) {
+                    char[] secret = maybeSecret.get();
                     lblDetailSecret.setText(new String(secret));
                     Arrays.fill(secret, '\0');
                     log("Secret revealed for: %s", selected);
                 } else {
-                    lblDetailSecret.setText("<null>");
-                    log("Secret is null for: %s", selected);
+                    lblDetailSecret.setText("<empty>");
+                    log("Secret is empty for: %s", selected);
                 }
             } catch (Exception ex) {
                 log("READ SECRET FAILED: %s", exceptionDetail(ex));
@@ -537,13 +626,14 @@ public class SecretServiceGuiTest {
             }
             try {
                 Map<String, String> attrs = buildAttributes();
-                String path = collection.createItem(label, secret, attrs.isEmpty() ? null : attrs);
-                if (path != null) {
-                    log("Created item: %s", path);
+                Optional<String> maybePath = collection.createItem(label, secret,
+                        attrs.isEmpty() ? null : attrs);
+                if (maybePath.isPresent()) {
+                    log("Created item: %s", maybePath.get());
                     doListItems();
                     autoSync();
                 } else {
-                    log("ERROR: createItem returned null.");
+                    log("ERROR: createItem returned empty.");
                 }
             } catch (Exception ex) {
                 log("CREATE FAILED: %s", exceptionDetail(ex));
@@ -559,7 +649,7 @@ public class SecretServiceGuiTest {
                 log("Select an item from the list first.");
                 return;
             }
-            String itemLabel = collection.getLabel(selected);
+            String itemLabel = collection.getItemLabel(selected).orElse("<unknown>");
             int confirm = JOptionPane.showConfirmDialog(this,
                     "Delete item from collection \"" + getCollectionDisplayName() + "\"?\n\n"
                             + "Label: " + itemLabel + "\n"
@@ -567,8 +657,12 @@ public class SecretServiceGuiTest {
                     "Confirm Delete Item", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
             try {
-                collection.deleteItem(selected);
-                log("Deleted item: %s", selected);
+                boolean deleted = collection.deleteItem(selected);
+                if (deleted) {
+                    log("Deleted item: %s", selected);
+                } else {
+                    log("WARNING: deleteItem returned false for: %s", selected);
+                }
                 clearDetail();
                 doListItems();
                 autoSync();
@@ -581,15 +675,16 @@ public class SecretServiceGuiTest {
             if (!requireConnected()) return;
             try {
                 // Always list all items in the collection (empty map = no filter)
-                List<String> items = collection.getItems(Map.of());
+                Optional<List<String>> maybeItems = collection.getItems(Map.of());
                 itemsModel.clear();
-                if (items != null) {
+                if (maybeItems.isPresent()) {
+                    List<String> items = maybeItems.get();
                     for (String item : items) {
                         itemsModel.addElement(item);
                     }
                     log("Listed %d item(s).", items.size());
                 } else {
-                    log("Listed 0 item(s) (null response).");
+                    log("Listed 0 item(s) (empty response).");
                 }
             } catch (Exception ex) {
                 log("LIST FAILED: %s", exceptionDetail(ex));
@@ -606,8 +701,12 @@ public class SecretServiceGuiTest {
                     JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
             try {
-                collection.delete();
-                log("Collection deleted.");
+                boolean deleted = collection.delete();
+                if (deleted) {
+                    log("Collection deleted.");
+                } else {
+                    log("WARNING: collection.delete() returned false.");
+                }
                 doDisconnect();
             } catch (Exception ex) {
                 log("DELETE COLLECTION FAILED: %s", exceptionDetail(ex));
@@ -626,6 +725,9 @@ public class SecretServiceGuiTest {
         }
 
         private String getCollectionDisplayName() {
+            if (collection != null) {
+                return collection.getLabel().orElse(rbDefault.isSelected() ? "Default" : tfCollectionLabel.getText().trim());
+            }
             if (rbDefault.isSelected()) {
                 return "Default";
             }
@@ -674,6 +776,60 @@ public class SecretServiceGuiTest {
             lblConnectionStatus.setToolTipText(connected ? "Connected" : "Disconnected");
         }
 
+        private void updateDbusStatus() {
+            boolean connected = system != null && system.isConnected();
+            if (connected) {
+                setStatusLabel(lblDbusConnected, true);
+                if (service != null) {
+                    setStatusLabel(lblDbusAvailable, true);
+                    String provider = detectProvider();
+                    lblProvider.setText(provider);
+                    lblProvider.setForeground(new Color(0x4CAF50));
+                } else {
+                    resetStatusLabel(lblDbusAvailable);
+                    resetStatusLabel(lblProvider);
+                }
+            } else {
+                resetStatusLabel(lblDbusConnected);
+                resetStatusLabel(lblDbusAvailable);
+                resetStatusLabel(lblProvider);
+            }
+        }
+
+        /**
+         * Detect the secret service provider by querying well-known D-Bus names.
+         */
+        private String detectProvider() {
+            if (system == null || !system.isConnected()) return "N/A";
+            try {
+                DBusConnection conn = system.getConnection();
+                DBus bus = conn.getRemoteObject(
+                        "org.freedesktop.DBus", "/org/freedesktop/DBus", DBus.class);
+                Set<String> names = new HashSet<>();
+                names.addAll(Arrays.asList(bus.ListNames()));
+                names.addAll(Arrays.asList(bus.ListActivatableNames()));
+
+                if (names.contains("org.gnome.keyring")) return "gnome-keyring";
+                if (names.contains("org.keepassxc.KeePassXC")) return "KeePassXC";
+                if (names.contains("org.kde.kwalletd6")) return "KWallet";
+                if (names.contains("org.kde.kwalletd5")) return "KWallet";
+                if (names.contains("org.freedesktop.secrets")) return "unknown";
+                return "N/A";
+            } catch (Exception e) {
+                return "N/A";
+            }
+        }
+
+        private static void resetStatusLabel(JLabel label) {
+            label.setText("\u2014");
+            label.setForeground(Color.GRAY);
+        }
+
+        private static void setStatusLabel(JLabel label, boolean value) {
+            label.setText(value ? "Yes" : "No");
+            label.setForeground(value ? new Color(0x4CAF50) : new Color(0xF44336));
+        }
+
         // ── Auto-sync helper ─────────────────────────────────────────
 
         private void autoSync() {
@@ -693,95 +849,58 @@ public class SecretServiceGuiTest {
 
         private void refreshSystemState() {
             debugSystemModel.setRowCount(0);
-            debugSystemModel.addRow(new Object[]{"SimpleCollection.isConnected()", str(SimpleCollection.isConnected())});
-            debugSystemModel.addRow(new Object[]{"SimpleCollection.isAvailable()", str(SimpleCollection.isAvailable())});
-            debugSystemModel.addRow(new Object[]{"SimpleCollection.isGnomeKeyringAvailable()", str(SimpleCollection.isGnomeKeyringAvailable())});
-
-            // Access the static DBusConnection via reflection
-            DBusConnection conn = getPrivateStaticField(SimpleCollection.class, "connection", DBusConnection.class);
-            debugSystemModel.addRow(new Object[]{"DBusConnection", conn != null ? conn.getClass().getSimpleName() : "null"});
-            debugSystemModel.addRow(new Object[]{"DBusConnection.isConnected()", conn != null ? str(conn.isConnected()) : "N/A"});
-            debugSystemModel.addRow(new Object[]{"DBusConnection.busAddress", conn != null ? safe(() -> conn.getAddress().toString()) : "N/A"});
+            debugSystemModel.addRow(new Object[]{"SystemInterface", system != null ? system.getClass().getSimpleName() : "null (not connected)"});
+            debugSystemModel.addRow(new Object[]{"isConnected()", system != null ? str(system.isConnected()) : "N/A"});
+            if (system != null) {
+                DBusConnection conn = system.getConnection();
+                debugSystemModel.addRow(new Object[]{"DBusConnection", conn != null ? conn.getClass().getSimpleName() : "null"});
+                debugSystemModel.addRow(new Object[]{"DBusConnection.isConnected()", conn != null ? str(conn.isConnected()) : "N/A"});
+                debugSystemModel.addRow(new Object[]{"DBusConnection.busAddress", conn != null ? safe(() -> conn.getAddress().toString()) : "N/A"});
+            }
         }
 
         private void refreshServiceState() {
             debugServiceModel.setRowCount(0);
-            ServiceInterface svc = getPrivateField(collection, "service", ServiceInterface.class);
-            if (svc == null) {
+            if (service == null) {
                 debugServiceModel.addRow(new Object[]{"ServiceInterface", "null (not connected)"});
                 return;
             }
-            debugServiceModel.addRow(new Object[]{"ServiceInterface", svc.getClass().getSimpleName()});
-            debugServiceModel.addRow(new Object[]{"isGnomeKeyringAvailable()", str(svc.isGnomeKeyringAvailable())});
-            debugServiceModel.addRow(new Object[]{"getTimeout()", formatDuration(svc.getTimeout())});
-            debugServiceModel.addRow(new Object[]{"getSessions().size()", str(svc.getSessions().size())});
-            debugServiceModel.addRow(new Object[]{"getService()", svc.getService() != null ? svc.getService().getObjectPath() : "null"});
+            debugServiceModel.addRow(new Object[]{"ServiceInterface", service.getClass().getSimpleName()});
+            debugServiceModel.addRow(new Object[]{"isGnomeKeyringAvailable()", str(service.isGnomeKeyringAvailable())});
+            debugServiceModel.addRow(new Object[]{"getTimeout()", formatDuration(service.getTimeout())});
+            debugServiceModel.addRow(new Object[]{"getSessions().size()", str(service.getSessions().size())});
+            debugServiceModel.addRow(new Object[]{"getService()", service.getService() != null ? service.getService().getObjectPath() : "null"});
         }
 
         private void refreshSessionState() {
             debugSessionModel.setRowCount(0);
-            SessionInterface sess = getPrivateField(collection, "session", SessionInterface.class);
-            if (sess == null) {
+            if (session == null) {
                 debugSessionModel.addRow(new Object[]{"SessionInterface", "null (not connected)"});
                 return;
             }
-            debugSessionModel.addRow(new Object[]{"SessionInterface", sess.getClass().getSimpleName()});
-            debugSessionModel.addRow(new Object[]{"getId()", str(sess.getId())});
+            debugSessionModel.addRow(new Object[]{"SessionInterface", session.getClass().getSimpleName()});
+            debugSessionModel.addRow(new Object[]{"getId()", str(session.getId())});
             debugSessionModel.addRow(new Object[]{"getSession().getObjectPath()",
-                    sess.getSession() != null ? sess.getSession().getObjectPath() : "null"});
+                    session.getSession() != null ? session.getSession().getObjectPath() : "null"});
             debugSessionModel.addRow(new Object[]{"getEncryptedSession()",
-                    sess.getEncryptedSession() != null ? "present" : "null"});
+                    session.getEncryptedSession() != null ? "present" : "null"});
             debugSessionModel.addRow(new Object[]{"getCollections().size()",
-                    safe(() -> str(sess.getCollections().size()))});
+                    safe(() -> str(session.getCollections().size()))});
         }
 
         private void refreshCollectionState() {
             debugCollectionModel.setRowCount(0);
-            CollectionInterface col = getPrivateField(collection, "delegate", CollectionInterface.class);
-            if (col == null) {
+            if (collection == null) {
                 debugCollectionModel.addRow(new Object[]{"CollectionInterface", "null (not connected)"});
                 return;
             }
-            debugCollectionModel.addRow(new Object[]{"CollectionInterface", col.getClass().getSimpleName()});
-            debugCollectionModel.addRow(new Object[]{"getLabel()", col.getLabel().orElse("<empty>")});
-            debugCollectionModel.addRow(new Object[]{"getId()", col.getId().orElse("<empty>")});
-            boolean locked = col.isLocked();
+            debugCollectionModel.addRow(new Object[]{"CollectionInterface", collection.getClass().getSimpleName()});
+            debugCollectionModel.addRow(new Object[]{"getLabel()", collection.getLabel().orElse("<empty>")});
+            debugCollectionModel.addRow(new Object[]{"getId()", collection.getId().orElse("<empty>")});
+            boolean locked = collection.isLocked();
             if (!locked) wasUnlockedOnce = true;
             debugCollectionModel.addRow(new Object[]{"isLocked()", str(locked)});
             debugCollectionModel.addRow(new Object[]{"wasUnlockedOnce", str(wasUnlockedOnce)});
-        }
-
-        // ── Reflection helpers ─────────────────────────────────────────
-
-        @SuppressWarnings("unchecked")
-        private static <T> T getPrivateField(Object target, String fieldName, Class<T> type) {
-            if (target == null) return null;
-            try {
-                Class<?> clazz = target.getClass();
-                // Walk up the hierarchy to find the field
-                while (clazz != null) {
-                    try {
-                        Field f = clazz.getDeclaredField(fieldName);
-                        f.setAccessible(true);
-                        return type.cast(f.get(target));
-                    } catch (NoSuchFieldException e) {
-                        clazz = clazz.getSuperclass();
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-            return null;
-        }
-
-        @SuppressWarnings("unchecked")
-        private static <T> T getPrivateStaticField(Class<?> clazz, String fieldName, Class<T> type) {
-            try {
-                Field f = clazz.getDeclaredField(fieldName);
-                f.setAccessible(true);
-                return type.cast(f.get(null));
-            } catch (Exception ignored) {
-            }
-            return null;
         }
 
         // ── Formatting helpers ─────────────────────────────────────────
