@@ -11,4 +11,6 @@ module de.swiesend.secretservice {
     exports de.swiesend.secretservice.functional;
     exports de.swiesend.secretservice.functional.interfaces;
     exports de.swiesend.secretservice.gnome.keyring.interfaces;
+    exports de.swiesend.secretservice.hardened;
+    exports de.swiesend.secretservice.hardened.providers;
 }
