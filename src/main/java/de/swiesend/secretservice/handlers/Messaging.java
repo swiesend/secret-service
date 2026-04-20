@@ -13,7 +13,7 @@ public abstract class Messaging {
 
     protected DBusConnection connection;
     protected MessageHandler msg;
-    protected SignalHandler sh = SignalHandler.getInstance();
+    protected SignalHandler sh = new SignalHandler();
     protected String serviceName;
     protected String objectPath;
     protected String interfaceName;
@@ -23,7 +23,7 @@ public abstract class Messaging {
         this.connection = connection;
         this.msg = new MessageHandler(connection, true);
         if (signals != null) {
-            this.sh.connect(connection, signals);
+            this.sh.connect(connection, signals, objectPath);
         }
         this.serviceName = serviceName;
         this.objectPath = objectPath;

@@ -63,7 +63,7 @@ public class PromptTest {
     public void dismissPrompt() throws InterruptedException {
         List<DBusPath> cs = Arrays.asList(context.collection.getPath());
         context.service.lock(cs);
-        SignalHandler handler = context.service.getSignalHandler();
+        SignalHandler handler = context.prompt.getSignalHandler();
         Collection defaultCollection = new Collection("login", context.service.getConnection());
         boolean expected = defaultCollection.isLocked();
         Thread.sleep(500L);

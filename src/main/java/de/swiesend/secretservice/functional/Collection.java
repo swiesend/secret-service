@@ -200,7 +200,7 @@ public class Collection implements CollectionInterface {
 
         if (path == null) {
             waitForCollectionCreatedSignal();
-            Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class);
+            Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
             if (signal == null) {
                 log.warn("Collection \"" + label + "\" was not created.");
                 return Optional.empty();
@@ -350,7 +350,7 @@ public class Collection implements CollectionInterface {
                                                 } else {
                                                     return collection
                                                             .getSignalHandler()
-                                                            .getLastHandledSignal(de.swiesend.secretservice.Collection.ItemCreated.class)
+                                                            .getLastHandledSignal(de.swiesend.secretservice.Collection.ItemCreated.class, collection.getObjectPath())
                                                             .item;
                                                 }
                                             } else {

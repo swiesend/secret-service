@@ -22,33 +22,64 @@ public class SignalHandler implements DBusSigHandler {
     private final static int bufferSize = 1024;
     private Logger log = LoggerFactory.getLogger(getClass());
     private DBusConnection connection = null;
-    private List<Class<? extends DBusSignal>> registered = new ArrayList<>();
+    private String sourcePath = null;
+    private List<AutoCloseable> registrations = new ArrayList<>();
     private DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
 
-    public static SignalHandler getInstance() {
-        return SingletonHelper.INSTANCE;
-    }
-
-    public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals) {
+    /**
+     * Connect to D-Bus and register signal handlers, optionally scoped to a specific source path.
+     * <p>
+     * When a non-root {@code sourcePath} is provided, signals are only received from that D-Bus object path.
+     * This prevents cross-talk between signal handlers of different collections or services.
+     *
+     * @param connection the D-Bus connection
+     * @param signals    the signal classes to register for
+     * @param sourcePath the D-Bus object path to scope signal reception to,
+     *                   or {@code null}/{@code "/"} for global (unscoped) registration
+     */
+    public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath) {
         if (this.connection == null) {
             this.connection = connection;
         }
+        this.sourcePath = sourcePath;
         if (signals != null) {
             try {
                 for (Class sc : signals) {
-                    if (!registered.contains(sc)) {
-                        connection.addSigHandler(sc, this);
-                        this.registered.add(sc);
+                    AutoCloseable reg;
+                    if (sourcePath != null && !"/".equals(sourcePath)) {
+                        reg = connection.addSigHandler(sc, sourcePath, this);
+                    } else {
+                        reg = connection.addSigHandler(sc, this);
                     }
+                    registrations.add(reg);
                 }
             } catch (DBusException e) {
                 log.error("Could not connect to the D-Bus: ", e);
             } catch (ClassCastException e) {
                 log.error("Could not cast a signal: ", e);
             }
-
         }
+    }
+
+    /**
+     * Unregister all signal handlers and release resources.
+     */
+    public void disconnect() {
+        for (AutoCloseable reg : registrations) {
+            try {
+                reg.close();
+            } catch (Exception e) {
+                log.warn("Could not unregister a signal handler: ", e);
+            }
+        }
+        registrations.clear();
+        synchronized (handled) {
+            Arrays.fill(handled, null);
+            count = 0;
+        }
+        connection = null;
+        sourcePath = null;
     }
 
     @Override
@@ -212,7 +243,4 @@ public class SignalHandler implements DBusSigHandler {
         return null;
     }
 
-    private static class SingletonHelper {
-        private static final SignalHandler INSTANCE = new SignalHandler();
-    }
 }
