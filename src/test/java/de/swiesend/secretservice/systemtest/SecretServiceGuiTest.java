@@ -5,6 +5,13 @@ import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.functional.interfaces.SystemInterface;
+import de.swiesend.secretservice.interfaces.Collection.ItemChanged;
+import de.swiesend.secretservice.interfaces.Collection.ItemCreated;
+import de.swiesend.secretservice.interfaces.Collection.ItemDeleted;
+import de.swiesend.secretservice.interfaces.Prompt.Completed;
+import de.swiesend.secretservice.interfaces.Service.CollectionChanged;
+import de.swiesend.secretservice.interfaces.Service.CollectionCreated;
+import de.swiesend.secretservice.interfaces.Service.CollectionDeleted;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.junit.jupiter.api.DisplayName;
@@ -126,6 +133,7 @@ public class SecretServiceGuiTest {
 
         // GUI-tracked state
         private boolean wasUnlockedOnce = false;
+        private final List<AutoCloseable> signalRegistrations = new ArrayList<>();
 
         // Functional API references
         private SystemInterface system;
@@ -467,6 +475,7 @@ public class SecretServiceGuiTest {
                 }
                 system = maybeSystem.get();
                 log("D-Bus connection established.");
+                registerSignalLoggers();
 
                 // 2. Create service (checks availability)
                 Optional<ServiceInterface> maybeService = SecretService.create(Optional.of(system));
@@ -538,6 +547,7 @@ public class SecretServiceGuiTest {
         }
 
         private void disconnectQuietly() {
+            unregisterSignalLoggers();
             closeServiceQuietly();
         }
 
@@ -553,6 +563,39 @@ public class SecretServiceGuiTest {
             session = null;
             collection = null;
             system = null;
+        }
+
+        // ── Signal logging ──────────────────────────────────────────
+
+        private void registerSignalLoggers() {
+            if (system == null || !system.isConnected()) return;
+            DBusConnection conn = system.getConnection();
+            try {
+                signalRegistrations.add(conn.addSigHandler(CollectionCreated.class,
+                        s -> log("> CollectionCreated(%s)", s.collection)));
+                signalRegistrations.add(conn.addSigHandler(CollectionChanged.class,
+                        s -> log("> CollectionChanged(%s)", s.collection)));
+                signalRegistrations.add(conn.addSigHandler(CollectionDeleted.class,
+                        s -> log("> CollectionDeleted(%s)", s.collection)));
+                signalRegistrations.add(conn.addSigHandler(ItemCreated.class,
+                        s -> log("> ItemCreated(%s) on %s", s.item, s.getPath())));
+                signalRegistrations.add(conn.addSigHandler(ItemChanged.class,
+                        s -> log("> ItemChanged(%s) on %s", s.item, s.getPath())));
+                signalRegistrations.add(conn.addSigHandler(ItemDeleted.class,
+                        s -> log("> ItemDeleted(%s) on %s", s.item, s.getPath())));
+                signalRegistrations.add(conn.addSigHandler(Completed.class,
+                        s -> log("> Prompt.Completed(%s) dismissed=%s", s.getPath(), s.dismissed)));
+                log("Signal loggers registered (7 D-Bus signals).");
+            } catch (Exception e) {
+                log("WARNING: Could not register signal loggers: %s", e.getMessage());
+            }
+        }
+
+        private void unregisterSignalLoggers() {
+            for (AutoCloseable reg : signalRegistrations) {
+                try { reg.close(); } catch (Exception ignored) {}
+            }
+            signalRegistrations.clear();
         }
 
         // ── Item detail (on selection) ─────────────────────────────
