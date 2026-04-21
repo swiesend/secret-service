@@ -68,7 +68,7 @@
         <hkdf.version>2.0.0</hkdf.version>
         <dbus-java.version>5.2.0</dbus-java.version>
         <slf4j.version>2.0.17</slf4j.version>
-        <bouncycastle.version>1.78.1</bouncycastle.version>
+        <bouncycastle.version>1.82</bouncycastle.version>
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>

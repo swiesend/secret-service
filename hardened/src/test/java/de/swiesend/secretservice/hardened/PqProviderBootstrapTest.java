@@ -8,6 +8,7 @@ import java.security.NoSuchAlgorithmException;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PqProviderBootstrapTest {
@@ -25,51 +26,31 @@ class PqProviderBootstrapTest {
     }
 
     @Test
-    void ensurePqProviderMatchesActualKemAvailability() throws Exception {
-        // Honesty test: whatever ensurePqProvider() returns must match what
-        // KEM.getInstance("ML-KEM-768") actually does.
-        // - JDK 24+ with stock SunJCE: returns true.
-        // - JDK 21-23 with BouncyCastle 1.78.1: returns false (BC does not wire
-        //   ML-KEM through the KEM SPI yet -- it only exposes Kyber under
-        //   BouncyCastlePQCProvider via legacy KeyPairGenerator names).
+    void ensurePqProviderReportsTruth() throws Exception {
         boolean reported = PqProviderBootstrap.ensurePqProvider();
         boolean reallyAvailable;
         try {
-            KEM.getInstance("ML-KEM-768");
+            KEM.getInstance(PqProviderBootstrap.mlKem768Algorithm() != null
+                    ? PqProviderBootstrap.mlKem768Algorithm()
+                    : "ML-KEM-768");
             reallyAvailable = true;
-        } catch (NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException | IllegalArgumentException e) {
             reallyAvailable = false;
         }
         assertEquals(reallyAvailable, reported,
-                "ensurePqProvider() must report exactly whether the standard KEM SPI "
-                        + "can produce ML-KEM-768 right now");
+                "ensurePqProvider() must report exactly whether the KEM SPI can produce ML-KEM-768");
     }
 
     @Test
-    void documentsBouncyCastle178KemSpiGap() {
-        // This test pins down the current state of BC 1.78.x integration.
-        // It will start failing (in a good way) when BC ships ML-KEM under the
-        // standard javax.crypto.KEM SPI -- at which point we should bump the
-        // BC version and remove this test.
-        boolean isJdk24Plus = Runtime.version().feature() >= 24;
-        if (isJdk24Plus) {
-            // SunJCE provides ML-KEM on JDK 24+; nothing to assert here.
-            return;
-        }
+    void bcProbeSucceedsOnBc182TestClasspath() {
+        // With BouncyCastle 1.82 on the test classpath (hardened/pom.xml provided scope),
+        // PqProviderBootstrap must be able to register BC and expose ML-KEM via the KEM SPI
+        // under either the SunJCE name "ML-KEM-768" or BC's generic "ML-KEM".
         boolean ok = PqProviderBootstrap.ensurePqProvider();
-        assertTrue(!ok || onClasspathWithFutureBc(),
-                "On JDK <24, BC 1.78.1 should NOT make ML-KEM-768 reachable via the KEM SPI");
-    }
-
-    private static boolean onClasspathWithFutureBc() {
-        // Trapdoor for future BC versions that wire the KEM SPI: if a non-1.78.x BC
-        // is on the classpath, allow the assertion to pass through.
-        try {
-            String version = (String) Class.forName("org.bouncycastle.LICENSE")
-                    .getField("licenseText").get(null);
-            return version != null && !version.contains("1.78");
-        } catch (Throwable t) {
-            return false;
-        }
+        assertTrue(ok, "BC 1.82 on the classpath should make ML-KEM reachable via javax.crypto.KEM");
+        String alg = PqProviderBootstrap.mlKem768Algorithm();
+        assertNotNull(alg, "resolved algorithm name must be non-null once PQ is available");
+        assertDoesNotThrow(() -> KEM.getInstance(alg),
+                "KEM.getInstance(resolved name) must succeed after ensurePqProvider()");
     }
 }

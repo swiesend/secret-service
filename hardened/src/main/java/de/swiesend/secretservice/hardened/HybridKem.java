@@ -58,7 +58,6 @@ public final class HybridKem {
     private static final Logger log = LoggerFactory.getLogger(HybridKem.class);
     private static final String HKDF_INFO_TAG = "secret-service/hybrid-kem/v1";
     private static final String X25519 = "X25519";
-    private static final String ML_KEM_768 = "ML-KEM-768";
 
     private final boolean preferPostQuantum;
     private final boolean postQuantumAvailable;
@@ -75,7 +74,18 @@ public final class HybridKem {
     public boolean postQuantumAvailable() { return postQuantumAvailable; }
 
     public String algorithmLabel() {
-        return postQuantumAvailable ? "x25519+ml-kem-768" : "x25519";
+        return Envelope.kemIdLabel(kemId());
+    }
+
+    /**
+     * The {@link Envelope} {@code kem_id} byte this instance will stamp into fresh
+     * envelopes. Today the choice is binary: {@link Envelope#KEM_ID_X25519_MLKEM768}
+     * when PQ is active, otherwise {@link Envelope#KEM_ID_NONE}. Future iterations
+     * pick from the reserved values (HQC-192, triple hybrid) without breaking the
+     * envelope format.
+     */
+    public byte kemId() {
+        return postQuantumAvailable ? Envelope.KEM_ID_X25519_MLKEM768 : Envelope.KEM_ID_NONE;
     }
 
     /**
@@ -95,15 +105,32 @@ public final class HybridKem {
     /**
      * Generates the post-quantum half of an epoch keypair. Throws if PQ is not
      * available -- callers gate on {@link #postQuantumAvailable()}.
+     *
+     * <p>On JDK 24+ the stock SunJCE registers {@code "ML-KEM-768"} as an explicit
+     * algorithm and we initialise directly with that name. On JDK 21-23 with
+     * BouncyCastle 1.82+, the JCE name is {@code "ML-KEM"} and the parameter set
+     * is supplied via {@code org.bouncycastle.jcajce.spec.MLKEMParameterSpec}
+     * (looked up reflectively so this module compiles without BouncyCastle on the
+     * classpath).</p>
      */
     public KeyPair generatePqKeyPair() {
         if (!postQuantumAvailable) {
             throw new IllegalStateException("ML-KEM-768 unavailable; cannot generate PQ keypair");
         }
+        String alg = PqProviderBootstrap.mlKem768Algorithm();
         try {
-            KeyPairGenerator g = KeyPairGenerator.getInstance(ML_KEM_768);
-            // ML-KEM-768 KeyPairGenerator does not require an AlgorithmParameterSpec;
-            // some providers do not accept a bare SecureRandom either, so leave it default.
+            KeyPairGenerator g = KeyPairGenerator.getInstance(alg);
+            if ("ML-KEM".equals(alg)) {
+                // BC flavour: drive parameter set via MLKEMParameterSpec.ml_kem_768
+                try {
+                    Class<?> specCls = Class.forName("org.bouncycastle.jcajce.spec.MLKEMParameterSpec");
+                    Object spec = specCls.getField("ml_kem_768").get(null);
+                    g.initialize((java.security.spec.AlgorithmParameterSpec) spec, new SecureRandom());
+                } catch (ReflectiveOperationException roe) {
+                    throw new IllegalStateException("BouncyCastle MLKEMParameterSpec missing", roe);
+                }
+            }
+            // On JDK 24+ with name "ML-KEM-768", no initialize call is required.
             return g.generateKeyPair();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("ML-KEM-768 keypair generation failed", e);
@@ -142,7 +169,7 @@ public final class HybridKem {
 
         if (postQuantumAvailable && epochPqPublicOrNull != null) {
             try {
-                KEM kem = KEM.getInstance(ML_KEM_768);
+                KEM kem = KEM.getInstance(PqProviderBootstrap.mlKem768Algorithm());
                 KEM.Encapsulator enc = kem.newEncapsulator(epochPqPublicOrNull);
                 KEM.Encapsulated encapsulated = enc.encapsulate();
                 ssPq = encapsulated.key().getEncoded();
@@ -184,7 +211,7 @@ public final class HybridKem {
         byte[] ssPq = new byte[0];
         if (envelopeIsHybrid && epochPqPrivateOrNull != null && postQuantumAvailable && pqCt.length > 0) {
             try {
-                KEM kem = KEM.getInstance(ML_KEM_768);
+                KEM kem = KEM.getInstance(PqProviderBootstrap.mlKem768Algorithm());
                 KEM.Decapsulator dec = kem.newDecapsulator(epochPqPrivateOrNull);
                 ssPq = dec.decapsulate(pqCt).getEncoded();
             } catch (GeneralSecurityException e) {

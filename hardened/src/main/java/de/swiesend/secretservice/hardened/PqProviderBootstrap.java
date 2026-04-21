@@ -3,7 +3,6 @@ package de.swiesend.secretservice.hardened;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.Security;
 import java.util.concurrent.atomic.AtomicReference;
@@ -25,16 +24,26 @@ public final class PqProviderBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(PqProviderBootstrap.class);
     private static final String BC_PROVIDER_CLASS = "org.bouncycastle.jce.provider.BouncyCastleProvider";
-    private static final String ML_KEM_768 = "ML-KEM-768";
+
+    /**
+     * Algorithm names to probe, in preference order:
+     * <ol>
+     *   <li>{@code ML-KEM-768} -- JDK 24+ SunJCE registration, and future BouncyCastle aliases.</li>
+     *   <li>{@code ML-KEM} -- BouncyCastle 1.82's generic KEM SPI name (parameter-driven).</li>
+     * </ol>
+     * The first that succeeds determines what {@link #mlKem768Algorithm()} returns.
+     */
+    static final String[] ML_KEM_768_NAMES = {"ML-KEM-768", "ML-KEM"};
 
     private static final AtomicReference<Boolean> RESULT = new AtomicReference<>();
+    private static final AtomicReference<String> RESOLVED_ALG = new AtomicReference<>();
 
     private PqProviderBootstrap() {}
 
     /**
-     * Idempotent: probes whether {@code KEM.getInstance("ML-KEM-768")} succeeds.
-     * If not, attempts to register BouncyCastle as a JCE provider via reflection,
-     * then re-probes. Caches the outcome.
+     * Idempotent: probes whether any known ML-KEM-768 JCE algorithm name succeeds
+     * via {@code KEM.getInstance(...)}. If not, attempts to register BouncyCastle
+     * as a JCE provider via reflection, then re-probes. Caches the outcome.
      *
      * @return {@code true} if ML-KEM-768 is available after this call
      */
@@ -42,47 +51,60 @@ public final class PqProviderBootstrap {
         Boolean cached = RESULT.get();
         if (cached != null) return cached;
 
-        if (probe()) {
+        String alg = probe();
+        if (alg != null) {
+            RESOLVED_ALG.compareAndSet(null, alg);
             RESULT.compareAndSet(null, Boolean.TRUE);
             return true;
         }
 
         if (tryRegisterBouncyCastle()) {
-            boolean ok = probe();
-            RESULT.compareAndSet(null, ok);
-            if (ok) {
-                log.info("PqProviderBootstrap: BouncyCastle registered; ML-KEM-768 now available.");
-            } else {
-                log.warn("PqProviderBootstrap: BouncyCastle was loaded but ML-KEM-768 still missing.");
+            alg = probe();
+            if (alg != null) {
+                RESOLVED_ALG.compareAndSet(null, alg);
+                RESULT.compareAndSet(null, Boolean.TRUE);
+                log.info("PqProviderBootstrap: BouncyCastle registered; ML-KEM-768 available as \"{}\".", alg);
+                return true;
             }
-            return ok;
+            log.warn("PqProviderBootstrap: BouncyCastle was loaded but ML-KEM-768 still missing.");
         }
 
         RESULT.compareAndSet(null, Boolean.FALSE);
         log.warn("PqProviderBootstrap: ML-KEM-768 not available via the standard "
-                + "javax.crypto.KEM SPI on this runtime. As of BouncyCastle 1.78.1, BC "
-                + "ships ML-KEM/Kyber under `BouncyCastlePQCProvider` but does NOT register "
-                + "it through the KEM SPI. Real PQ via the standard API arrives with JDK "
-                + "24 (SunJCE ships ML-KEM) or a future BouncyCastle release that wires "
-                + "the KEM SPI. Falling back to X25519-only.");
+                + "javax.crypto.KEM SPI. Add bcprov-jdk18on 1.82 (or newer) to the "
+                + "runtime classpath on JDK 21-23, or run on JDK 24+ where SunJCE "
+                + "ships ML-KEM natively. Falling back to X25519-only.");
         return false;
+    }
+
+    /**
+     * The JCE algorithm name under which ML-KEM-768 was resolved by
+     * {@link #ensurePqProvider()}. {@code null} when PQ is unavailable.
+     */
+    public static String mlKem768Algorithm() {
+        ensurePqProvider();
+        return RESOLVED_ALG.get();
     }
 
     /** Test hook: clear the cached result so subsequent calls re-probe. */
     static void resetForTesting() {
         RESULT.set(null);
+        RESOLVED_ALG.set(null);
     }
 
-    private static boolean probe() {
+    /** Tries each candidate algorithm name; returns the first that succeeds, else {@code null}. */
+    private static String probe() {
+        for (String alg : ML_KEM_768_NAMES) {
+            if (probeOne(alg)) return alg;
+        }
+        return null;
+    }
+
+    private static boolean probeOne(String alg) {
         try {
             Class<?> kemClass = Class.forName("javax.crypto.KEM");
-            kemClass.getMethod("getInstance", String.class).invoke(null, ML_KEM_768);
+            kemClass.getMethod("getInstance", String.class).invoke(null, alg);
             return true;
-        } catch (ReflectiveOperationException e) {
-            // KEM API missing (JDK <21) or ML-KEM not provided
-            Throwable cause = e.getCause();
-            if (cause instanceof NoSuchAlgorithmException) return false;
-            return false;
         } catch (Throwable t) {
             return false;
         }

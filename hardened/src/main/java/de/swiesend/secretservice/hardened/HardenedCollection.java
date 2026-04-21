@@ -71,6 +71,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     static final String ATTR_KDF        = "hardened.kdf";
     static final String ATTR_AEAD       = "hardened.aead";
     static final String ATTR_KEM        = "hardened.kem";
+    static final String ATTR_KEM_ID     = "hardened.kem.id";
     static final String ATTR_VERSION_V1 = "1";
 
     private static final String KDF_ALG   = "hkdf-sha256";
@@ -162,12 +163,13 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 throw new IllegalStateException("AES-GCM encryption failed", e);
             }
 
+            byte kemId = kem.kemId();
             byte flags = 0;
-            if (kem.postQuantumAvailable()) flags |= Envelope.FLAG_PQ_HYBRID;
+            if (kemId != Envelope.KEM_ID_NONE) flags |= Envelope.FLAG_PQ_HYBRID;
             if (provider.mode() == KeyMaterialProvider.Mode.STORED_STEP) flags |= Envelope.FLAG_STORED_STEP_TOTP;
             if (provider.mode() == KeyMaterialProvider.Mode.LIVE_CODE)   flags |= Envelope.FLAG_LIVE_TOTP;
 
-            Envelope env = new Envelope(Envelope.VERSION_1, flags, salt, epochBytes, nonce, aeadCt);
+            Envelope env = new Envelope(Envelope.VERSION_1, flags, kemId, salt, epochBytes, nonce, aeadCt);
             envelopeB64 = Base64.getEncoder().encodeToString(env.toBytes());
         } finally {
             Arrays.fill(plaintext, (byte) 0);
@@ -186,6 +188,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         merged.put(ATTR_KDF, KDF_ALG);
         merged.put(ATTR_AEAD, AEAD_ALG);
         merged.put(ATTR_KEM, kem.algorithmLabel());
+        merged.put(ATTR_KEM_ID, String.format("0x%02x", kem.kemId() & 0xff));
         merged.put("hardened.item.id", itemId);
 
         return wrapped.createItem(label, envelopeB64, merged);
