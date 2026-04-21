@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.swiesend</groupId>
+        <artifactId>secret-service-parent</artifactId>
+        <version>3.0.0-alpha</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>secret-service-hardened</artifactId>
+    <packaging>jar</packaging>
+
+    <name>secret-service-hardened</name>
+    <description>
+        Opt-in application-layer encryption wrapper on top of secret-service.
+        Wraps a CollectionInterface with AES-256-GCM under an HKDF-derived DEK;
+        pluggable KeyMaterialProvider SPI with honest ThreatCoverage self-assessment.
+
+        JDK 21 floor: uses the standard javax.crypto.KEM API (JEP 452).
+        ML-KEM-768 comes from the stock SunJCE provider on JDK 24+, or from
+        BouncyCastle 1.78+ (scope=provided, optional) on JDK 21-23. Falls back
+        cleanly to X25519-only when no PQ provider is available.
+    </description>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.swiesend</groupId>
+            <artifactId>secret-service</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>at.favre.lib</groupId>
+            <artifactId>hkdf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Optional: only on JDK 21-23 where SunJCE does not yet ship ML-KEM.
+             Reflectively probed by PqProviderBootstrap; absence falls back to
+             X25519-only. `provided` keeps it off downstream runtime classpath
+             but on our compile and test classpaths so the hybrid round-trip
+             test can exercise the PQ path. Consumers add this to their own
+             pom to enable PQ. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>21</release>
+                    <source>21</source>
+                    <target>21</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

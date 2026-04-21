@@ -5,21 +5,27 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>de.swiesend</groupId>
-    <artifactId>secret-service</artifactId>
+    <artifactId>secret-service-parent</artifactId>
     <!-- Semantic Versioning - see https://semver.org/spec/v2.0.0.html -->
     <!-- Snapshot:          {MAJOR}.{MINOR}.{PATCH}-SNAPSHOT -->
     <!-- Pre-Release:       {MAJOR}.{MINOR}.{PATCH}-{alpha|beta}.?{INC}? -->
     <!-- Release Candidate: {MAJOR}.{MINOR}.{PATCH}-rc.{INC} -->
-    <!-- Release:           {MAJOR}.{MINOR}.{PATCH}-?{JDKVERSION}? -->
     <version>3.0.0-alpha</version>
-    <packaging>jar</packaging>
+    <packaging>pom</packaging>
 
-    <name>secret-service</name>
+    <name>secret-service (parent)</name>
     <description>
-        A Java library for storing secrets in the gnome-keyring over the DBus.
-        Simply set and get passwords in a gnome linux system.
+        Reactor for the secret-service Java library. Builds the `secret-service`
+        core artifact (classical Secret Service 0.2 client, JDK 17) and the
+        opt-in `secret-service-hardened` artifact (application-layer encryption
+        wrapper using javax.crypto.KEM, JDK 21).
     </description>
     <url>https://github.com/swiesend/secret-service</url>
+
+    <modules>
+        <module>core</module>
+        <module>hardened</module>
+    </modules>
 
     <licenses>
         <license>
@@ -52,6 +58,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- core inherits these defaults; hardened overrides to 21 in its own pom -->
         <maven.compiler.release>17</maven.compiler.release>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -61,95 +68,73 @@
         <hkdf.version>2.0.0</hkdf.version>
         <dbus-java.version>5.2.0</dbus-java.version>
         <slf4j.version>2.0.17</slf4j.version>
-        <!-- BouncyCastle 1.78+ ships ML-KEM (Kyber) for JDK 17. It is a
-             <scope>provided</scope> dependency: consumers who want
-             post-quantum hybrid opt in by adding it to their own pom. -->
         <bouncycastle.version>1.78.1</bouncycastle.version>
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>
     </properties>
 
-    <dependencies>
-
-        <!-- https://mvnrepository.com/artifact/at.favre.lib/hkdf -->
-        <dependency>
-            <groupId>at.favre.lib</groupId>
-            <artifactId>hkdf</artifactId>
-            <version>${hkdf.version}</version>
-        </dependency>
-
-        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java till `3.3.1` -->
-        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-core since `4.0.0`-->
-        <dependency>
-            <groupId>com.github.hypfvieh</groupId>
-            <artifactId>dbus-java-core</artifactId>
-            <version>${dbus-java.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-api</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- https://mvnrepository.com/artifact/com.github.hypfvieh/dbus-java-transport-native-unixsocket -->
-        <dependency>
-            <groupId>com.github.hypfvieh</groupId>
-            <artifactId>dbus-java-transport-native-unixsocket</artifactId>
-            <version>${dbus-java.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-api</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
-
-        <!-- BouncyCastle (optional): enables post-quantum hybrid KEM in the
-             hardened layer. scope=provided keeps it off the runtime classpath
-             of consumers who don't use it. It is probed reflectively at
-             runtime; absence degrades HybridKem cleanly to X25519-only. -->
-        <dependency>
-            <groupId>org.bouncycastle</groupId>
-            <artifactId>bcprov-jdk18on</artifactId>
-            <version>${bouncycastle.version}</version>
-            <scope>provided</scope>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-simple -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>${slf4j.version}</version>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>${junit-jupiter.version}</version>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-engine -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>${junit-jupiter.version}</version>
-            <scope>test</scope>
-        </dependency>
-
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>de.swiesend</groupId>
+                <artifactId>secret-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>at.favre.lib</groupId>
+                <artifactId>hkdf</artifactId>
+                <version>${hkdf.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.hypfvieh</groupId>
+                <artifactId>dbus-java-core</artifactId>
+                <version>${dbus-java.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.slf4j</groupId>
+                        <artifactId>slf4j-api</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>com.github.hypfvieh</groupId>
+                <artifactId>dbus-java-transport-native-unixsocket</artifactId>
+                <version>${dbus-java.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.slf4j</groupId>
+                        <artifactId>slf4j-api</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-simple</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-api</artifactId>
+                <version>${junit-jupiter.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-engine</artifactId>
+                <version>${junit-jupiter.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <profiles>
         <profile>
@@ -179,7 +164,6 @@
                                     <goal>prepare-agent</goal>
                                 </goals>
                             </execution>
-                            <!-- attached to Maven test phase -->
                             <execution>
                                 <id>report</id>
                                 <phase>test</phase>
@@ -195,10 +179,8 @@
     </profiles>
 
     <build>
-        <!-- What is pluginManagement in Maven's pom.xml? https://stackoverflow.com/questions/10483180/what-is-pluginmanagement-in-mavens-pom-xml -->
-        <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
+        <pluginManagement>
             <plugins>
-                <!-- https://maven.apache.org/enforcer/maven-enforcer-plugin/ -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-enforcer-plugin</artifactId>
@@ -219,12 +201,10 @@
                         </execution>
                     </executions>
                 </plugin>
-                <!-- clean lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#clean_Lifecycle -->
                 <plugin>
                     <artifactId>maven-clean-plugin</artifactId>
                     <version>3.4.1</version>
                 </plugin>
-                <!-- default lifecycle, jar packaging: see https://maven.apache.org/ref/current/maven-core/default-bindings.html#Plugin_bindings_for_jar_packaging -->
                 <plugin>
                     <artifactId>maven-resources-plugin</artifactId>
                     <version>3.3.1</version>
@@ -255,7 +235,6 @@
                     <artifactId>maven-deploy-plugin</artifactId>
                     <version>3.1.4</version>
                 </plugin>
-                <!-- site lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#site_Lifecycle -->
                 <plugin>
                     <artifactId>maven-site-plugin</artifactId>
                     <version>4.0.0-M16</version>
@@ -274,20 +253,29 @@
                     <artifactId>versions-maven-plugin</artifactId>
                     <version>2.18.0</version>
                 </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>3.4.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.11.2</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-gpg-plugin</artifactId>
+                    <version>3.2.7</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.sonatype.plugins</groupId>
+                    <artifactId>nexus-staging-maven-plugin</artifactId>
+                    <version>1.7.0</version>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
-            <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-compiler-plugin -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.14.0</version>
-                <configuration>
-                    <release>17</release>
-                    <source>17</source>
-                    <target>17</target>
-                </configuration>
-            </plugin>
             <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-source-plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

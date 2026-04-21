@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class HybridKemTest {
 
@@ -36,8 +37,6 @@ class HybridKemTest {
     @Test
     void postQuantumFlagIsHonest() {
         HybridKem kemRequested = new HybridKem(true);
-        // On JDK 21 ML-KEM is absent; probe must report false and algorithm should fall back.
-        // We do not assert true/false here, only that the declared algorithm label matches the probe.
         if (kemRequested.postQuantumAvailable()) {
             assertEquals("x25519+ml-kem-768", kemRequested.algorithmLabel());
         } else {
@@ -62,5 +61,43 @@ class HybridKemTest {
         assertTrue(privEnc.length > 0);
         assertNotNull(HybridKem.importPublic(pubEnc));
         assertNotNull(HybridKem.importPrivate(privEnc));
+    }
+
+    @Test
+    void hybridEncapDecapRoundTrip_whenPqAvailable() {
+        HybridKem kem = new HybridKem(true);
+        assumeTrue(kem.postQuantumAvailable(),
+                "ML-KEM-768 not available on this runtime; skipping hybrid round-trip");
+
+        KeyPair x = kem.generateEpochKeyPair();
+        KeyPair pq = kem.generatePqKeyPair();
+
+        HybridKem.Encapsulation e = kem.encapsulate(x.getPublic(), pq.getPublic());
+        byte[] decapped = kem.decapsulate(x.getPrivate(), pq.getPrivate(), e.kemCiphertext(), true);
+        assertArrayEquals(e.sharedSecret(), decapped);
+        assertEquals("x25519+ml-kem-768", kem.algorithmLabel());
+    }
+
+    @Test
+    void hybridDecapFailsIfFlaggedHybridButCiphertextHasNoPqPart() {
+        HybridKem kem = new HybridKem(false);
+        KeyPair epoch = kem.generateEpochKeyPair();
+        HybridKem.Encapsulation classical = kem.encapsulate(epoch.getPublic());
+        // classical kemCiphertext has no PQ part; decapsulating with envelopeIsHybrid=true
+        // must reject rather than silently proceed
+        Exception ex = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> kem.decapsulate(epoch.getPrivate(), null, classical.kemCiphertext(), true));
+        assertTrue(ex.getMessage().contains("hybrid envelope missing pq ciphertext"));
+    }
+
+    @Test
+    void packedKemCiphertextHasLengthPrefix() {
+        HybridKem kem = new HybridKem(false);
+        KeyPair epoch = kem.generateEpochKeyPair();
+        HybridKem.Encapsulation e = kem.encapsulate(epoch.getPublic());
+        byte[] kemCt = e.kemCiphertext();
+        assertTrue(kemCt.length > 2, "kemCiphertext must include uint16 length prefix");
+        int x25519Len = ((kemCt[0] & 0xff) << 8) | (kemCt[1] & 0xff);
+        assertEquals(kemCt.length - 2, x25519Len, "classical envelope: only x25519 SPKI after the prefix");
     }
 }
