@@ -21,12 +21,15 @@ import java.util.Objects;
  *
  * <h3>Algorithm agility via {@code kem_id}</h3>
  * <p>The {@code kem_id} byte declares which KEM the envelope was sealed under.
- * It is the forward-compatible hook that lets new post-quantum components
- * (HQC-192, triple hybrid, future NIST additions) land without a format
- * migration. Readers reject unknown values; writers set the id to match the
- * configured {@link HybridKem}. See {@link #KEM_ID_NONE},
- * {@link #KEM_ID_X25519_MLKEM768}, {@link #KEM_ID_X25519_HQC192} (reserved),
- * and {@link #KEM_ID_X25519_MLKEM768_HQC192} (reserved).</p>
+ * It is the forward-compatible hook that lets a new post-quantum component
+ * (for example, HQC-192) land without a format migration. Readers fall back to
+ * a generic {@code "kem-id-0xNN"} label for unknown ids; writers stamp the id
+ * reported by the configured {@link HybridKem}. Today's shipped values are
+ * {@link #KEM_ID_NONE} and {@link #KEM_ID_X25519_MLKEM768};
+ * {@link #KEM_ID_X25519_HQC192} is reserved for the NIST Round 4 HQC
+ * alternative. Exotic combinations such as triple hybrid are not shipped and
+ * not recommended -- consumers who genuinely need them can allocate a new id
+ * value without a format change.</p>
  *
  * <p>The redundant {@link #FLAG_PQ_HYBRID} bit is preserved for quick inspection
  * but {@code kem_id} is authoritative.</p>
@@ -48,8 +51,6 @@ public final class Envelope {
     public static final byte KEM_ID_X25519_MLKEM768 = 0x01;
     /** Reserved: X25519 combined with HQC-192 (NIST Round 4 selection, March 2025). Not yet implemented. */
     public static final byte KEM_ID_X25519_HQC192 = 0x02;
-    /** Reserved: triple hybrid X25519 + ML-KEM-768 + HQC-192 for long-term archival. Not yet implemented. */
-    public static final byte KEM_ID_X25519_MLKEM768_HQC192 = 0x03;
 
     private final byte version;
     private final byte flags;
@@ -164,7 +165,6 @@ public final class Envelope {
             case KEM_ID_NONE -> "x25519";
             case KEM_ID_X25519_MLKEM768 -> "x25519+ml-kem-768";
             case KEM_ID_X25519_HQC192 -> "x25519+hqc-192";
-            case KEM_ID_X25519_MLKEM768_HQC192 -> "x25519+ml-kem-768+hqc-192";
             default -> "kem-id-0x" + Integer.toHexString(kemId & 0xff);
         };
     }

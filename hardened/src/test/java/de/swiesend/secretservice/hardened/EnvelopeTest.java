@@ -52,7 +52,7 @@ class EnvelopeTest {
                 Envelope.KEM_ID_NONE,
                 Envelope.KEM_ID_X25519_MLKEM768,
                 Envelope.KEM_ID_X25519_HQC192,
-                Envelope.KEM_ID_X25519_MLKEM768_HQC192}) {
+                (byte) 0x7f}) {  // arbitrary unknown id -- agility check
             Envelope env = new Envelope(Envelope.VERSION_1, (byte) 0, id, salt, epoch, nonce, ct);
             assertEquals(id, Envelope.fromBytes(env.toBytes()).kemId());
         }
@@ -63,7 +63,8 @@ class EnvelopeTest {
         assertEquals("x25519", Envelope.kemIdLabel(Envelope.KEM_ID_NONE));
         assertEquals("x25519+ml-kem-768", Envelope.kemIdLabel(Envelope.KEM_ID_X25519_MLKEM768));
         assertEquals("x25519+hqc-192", Envelope.kemIdLabel(Envelope.KEM_ID_X25519_HQC192));
-        assertEquals("x25519+ml-kem-768+hqc-192", Envelope.kemIdLabel(Envelope.KEM_ID_X25519_MLKEM768_HQC192));
+        // Unknown ids fall through to a generic label so future (opt-in, consumer-allocated)
+        // combinations round-trip without a format bump.
         assertTrue(Envelope.kemIdLabel((byte) 0x7f).startsWith("kem-id-0x"));
     }
 
