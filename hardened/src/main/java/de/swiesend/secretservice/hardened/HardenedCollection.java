@@ -104,21 +104,29 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         this.epochId = b.epochId != null ? b.epochId : newEpochId();
     }
 
-    public static Builder builder(CollectionInterface wrapped) {
-        return new Builder(wrapped);
+    public static Builder builder(CollectionInterface wrapped, KeyMaterialProvider keyMaterial) {
+        return new Builder(wrapped, keyMaterial);
     }
 
     public static final class Builder {
         private final CollectionInterface wrapped;
-        private KeyMaterialProvider provider;
+        private final KeyMaterialProvider provider;
         private boolean acknowledgeSecurityTheater = false;
         private boolean enablePostQuantum = false;
         private String epochId;
 
-        Builder(CollectionInterface wrapped) { this.wrapped = wrapped; }
+        Builder(CollectionInterface wrapped, KeyMaterialProvider provider) {
+            this.wrapped = Objects.requireNonNull(wrapped, "wrapped collection");
+            this.provider = Objects.requireNonNull(provider, "key material provider");
+        }
 
-        public Builder keyMaterial(KeyMaterialProvider p) { this.provider = p; return this; }
         public Builder acknowledgeSecurityTheater(boolean b) { this.acknowledgeSecurityTheater = b; return this; }
+        /**
+         * Marks newly-written envelopes with the ML-KEM-768 {@code kem_id} byte when the
+         * runtime has an ML-KEM provider. Note: in v1 this flips the envelope identifier
+         * only; the DEK derivation does not yet consume the KEM shared secret. Real
+         * forward-secrecy via persisted epoch keypairs lands in a follow-up.
+         */
         public Builder enablePostQuantum(boolean b) { this.enablePostQuantum = b; return this; }
         public Builder epochId(String id) { this.epochId = id; return this; }
 
@@ -201,8 +209,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
         Optional<Map<String, String>> attrs = wrapped.getAttributes(objectPath);
         if (attrs.isEmpty() || !ATTR_VERSION_V1.equals(attrs.get().get(ATTR_VERSION))) {
-            log.warn("withSecret: item {} is not a hardened v1 item (missing {}); refusing to expose plaintext.",
-                    objectPath, ATTR_VERSION);
+            log.warn("withSecret: {} not a hardened v1 item; refusing to expose plaintext.", objectPath);
             return Optional.empty();
         }
 
@@ -211,12 +218,14 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             try {
                 envelopeBytes = Base64.getDecoder().decode(new String(envelopeChars));
             } catch (IllegalArgumentException e) {
-                log.warn("withSecret: envelope for {} is not valid base64", objectPath);
+                log.warn("withSecret: envelope rejected for {}", objectPath);
+                log.debug("withSecret: envelope for {} is not valid base64", objectPath);
                 return null;
             }
             if (!Envelope.looksLikeEnvelope(envelopeBytes)) {
                 Arrays.fill(envelopeBytes, (byte) 0);
-                log.warn("withSecret: envelope for {} is missing SSv1 magic", objectPath);
+                log.warn("withSecret: envelope rejected for {}", objectPath);
+                log.debug("withSecret: envelope for {} is missing SSv1 magic", objectPath);
                 return null;
             }
             Envelope env;
@@ -224,7 +233,8 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 env = Envelope.fromBytes(envelopeBytes);
             } catch (RuntimeException e) {
                 Arrays.fill(envelopeBytes, (byte) 0);
-                log.warn("withSecret: envelope parse failed for {}: {}", objectPath, e.getMessage());
+                log.warn("withSecret: envelope rejected for {}", objectPath);
+                log.debug("withSecret: envelope parse failed for {}: {}", objectPath, e.getMessage());
                 return null;
             } finally {
                 Arrays.fill(envelopeBytes, (byte) 0);
@@ -243,13 +253,20 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     @Override
     public <R> Optional<R> withSecrets(Function<Map<String, char[]>, R> callback) {
         Objects.requireNonNull(callback, "callback");
-        // We need items in this collection; iterate via empty-attribute query.
-        Optional<List<String>> paths = wrapped.getItems(Map.of());
+        // Scope strictly to hardened items; foreign items are invisible to this API
+        // (matches the non-destructive read policy of withSecret).
+        Optional<List<String>> paths = wrapped.getItems(Map.of(ATTR_VERSION, ATTR_VERSION_V1));
         if (paths.isEmpty()) return Optional.empty();
         Map<String, char[]> decoded = new LinkedHashMap<>();
         try {
             for (String path : paths.get()) {
-                withSecret(path, secret -> { decoded.put(path, secret.clone()); return Boolean.TRUE; });
+                Optional<Boolean> ok = withSecret(path,
+                        secret -> { decoded.put(path, secret.clone()); return Boolean.TRUE; });
+                if (ok.isEmpty()) {
+                    // Fail-fast: never hand the callback a silently-truncated map.
+                    log.warn("withSecrets: {} could not be decrypted; aborting batch.", path);
+                    return Optional.empty();
+                }
             }
             R result = callback.apply(java.util.Collections.unmodifiableMap(decoded));
             return Optional.ofNullable(result);
@@ -300,9 +317,19 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                     Map<String, String> oldAttrs = new HashMap<>(a.get());
                     // strip hardened.* attributes before merging user-defined ones
                     oldAttrs.keySet().removeIf(k -> k != null && k.startsWith("hardened."));
-                    wrapped.deleteItem(path);
+                    // Create-then-delete: the old envelope survives until the new one
+                    // is durably written, so a crash between the two never loses data.
                     Optional<String> created = createItem(label, CharBuffer.wrap(plain), oldAttrs);
-                    return created.isPresent();
+                    if (created.isEmpty()) {
+                        log.warn("rotateEpoch: rewrap of {} failed; keeping old envelope intact.", path);
+                        return Boolean.FALSE;
+                    }
+                    boolean deleted = wrapped.deleteItem(path);
+                    if (!deleted) {
+                        log.warn("rotateEpoch: rewrote {} as {} but could not delete the old item; "
+                                + "duplicate present until resolved manually.", path, created.get());
+                    }
+                    return Boolean.TRUE;
                 } finally {
                     Arrays.fill(plain, '\0');
                 }

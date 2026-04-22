@@ -25,11 +25,22 @@ final class FakeCollection implements CollectionInterface {
 
     private final Map<String, Item> items = new LinkedHashMap<>();
     private boolean closed;
+    private boolean nextCreateFails = false;
 
     Map<String, Item> rawItems() { return Collections.unmodifiableMap(items); }
 
     void seedPlain(String path, String label, String secret, Map<String, String> attrs) {
         items.put(path, new Item(label, secret, new LinkedHashMap<>(attrs)));
+    }
+
+    /** Test hook: next call to createItem returns Optional.empty() without mutating state. */
+    void setNextCreateItemFails(boolean v) { this.nextCreateFails = v; }
+
+    /** Test hook: replace the stored secret body for an item (simulates tampering). */
+    void overwriteRawSecret(String path, String newRawSecret) {
+        Item it = items.get(path);
+        if (it == null) throw new IllegalStateException("no such item: " + path);
+        items.put(path, new Item(it.label, newRawSecret, it.attrs));
     }
 
     @Override public boolean clear() { items.clear(); return true; }
@@ -41,6 +52,10 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes) {
+        if (nextCreateFails) {
+            nextCreateFails = false;
+            return Optional.empty();
+        }
         String path = "/org/freedesktop/secrets/collection/test/" + UUID.randomUUID();
         items.put(path, new Item(label, secret.toString(), new LinkedHashMap<>(attributes)));
         return Optional.of(path);

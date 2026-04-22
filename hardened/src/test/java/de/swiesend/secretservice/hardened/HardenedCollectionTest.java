@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -32,15 +33,23 @@ class HardenedCollectionTest {
     }
 
     private HardenedCollection build() {
-        return HardenedCollection.builder(fake)
-                .keyMaterial(provider)
+        return HardenedCollection.builder(fake, provider)
                 .acknowledgeSecurityTheater(true)
                 .build();
     }
 
     @Test
+    void builderRequiresKeyMaterialAtCompileTime() {
+        // The provider is now a required factory argument; null must be rejected.
+        assertThrows(NullPointerException.class,
+                () -> HardenedCollection.builder(fake, null));
+        assertThrows(NullPointerException.class,
+                () -> HardenedCollection.builder(null, provider));
+    }
+
+    @Test
     void refusesWeakProviderWithoutAcknowledgement() {
-        HardenedCollection.Builder b = HardenedCollection.builder(fake).keyMaterial(provider);
+        HardenedCollection.Builder b = HardenedCollection.builder(fake, provider);
         SecurityTheaterException e = assertThrows(SecurityTheaterException.class, b::build);
         assertTrue(e.getMessage().contains("theater") || e.getMessage().contains("NONE"));
     }
@@ -74,8 +83,7 @@ class HardenedCollectionTest {
         KeyMaterialProvider wrongProvider = new NoTotpKeyMaterialProvider(
                 new EnvVarKeyMaterialProvider("a-different-pepper", null, null)
         );
-        HardenedCollection other = HardenedCollection.builder(fake)
-                .keyMaterial(wrongProvider)
+        HardenedCollection other = HardenedCollection.builder(fake, wrongProvider)
                 .acknowledgeSecurityTheater(true)
                 .build();
 
@@ -85,8 +93,6 @@ class HardenedCollectionTest {
 
     @Test
     void refusesPlaintextItemInSharedCollection() {
-        // Pre-seed a plain item (e.g., the default collection case) and verify the decorator
-        // refuses to read it and refuses to delete it.
         Map<String, String> attrs = new HashMap<>();
         attrs.put("application", "legacy");
         fake.seedPlain("/path/legacy-item", "legacy-label", "legacy-plaintext", attrs);
@@ -120,7 +126,8 @@ class HardenedCollectionTest {
     }
 
     @Test
-    void rotateEpochPreservesReadabilityAndChangesStoredEpochId() {
+    void rotateEpochCreatesThenDeletes() {
+        // Atomicity invariant: the new envelope must exist before the old one is removed.
         HardenedCollection h = build();
         String pathBefore = h.createItem("x", "secret-value").orElseThrow();
         String epochBefore = h.status().epochId();
@@ -129,14 +136,54 @@ class HardenedCollectionTest {
         String epochAfter = h.status().epochId();
         assertNotEquals(epochBefore, epochAfter);
 
-        // After rotation, the original path is gone (rewrapped as a new item) but the plaintext is
-        // recoverable via the new path.
-        Optional<java.util.List<String>> paths = fake.getItems(Map.of(
+        Optional<List<String>> paths = fake.getItems(Map.of(
                 HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1));
         assertTrue(paths.isPresent() && paths.get().size() == 1);
         String newPath = paths.get().get(0);
         assertEquals("secret-value", h.withSecret(newPath, String::new).orElse(null));
         assertFalse(fake.rawItems().containsKey(pathBefore), "old path replaced by rewrap");
+    }
+
+    @Test
+    void rotateEpochSurvivesCreateFailure() {
+        // Inject a failure on createItem: the old envelope must remain intact (no data loss).
+        HardenedCollection h = build();
+        String pathBefore = h.createItem("x", "must-not-be-lost").orElseThrow();
+        fake.setNextCreateItemFails(true);
+
+        boolean ok = h.rotateEpoch();
+        assertFalse(ok, "rotateEpoch must report failure when create fails");
+        assertTrue(fake.rawItems().containsKey(pathBefore),
+                "old hardened item must survive a failed rewrap -- no data loss");
+        assertEquals("must-not-be-lost",
+                h.withSecret(pathBefore, String::new).orElse(null),
+                "old envelope must still decrypt under the original epoch");
+    }
+
+    @Test
+    void withSecretsFailsFastOnAnyItemFailure() {
+        HardenedCollection h = build();
+        h.createItem("ok1", "good-1").orElseThrow();
+        h.createItem("ok2", "good-2").orElseThrow();
+        // Tamper: flip one envelope's base64 inside the fake so decryption fails.
+        String targetPath = fake.rawItems().keySet().iterator().next();
+        FakeCollection.Item it = fake.rawItems().get(targetPath);
+        fake.overwriteRawSecret(targetPath, "!!!not-base64!!!");
+
+        Optional<Integer> res = h.withSecrets(map -> map.size());
+        assertTrue(res.isEmpty(),
+                "withSecrets must return empty when any item fails to decrypt -- not a truncated map");
+    }
+
+    @Test
+    void withSecretsScopesToHardenedItemsOnly() {
+        // Foreign (non-hardened) items in the same collection must be invisible to withSecrets.
+        HardenedCollection h = build();
+        h.createItem("hardened-a", "plain-a").orElseThrow();
+        fake.seedPlain("/legacy/1", "legacy", "foreign", Map.of("app", "other"));
+
+        Optional<Integer> res = h.withSecrets(map -> map.size());
+        assertEquals(1, res.orElse(-1), "only the one hardened item is visible to withSecrets");
     }
 
     @Test
@@ -155,8 +202,7 @@ class HardenedCollectionTest {
                         "test provider");
             }
         };
-        HardenedCollection h = HardenedCollection.builder(fake)
-                .keyMaterial(totpProvider)
+        HardenedCollection h = HardenedCollection.builder(fake, totpProvider)
                 .acknowledgeSecurityTheater(true)
                 .build();
 

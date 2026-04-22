@@ -19,6 +19,14 @@ import java.util.Optional;
  * This provider is therefore suitable only for CI and development. Its
  * {@link ThreatCoverage#sameUid()} reports {@code NONE} so the builder refuses it in
  * production unless {@code acknowledgeSecurityTheater(true)} is set.</p>
+ *
+ * <p><b>Unzeroable backing:</b> {@code System.getenv()} has already materialised the pepper
+ * as an immutable {@link String} inside the JVM environment map before this provider sees
+ * it. We copy it to a local {@code byte[]} so subsequent access does not bounce through
+ * another {@code String}, but the original env-var String is outside our control and stays
+ * in memory until GC decides. This is consistent with, and a reason for, the
+ * {@code sameUid=NONE} rating — if you need real memory hygiene, use a provider whose
+ * backing never goes through an immutable Java string (file, TPM, HSM, interactive).</p>
  */
 public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
 
@@ -28,7 +36,11 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
     public static final String ENV_TOTP_SEED = "SECRET_SERVICE_TOTP_SEED";
     public static final String ENV_MODE = "SECRET_SERVICE_TOTP_MODE"; // NO_TOTP | STORED_STEP | LIVE_CODE
 
-    private final String pepperSource;
+    // The pepper lives here as a char[]. getPepper() clones it on each call so callers
+    // can zero their copy; the field itself is still subject to the class Javadoc's
+    // unzeroable-backing caveat because the source String (from System.getenv) lives
+    // outside this instance and cannot be scrubbed.
+    private final char[] pepperChars;
     private final byte[] totpSeed;
     private final Mode mode;
 
@@ -47,7 +59,7 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
                 "SECRET_SERVICE_PEPPER is unset. EnvVarKeyMaterialProvider fails closed rather than "
                         + "silently using a weak or empty pepper. Set the env var, or choose a different provider.");
         }
-        this.pepperSource = rawPepper;
+        this.pepperChars = rawPepper.toCharArray();
         if (rawSeed == null || rawSeed.isEmpty()) {
             this.totpSeed = null;
             this.mode = Mode.NO_TOTP;
@@ -74,7 +86,7 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
 
     @Override
     public char[] getPepper() {
-        return pepperSource.toCharArray();
+        return pepperChars.clone();  // fresh; caller zeros in a finally block
     }
 
     @Override

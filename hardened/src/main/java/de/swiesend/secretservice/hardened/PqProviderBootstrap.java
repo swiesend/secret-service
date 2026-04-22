@@ -47,29 +47,29 @@ public final class PqProviderBootstrap {
      *
      * @return {@code true} if ML-KEM-768 is available after this call
      */
-    public static boolean ensurePqProvider() {
+    public static synchronized boolean ensurePqProvider() {
         Boolean cached = RESULT.get();
         if (cached != null) return cached;
 
         String alg = probe();
         if (alg != null) {
-            RESOLVED_ALG.compareAndSet(null, alg);
-            RESULT.compareAndSet(null, Boolean.TRUE);
+            RESOLVED_ALG.set(alg);
+            RESULT.set(Boolean.TRUE);
             return true;
         }
 
         if (tryRegisterBouncyCastle()) {
             alg = probe();
             if (alg != null) {
-                RESOLVED_ALG.compareAndSet(null, alg);
-                RESULT.compareAndSet(null, Boolean.TRUE);
+                RESOLVED_ALG.set(alg);
+                RESULT.set(Boolean.TRUE);
                 log.info("PqProviderBootstrap: BouncyCastle registered; ML-KEM-768 available as \"{}\".", alg);
                 return true;
             }
             log.warn("PqProviderBootstrap: BouncyCastle was loaded but ML-KEM-768 still missing.");
         }
 
-        RESULT.compareAndSet(null, Boolean.FALSE);
+        RESULT.set(Boolean.FALSE);
         log.warn("PqProviderBootstrap: ML-KEM-768 not available via the standard "
                 + "javax.crypto.KEM SPI. Add bcprov-jdk18on 1.82 (or newer) to the "
                 + "runtime classpath on JDK 21-23, or run on JDK 24+ where SunJCE "
