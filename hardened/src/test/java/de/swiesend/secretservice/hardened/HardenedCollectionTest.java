@@ -187,6 +187,77 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void matchesSecretReturnsTrueForEquality() {
+        HardenedCollection h = build();
+        String path = h.createItem("x", "correct-horse-battery-staple").orElseThrow();
+
+        char[] typed = "correct-horse-battery-staple".toCharArray();
+        assertEquals(Boolean.TRUE, h.matchesSecret(path, typed).orElse(null));
+        // candidate must be zeroed after the call
+        for (char c : typed) assertEquals('\0', c, "candidate char[] must be zeroed on return");
+    }
+
+    @Test
+    void matchesSecretReturnsFalseForMismatch() {
+        HardenedCollection h = build();
+        String path = h.createItem("x", "correct-horse-battery-staple").orElseThrow();
+
+        char[] typed = "wrong-guess-abcde".toCharArray();
+        assertEquals(Boolean.FALSE, h.matchesSecret(path, typed).orElse(null));
+        for (char c : typed) assertEquals('\0', c, "candidate char[] must be zeroed even on mismatch");
+    }
+
+    @Test
+    void matchesSecretReturnsFalseForLengthMismatch() {
+        HardenedCollection h = build();
+        String path = h.createItem("x", "short").orElseThrow();
+        char[] typed = "short-but-longer".toCharArray();
+        assertEquals(Boolean.FALSE, h.matchesSecret(path, typed).orElse(null));
+    }
+
+    @Test
+    void matchesSecretEmptyForNonHardenedItem() {
+        HardenedCollection h = build();
+        fake.seedPlain("/legacy", "legacy", "plaintext", Map.of());
+        char[] typed = "plaintext".toCharArray();
+        assertTrue(h.matchesSecret("/legacy", typed).isEmpty(),
+                "non-hardened items are invisible to matchesSecret");
+        for (char c : typed) assertEquals('\0', c,
+                "candidate must be zeroed even when the item was rejected");
+    }
+
+    @Test
+    void matchesSecretEmptyForMissingItem() {
+        HardenedCollection h = build();
+        char[] typed = "anything".toCharArray();
+        assertTrue(h.matchesSecret("/no/such/path", typed).isEmpty());
+        for (char c : typed) assertEquals('\0', c);
+    }
+
+    @Test
+    void matchesSecretEmptyForTamperedEnvelope() {
+        HardenedCollection h = build();
+        String path = h.createItem("x", "value").orElseThrow();
+        fake.overwriteRawSecret(path, "!!!not-base64!!!");
+        char[] typed = "value".toCharArray();
+        assertTrue(h.matchesSecret(path, typed).isEmpty());
+        for (char c : typed) assertEquals('\0', c);
+    }
+
+    @Test
+    void constantTimeEqualsIsLengthIndependentOfFirstMismatchIndex() {
+        // Correctness (not timing) check: equality and mismatch outcomes are right regardless
+        // of where the first difference lies. We cannot measure timing reliably from JUnit,
+        // but we can pin the mathematical contract.
+        assertTrue(HardenedCollection.constantTimeEquals("abcdef".toCharArray(), "abcdef".toCharArray()));
+        assertFalse(HardenedCollection.constantTimeEquals("Xbcdef".toCharArray(), "abcdef".toCharArray()));
+        assertFalse(HardenedCollection.constantTimeEquals("abcdeX".toCharArray(), "abcdef".toCharArray()));
+        assertFalse(HardenedCollection.constantTimeEquals("abcdef".toCharArray(), "abcde".toCharArray()));
+        assertFalse(HardenedCollection.constantTimeEquals(null, "abcdef".toCharArray()));
+        assertFalse(HardenedCollection.constantTimeEquals("abcdef".toCharArray(), null));
+    }
+
+    @Test
     void storedStepTotpRoundTripsWithSameSeed() {
         byte[] seed = "1234567890abcdef".getBytes();
         KeyMaterialProvider totpProvider = new KeyMaterialProvider() {

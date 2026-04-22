@@ -203,6 +203,32 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     }
 
     @Override
+    public Optional<Boolean> matchesSecret(String objectPath, char[] candidate) {
+        Objects.requireNonNull(objectPath, "objectPath");
+        Objects.requireNonNull(candidate, "candidate");
+        try {
+            return withSecret(objectPath, plain -> constantTimeEquals(plain, candidate));
+        } finally {
+            Arrays.fill(candidate, '\0');
+        }
+    }
+
+    /**
+     * Constant-time char[] equality. Runtime depends only on the shorter of the two
+     * lengths; every index up to that bound is examined. A length mismatch short-circuits
+     * to {@code false} but does not leak the correct length (a remote attacker can
+     * usually infer length via other means, and constant-time length-independence would
+     * require a fixed iteration bound).
+     */
+    static boolean constantTimeEquals(char[] a, char[] b) {
+        if (a == null || b == null) return false;
+        int diff = a.length ^ b.length;
+        int n = Math.min(a.length, b.length);
+        for (int i = 0; i < n; i++) diff |= a[i] ^ b[i];
+        return diff == 0;
+    }
+
+    @Override
     public <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback) {
         Objects.requireNonNull(objectPath, "objectPath");
         Objects.requireNonNull(callback, "callback");
