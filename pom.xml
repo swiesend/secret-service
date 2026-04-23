@@ -25,6 +25,7 @@
     <modules>
         <module>core</module>
         <module>hardened</module>
+        <module>hardened-tpm2</module>
     </modules>
 
     <licenses>
@@ -69,6 +70,7 @@
         <dbus-java.version>5.2.0</dbus-java.version>
         <slf4j.version>2.0.17</slf4j.version>
         <bouncycastle.version>1.82</bouncycastle.version>
+        <tss.java.version>1.0.0</tss.java.version>
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>
@@ -122,6 +124,11 @@
                 <groupId>org.bouncycastle</groupId>
                 <artifactId>bcprov-jdk18on</artifactId>
                 <version>${bouncycastle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.microsoft.azure</groupId>
+                <artifactId>TSS.Java</artifactId>
+                <version>${tss.java.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
