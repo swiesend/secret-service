@@ -32,10 +32,10 @@ import java.util.function.Supplier;
 /**
  * {@link KeyMaterialProvider} whose pepper is sealed inside a TPM 2.0.
  *
- * <p>The pepper is never stored in a plaintext file, never in an env var, and
- * never in a same-UID-readable location. Unsealing requires:</p>
+ * <p>At rest on disk, the pepper is never plaintext and never an env var.
+ * Recovering it requires:</p>
  * <ol>
- *   <li>The TPM that produced the sealed blob (can't migrate without rewrapping).</li>
+ *   <li>The TPM that produced the sealed blob (non-migratable).</li>
  *   <li>The policy secret -- today, a password supplied at construction.</li>
  * </ol>
  *
@@ -55,9 +55,23 @@ import java.util.function.Supplier;
  * are expected to zero their copy (the {@code HardenedCollection} finally
  * block does this). {@link #close()} zeroes the internal cache.</p>
  *
- * <p>This provider reports {@code sameUid=REAL} in its {@link ThreatCoverage}
- * -- the {@code HardenedCollection.Builder} therefore accepts it without
- * {@code acknowledgeSecurityTheater(true)}.</p>
+ * <h3>Threat coverage (honest)</h3>
+ * <p>This provider reports {@code sameUid=PARTIAL} in its
+ * {@link ThreatCoverage}. The TPM authenticates possession of a secret (the
+ * password) and platform state (PCR), not the identity of the caller: a
+ * same-UID attacker opens {@code /dev/tpmrm0} and speaks TPM 2.0 directly, or
+ * ptraces the JVM and reads the already-unsealed pepper out of the heap.
+ * Meaningful same-UID defense requires an external MAC policy (SELinux label,
+ * AppArmor profile, or systemd {@code DeviceAllow}/{@code PrivateDevices})
+ * restricting {@code /dev/tpmrm0} access to the legitimate binary. The
+ * {@code HardenedCollection.Builder} still accepts this provider without
+ * {@code acknowledgeSecurityTheater(true)} because {@code PARTIAL} is not the
+ * builder's {@code NONE}-gated theater rating -- but deployers should pair it
+ * with a MAC policy for real same-UID protection.</p>
+ *
+ * <p>The TPM does give genuine defense against offline disk thieves (the
+ * blob is useless without the TPM) and cross-UID readers (device-node
+ * permissions), both of which stay rated {@code REAL}.</p>
  */
 public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoCloseable {
 
@@ -76,7 +90,15 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
         return new Tpm2KeyMaterialProvider(blobPath, password, TpmFactory::localTpmSimulator);
     }
 
-    /** General constructor: supplier returns a connected {@link Tpm} that the provider closes. */
+    /**
+     * General constructor: supplier returns a connected {@link Tpm} that the provider closes.
+     *
+     * <p>Throws {@link IOException} on any failure path: filesystem errors reading
+     * the sealed-blob file, unsupported policy kinds, TPM transport failures, and
+     * TPM error codes (wrong password, lockout, missing device). TSS.Java's
+     * unchecked exceptions are caught and wrapped so callers can rely on a single
+     * checked exception type.</p>
+     */
     public Tpm2KeyMaterialProvider(Path blobPath, char[] password, Supplier<Tpm> tpmSupplier) throws IOException {
         Objects.requireNonNull(blobPath, "blobPath");
         Objects.requireNonNull(password, "password");
@@ -86,7 +108,14 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
             throw new IOException("unsupported policyKind for this provider: " + blob.policyKind()
                     + " (only PASSWORD is implemented in v1)");
         }
-        byte[] pepperBytes = unseal(blob, password, tpmSupplier);
+        byte[] pepperBytes;
+        try {
+            pepperBytes = unseal(blob, password, tpmSupplier);
+        } catch (RuntimeException e) {
+            // TSS.Java throws unchecked on TPM error codes / transport failures; wrap so
+            // the constructor's declared IOException contract covers every failure mode.
+            throw new IOException("TPM unseal failed: " + e.getMessage(), e);
+        }
         try {
             this.cachedPepper = utf8ToChars(pepperBytes);
         } finally {
@@ -142,10 +171,11 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
 
     private static byte[] unseal(Tpm2SealedBlob blob, char[] password, Supplier<Tpm> tpmSupplier) {
         byte[] authValue = charsToUtf8(password);
-        Tpm tpm = tpmSupplier.get();
+        Tpm tpm = null;
         TPM_HANDLE primary = null;
         TPM_HANDLE sealed = null;
         try {
+            tpm = tpmSupplier.get();
             primary = tpm.CreatePrimary(
                     tpm._OwnerHandle,
                     new TPMS_SENSITIVE_CREATE(new byte[0], new byte[0]),
@@ -160,37 +190,44 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
 
             return tpm.Unseal(sealed);
         } finally {
-            try {
-                if (sealed != null) tpm.FlushContext(sealed);
-            } catch (RuntimeException e) {
-                log.debug("FlushContext(sealed) failed: {}", e.toString());
-            }
-            try {
-                if (primary != null) tpm.FlushContext(primary);
-            } catch (RuntimeException e) {
-                log.debug("FlushContext(primary) failed: {}", e.toString());
-            }
-            try {
-                tpm.close();
-            } catch (IOException e) {
-                log.debug("tpm.close() failed: {}", e.toString());
+            if (tpm != null) {
+                try {
+                    if (sealed != null) tpm.FlushContext(sealed);
+                } catch (RuntimeException e) {
+                    log.warn("FlushContext(sealed) failed; transient TPM handle may leak until TPM reset: {}",
+                            e.toString());
+                }
+                try {
+                    if (primary != null) tpm.FlushContext(primary);
+                } catch (RuntimeException e) {
+                    log.warn("FlushContext(primary) failed; transient TPM handle may leak until TPM reset: {}",
+                            e.toString());
+                }
+                try {
+                    tpm.close();
+                } catch (IOException e) {
+                    log.debug("tpm.close() failed: {}", e.toString());
+                }
             }
             Arrays.fill(authValue, (byte) 0);
         }
     }
 
     /**
-     * RSA-2048 storage-root template matching the "standard" TPM owner-hierarchy
-     * primary key used by tpm2-tools and tpm2-pkcs11 -- which means a blob sealed
-     * here will also load under those tools (and vice-versa) provided the same
-     * owner-auth and absent-PCR-policy conditions apply.
+     * RSA-2048 storage-root template. Matches the "standard" TPM owner-hierarchy
+     * primary key used by tpm2-tools and tpm2-pkcs11 except that this template
+     * omits {@code TPMA_OBJECT.noDA}. That matches the non-{@code noDA} posture
+     * of the leaf seal template in {@link Tpm2Provisioner}; the primary itself
+     * is transient and never authenticates via a password (owner-auth is empty
+     * in the constructor path), so the flag is effectively a no-op on the primary
+     * -- but removing it keeps the policy posture consistent across both templates.
      */
     static TPMT_PUBLIC storageRootTemplate() {
         return new TPMT_PUBLIC(
                 TPM_ALG_ID.SHA256,
                 new TPMA_OBJECT(TPMA_OBJECT.restricted, TPMA_OBJECT.decrypt, TPMA_OBJECT.fixedTPM,
                         TPMA_OBJECT.fixedParent, TPMA_OBJECT.sensitiveDataOrigin,
-                        TPMA_OBJECT.userWithAuth, TPMA_OBJECT.noDA),
+                        TPMA_OBJECT.userWithAuth),
                 new byte[0],
                 new TPMS_RSA_PARMS(
                         new TPMT_SYM_DEF_OBJECT(TPM_ALG_ID.AES, 128, TPM_ALG_ID.CFB),

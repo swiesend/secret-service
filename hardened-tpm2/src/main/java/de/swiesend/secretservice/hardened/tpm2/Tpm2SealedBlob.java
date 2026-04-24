@@ -3,12 +3,17 @@ package de.swiesend.secretservice.hardened.tpm2;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Set;
 
 /**
@@ -24,20 +29,38 @@ import java.util.Set;
  * ever written to this file; the pepper is recoverable only with (a) the TPM
  * that produced it and (b) the policy secret (password or PCR state).</p>
  *
- * <p>File permissions are enforced to {@code 0600} on write. Readers validate
- * mode {@code 0600} at load time and refuse over-permissive files.</p>
+ * <p>File permissions are enforced to {@code 0600}: the temp file is created
+ * mode-0600 from the outset (no umask window), and the atomic move preserves
+ * those permissions. Readers validate mode {@code 0600} at load time and
+ * refuse over-permissive files.</p>
+ *
+ * <p>The {@code policyKind} byte uses explicit stable wire codes
+ * ({@link PolicyKind#wire()}) rather than {@code ordinal()} so reordering the
+ * enum never changes the on-disk format.</p>
  */
 public final class Tpm2SealedBlob {
 
     public enum PolicyKind {
         /** Unseal requires a caller-supplied password (HMAC-session with the TPM). */
-        PASSWORD,
+        PASSWORD((byte) 0x01),
         /** Unseal requires matching PCR state at load time. Not yet shipped; reserved. */
-        PCR
+        PCR((byte) 0x02);
+
+        private final byte wire;
+        PolicyKind(byte wire) { this.wire = wire; }
+        public byte wire() { return wire; }
+
+        static PolicyKind fromWire(byte b) {
+            for (PolicyKind k : values()) if (k.wire == b) return k;
+            throw new IllegalArgumentException("unknown policy-kind wire byte: 0x" + Integer.toHexString(b & 0xff));
+        }
     }
 
     private static final byte[] MAGIC = {'T', 'P', 'M', '2', 'B', 'L', 'O', 'B'};
     private static final byte VERSION_1 = 0x01;
+
+    private static final Set<PosixFilePermission> MODE_0600 = EnumSet.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
 
     private final PolicyKind policyKind;
     private final byte[] outPublic;
@@ -64,7 +87,7 @@ public final class Tpm2SealedBlob {
         ByteBuffer buf = ByteBuffer.allocate(total).order(ByteOrder.BIG_ENDIAN);
         buf.put(MAGIC);
         buf.put(VERSION_1);
-        buf.put((byte) policyKind.ordinal());
+        buf.put(policyKind.wire());
         buf.putShort((short) outPublic.length);
         buf.put(outPublic);
         buf.putShort((short) outPrivate.length);
@@ -84,12 +107,7 @@ public final class Tpm2SealedBlob {
         if (version != VERSION_1) {
             throw new IllegalArgumentException("unsupported sealed-blob version: " + version);
         }
-        int kindOrdinal = Byte.toUnsignedInt(buf.get());
-        PolicyKind[] kinds = PolicyKind.values();
-        if (kindOrdinal >= kinds.length) {
-            throw new IllegalArgumentException("unknown policy kind: " + kindOrdinal);
-        }
-        PolicyKind policyKind = kinds[kindOrdinal];
+        PolicyKind policyKind = PolicyKind.fromWire(buf.get());
         int pubLen = Short.toUnsignedInt(buf.getShort());
         if (pubLen <= 0 || pubLen > buf.remaining() - 2) {
             throw new IllegalArgumentException("bad public-part length: " + pubLen);
@@ -105,32 +123,61 @@ public final class Tpm2SealedBlob {
         return new Tpm2SealedBlob(policyKind, pub, priv);
     }
 
-    /** Write the blob atomically, mode 0600. */
+    /**
+     * Write the blob atomically, mode {@code 0600}. Creates the temp file with
+     * owner-only permissions from the outset via a POSIX file attribute so no
+     * umask window exposes the file world-readable. Non-POSIX filesystems fall
+     * back to a create-then-chmod sequence.
+     */
     public void writeTo(Path target) throws IOException {
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        Files.write(tmp, toBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE);
-        try {
-            PosixFileAttributeView view = Files.getFileAttributeView(tmp, PosixFileAttributeView.class);
-            if (view != null) {
-                view.setPermissions(Set.of(
-                        PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        byte[] bytes = toBytes();
+        boolean posix = Files.getFileAttributeView(target.getParent() != null ? target.getParent() : tmp,
+                PosixFileAttributeView.class) != null;
+
+        if (posix) {
+            FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(MODE_0600);
+            try (SeekableByteChannel ch = Files.newByteChannel(tmp,
+                    EnumSet.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE), attr)) {
+                ch.write(ByteBuffer.wrap(bytes));
+            } catch (IOException e) {
+                Files.deleteIfExists(tmp);
+                throw e;
             }
-            Files.move(tmp, target,
-                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            try {
+                Files.write(tmp, bytes,
+                        StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            } catch (IOException e) {
+                Files.deleteIfExists(tmp);
+                throw e;
+            }
+        }
+
+        try {
+            // On POSIX the file is already mode-0600 from the create. On non-POSIX
+            // we cannot do better than our FS supports.
+            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             Files.deleteIfExists(tmp);
             throw e;
         }
     }
 
-    /** Load a blob, failing closed if the file is readable by group/others. */
+    /**
+     * Load a blob, failing closed if the file is readable by group/others or the
+     * content is malformed. Any {@link IllegalArgumentException} raised by
+     * {@link #fromBytes} (bad magic, unknown policy kind, truncated lengths) is
+     * wrapped as {@link IOException} so this method's declared contract covers
+     * every failure mode a caller needs to handle.
+     */
     public static Tpm2SealedBlob readFrom(Path source) throws IOException {
         validateOwnerReadOnly(source);
         byte[] raw = Files.readAllBytes(source);
         try {
             return fromBytes(raw);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("malformed sealed-blob file " + source + ": " + e.getMessage(), e);
         } finally {
             Arrays.fill(raw, (byte) 0);
         }

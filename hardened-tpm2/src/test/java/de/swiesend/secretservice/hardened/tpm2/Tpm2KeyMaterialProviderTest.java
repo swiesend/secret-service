@@ -3,7 +3,6 @@ package de.swiesend.secretservice.hardened.tpm2;
 import de.swiesend.secretservice.hardened.ThreatCoverage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import tss.Tpm;
 import tss.TpmFactory;
 
 import java.io.IOException;
@@ -15,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -57,7 +57,7 @@ class Tpm2KeyMaterialProviderTest {
                     java.nio.file.attribute.PosixFilePermission.OWNER_READ,
                     java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
         }
-        assertThrows(RuntimeException.class,
+        assertThrows(IOException.class,
                 () -> Tpm2KeyMaterialProvider.forSimulator(bad, "pw".toCharArray()));
     }
 
@@ -71,20 +71,17 @@ class Tpm2KeyMaterialProviderTest {
         new java.security.SecureRandom().nextBytes(pepper);
         char[] password = "t3st-p@ssword".toCharArray();
 
-        Tpm2SealedBlob blob;
-        try {
-            blob = Tpm2Provisioner.seal(pepper, password.clone(), TpmFactory::localTpmSimulator);
-        } finally {
-            // caller owns pepper lifetime; we will compare below, so don't zero yet
-        }
-
+        Tpm2SealedBlob blob = Tpm2Provisioner.seal(pepper, password.clone(), TpmFactory::localTpmSimulator);
         Path blobPath = dir.resolve("pepper.tpm2blob");
         blob.writeTo(blobPath);
 
         try (Tpm2KeyMaterialProvider provider = Tpm2KeyMaterialProvider.forSimulator(blobPath, password.clone())) {
             ThreatCoverage tc = provider.threatCoverage();
-            assertEquals(ThreatCoverage.Level.REAL, tc.sameUid(),
-                    "TPM-sealed provider must advertise sameUid=REAL");
+            assertEquals(ThreatCoverage.Level.PARTIAL, tc.sameUid(),
+                    "TPM-sealed provider must advertise sameUid=PARTIAL (real same-UID defense "
+                            + "requires an external MAC policy; see the class Javadoc).");
+            assertTrue(tc.rationale().contains("MAC policy"),
+                    "rationale must name the MAC prerequisite for same-UID defense");
             char[] roundTripped = provider.getPepper();
             try {
                 byte[] unsealedBytes = new byte[roundTripped.length];
@@ -108,14 +105,8 @@ class Tpm2KeyMaterialProviderTest {
         Path blobPath = dir.resolve("p.tpm2blob");
         blob.writeTo(blobPath);
 
-        assertThrows(RuntimeException.class,
+        assertThrows(IOException.class,
                 () -> Tpm2KeyMaterialProvider.forSimulator(blobPath, "WRONG".toCharArray()),
-                "wrong password must fail the TPM unseal authorisation");
-    }
-
-    @SuppressWarnings("unused")
-    private static Tpm unused() {
-        // references Tpm to silence unused-import warnings when the simulator tests skip
-        return null;
+                "wrong password must fail the TPM unseal authorisation as a checked IOException");
     }
 }
