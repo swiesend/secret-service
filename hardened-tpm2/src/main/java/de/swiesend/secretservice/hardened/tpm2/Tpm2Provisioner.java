@@ -114,11 +114,20 @@ public final class Tpm2Provisioner {
         }
     }
 
+    /**
+     * Sealed keyed-hash template. Note the absence of {@code TPMA_OBJECT.noDA}: the
+     * sealed object participates in the TPM's Dictionary Attack (DA) lockout, so a
+     * same-UID attacker who captures the blob file but lacks the password cannot
+     * brute-force it -- after a small number of failed {@code TPM2_Unseal} attempts
+     * (typically 32, operator-configurable via {@code TPM2_DictionaryAttackParameters})
+     * the TPM enters lockout and refuses further auth attempts on this object. The
+     * legitimate flow supplies the correct password and never trips the counter.
+     */
     private static TPMT_PUBLIC sealTemplate() {
         return new TPMT_PUBLIC(
                 TPM_ALG_ID.SHA256,
                 new TPMA_OBJECT(TPMA_OBJECT.fixedTPM, TPMA_OBJECT.fixedParent,
-                        TPMA_OBJECT.userWithAuth, TPMA_OBJECT.noDA),
+                        TPMA_OBJECT.userWithAuth),
                 new byte[0],
                 new TPMS_KEYEDHASH_PARMS(new TPMS_NULL_SCHEME_KEYEDHASH()),
                 new TPM2B_DIGEST_KEYEDHASH(new byte[0]));

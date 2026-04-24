@@ -109,14 +109,24 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
     @Override
     public ThreatCoverage threatCoverage() {
         return new ThreatCoverage(
-                ThreatCoverage.Level.REAL,
+                // Same-UID is PARTIAL, not REAL: the TPM authenticates POSSESSION OF A SECRET
+                // (the password) and PLATFORM STATE (PCR), not the identity of the caller. A
+                // same-UID attacker on the same host opens /dev/tpmrm0 and speaks TPM 2.0
+                // directly, or ptraces this JVM and reads the already-unsealed pepper out of
+                // the heap. Meaningful same-UID defense requires an external MAC policy
+                // (SELinux label, AppArmor profile, or systemd DeviceAllow / PrivateDevices)
+                // that restricts /dev/tpmrm0 access to the legitimate binary.
+                ThreatCoverage.Level.PARTIAL,
                 ThreatCoverage.Level.REAL,
                 ThreatCoverage.Level.REAL,
                 ThreatCoverage.Level.NOT_APPLICABLE,
-                "Pepper sealed inside TPM 2.0 under password policy. A same-UID attacker that "
-                        + "captures the sealed-blob file cannot recover the pepper without the "
-                        + "TPM itself (non-migratable) and the password. Offline disk theft and "
-                        + "cross-UID readers are likewise denied."
+                "Pepper sealed inside TPM 2.0 under password policy. Same-UID defense requires "
+                        + "an external MAC policy (SELinux label, AppArmor profile, or systemd "
+                        + "DeviceAllow) restricting /dev/tpmrm0 access to this binary. Without "
+                        + "that, a same-UID attacker reads the unsealed pepper from JVM memory "
+                        + "or issues TPM commands directly. The TPM defends against offline "
+                        + "theft (blob is useless without the TPM) and cross-UID readers "
+                        + "(device node permissions); it does not mediate same-UID callers."
         );
     }
 
