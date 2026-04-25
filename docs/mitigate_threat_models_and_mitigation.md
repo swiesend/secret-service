@@ -619,17 +619,25 @@ systemd-analyze verify build/yourapp.service        # if you ship a unit
 
 ### 7.4 AppImage
 
-**What this looks like.** A self-extracting `AppRun` binary containing a squashfs of your app. User downloads, `chmod +x`, double-clicks.
+**The single root cause.** AppImage has no install path. The user `chmod +x`-es a self-extracting squashfs that mounts at runtime in `/tmp/.mount_xxxxxx/` (a randomised path that changes every run) and unmounts when the process exits. **AppImage's defining feature — no install path — is exactly what every Linux security framework needs to attach a policy. For an app that handles secrets, that's the whole problem.**
 
-**What your users get.** Zero sandboxing. The AppImage runs with the user's full privileges. No install path → no place for an AppArmor profile, no place for a D-Bus policy, no place for a systemd unit.
+**What this means concretely.**
 
-**Class coverage.** Same as §7.1 *minus* the launcher script's JVM flags (some AppImage builders rewrite the entrypoint). NONE for everything except whatever the user already has set up host-side.
+- **No AppArmor / SELinux profile.** Both are path-based; the AppImage's binary lives at a randomised mount point, so you cannot ship a profile that confines it.
+- **No D-Bus policy fragment.** Session-bus drop-in lives in `/usr/share/dbus-1/session.d/`; an AppImage isn't "installed" so there is nowhere to register one.
+- **No systemd unit.** No place for the rich `Protect*=` / `Restrict*=` / `SystemCallFilter=` directives that §3.10 leans on.
+- **No udev rule.** No place to scope `/dev/tpmrm0` access to your binary specifically.
+- **No package signing in practice.** AppImage's embedded GPG-signature option exists but almost no user or updater verifies it.
 
-**Pitfalls.**
-- Even when AppImage works fine functionally, **the security posture is strictly worse than `tar.gz`**. There is no `bin/launcher` on disk for an admin to inspect or harden.
-- Users sometimes use AppImageLauncher to "integrate" the AppImage with desktop menus; it adds a `.desktop` file but no MAC.
+**Class coverage.** Same as §7.1 (plain `tar.gz`) *minus* the launcher script — some AppImage builders rewrite the entrypoint, so even the `-XX:+DisableAttachMechanism` flag from §7.1 is not guaranteed. NONE for A/B, depends-on-host for C.
 
-**Recommendation.** Avoid AppImage for any desktop app whose threat model includes class A. Use §7.3 (jpackage `.deb`/`.rpm`) for hardened desktop distribution. AppImage is fine for, e.g., a one-off troubleshooting tool that doesn't touch secrets.
+**Asymmetry vs Flatpak / Snap (the other "single-file portable" formats).** AppImage's lack of a stable install path means it can talk to the TPM directly (no sandbox to break) — but it also means it has no other defenses. Flatpak and Snap make a tradeoff (give up some flexibility, gain a sandbox); AppImage makes neither half of that tradeoff.
+
+**When AppImage is fine.** One-off troubleshooting tools, image/video editors, portable USB-stick apps, demos and pre-release builds, bridging old distros via bundled `glibc`. The "no install" property is a feature for those use-cases.
+
+**When it is not.** Any app whose threat model includes class A or class B (per §2). For those, AppImage gives you nothing the OS can attach guards to.
+
+**Recommendation.** Avoid AppImage for secret-handling desktop apps. Use §7.3 (jpackage `.deb`/`.rpm`) when class-A defense matters; §7.6 (Snap) when you also want strict-confinement plus first-class TPM via the `tpm` interface.
 
 ### 7.5 Flatpak
 
