@@ -13,9 +13,9 @@ It is structured as **threats first, then defenses, then deployment recipes**:
 4. [D-Bus policy in detail](#4-d-bus-policy-in-detail)
 5. [Secret Service backend choice — gnome-keyring vs KeePassXC](#5-secret-service-backend-choice)
 6. [LUKS / full-disk encryption](#6-luks--full-disk-encryption)
-7. [Distribution-format matrix](#7-distribution-format-matrix)
-8. [Recommendation matrix](#8-recommendation-matrix-by-deployment-scenario)
-9. [Concrete sample configurations](#9-concrete-sample-configurations)
+7. [Desktop App consumer scenarios](#7-desktop-app-consumer-scenarios) — step by step, by distribution format
+8. [CI Tool consumer scenarios](#8-ci-tool-consumer-scenarios) — step by step, by distribution format
+9. [Mitigation matrices and sample configurations](#9-mitigation-matrices-and-sample-configurations) — including the mitigation-vs-environment matrix
 10. [Honest anti-checklist](#10-honest-anti-checklist)
 11. [References](#11-references)
 
@@ -163,7 +163,7 @@ sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/sdX
 
 **Threat coverage.** **A: REAL** when policy is tight (denies `ptrace`, denies `/dev/tpmrm0` open from outside the application's domain) · **B: REAL** · C: NOT_APPLICABLE (offline) · D: NOT_APPLICABLE.
 
-**How to apply.** Ship a small policy module that confines the application to a `secret_service_app_t` domain and grants it `tpm_device_t` access. See §9.3 for the skeleton.
+**How to apply.** Ship a small policy module that confines the application to a `secret_service_app_t` domain and grants it `tpm_device_t` access. See §9.6 for the skeleton.
 
 **Limitations.** Policy authoring is non-trivial; misconfigured policy is silently denied (check `audit2allow`). SELinux is bypassed by a kernel-level adversary.
 
@@ -173,7 +173,7 @@ sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/sdX
 
 **Threat coverage.** Same as SELinux for our use case — **A: REAL** with a tight profile, **B: REAL**.
 
-**How to apply.** Drop a profile in `/etc/apparmor.d/usr.local.bin.secret-service-app`. See §9.2 for a sample. AppArmor profiles are cheaper to write than SELinux modules but path-based, so a renamed binary or symlinked path bypasses them.
+**How to apply.** Drop a profile in `/etc/apparmor.d/usr.local.bin.secret-service-app`. See §9.5 for a sample. AppArmor profiles are cheaper to write than SELinux modules but path-based, so a renamed binary or symlinked path bypasses them.
 
 **Limitations.** Path-based ⇒ symlink/rename hazards, and bind-mounts can shift things out of profile coverage. A kernel-level adversary bypasses AppArmor.
 
@@ -245,7 +245,7 @@ Plus, in JVM startup: enable `mlockall` via JNA in your application's `main()` (
 
 **Threat coverage.** Composes the above mechanisms — coverage matches whichever primitives you enable.
 
-**Key directives for our use case** (see §9.1 for a full unit):
+**Key directives for our use case** (see §9.4 for a full unit):
 
 | Directive | Effect | Class addressed |
 |---|---|---|
@@ -286,7 +286,7 @@ Plus, in JVM startup: enable `mlockall` via JNA in your application's `main()` (
 
 **Threat coverage.** Defense-in-depth on top of MAC: confining `/dev/tpmrm0` to a specific group (or the application's UID) reduces class B's TPM access.
 
-**How to apply.** See §9.8 for a sample rule.
+**How to apply.** See §9.11 for a sample rule.
 
 **Limitations.** udev runs as root with no MAC awareness; rules are advisory inputs to the device-node permission decision, not security boundaries.
 
@@ -495,127 +495,608 @@ Btrfs / ZFS / LVM snapshots run in kernel and can be read by an attacker who has
 
 ---
 
-## 7. Distribution-format matrix
+## 7. Desktop App consumer scenarios
 
-Each format gets the same shape: *what hardening it provides automatically*, *what it makes possible*, *what it prevents*, *TPM access story*, *D-Bus access story*, *threat-class delta vs an unpackaged JAR run by hand*.
+You are building a Linux desktop application that depends on `de.swiesend:secret-service` to read or write user secrets via the Secret Service daemon. Your users run a typical Linux desktop with `gnome-keyring-daemon` or KeePassXC providing the bus. The threats you must care about are dominated by **class A** (the CVE-2018-19358 same-UID attacker — a malicious `.desktop` file, a compromised browser extension, a curl|sh script the user ran an hour ago) and **class C** (the laptop gets stolen). Class B and D apply at the margins.
 
-### 7.1 Plain binary (`tar.gz` + shell installer)
+Step by step, by distribution format. For each: *what your users get out of the box*, *what you must add*, *what your library configuration should look like*, and *what to verify before shipping*.
 
-**Auto-provides.** Nothing.
-**Makes possible.** Every Linux primitive: systemd unit, AppArmor profile, SELinux module, MAC labels, capability tweaks, polkit rules. The packager writes them by hand.
-**Prevents.** Nothing — the installer can do anything.
-**TPM access.** Native; the binary opens `/dev/tpmrm0` directly subject to udev rules.
-**D-Bus access.** Native; reads `$DBUS_SESSION_BUS_ADDRESS` directly.
-**Class delta vs unpackaged JAR.** Identical until the operator wires up systemd + MAC. Best for **headless server daemons** because no packaging mediates between you and the distro's hardening framework.
+### 7.1 Plain binary archive (`tar.gz` / `zip`)
 
-### 7.2 Distribution package (`.deb` / `.rpm`)
+**What this looks like.** A tarball containing `bin/yourapp`, `lib/yourapp.jar`, `lib/<deps>.jar`, optional `share/yourapp/`. The user extracts somewhere (often `~/Apps/yourapp/`) and runs `bin/yourapp`.
 
-**Auto-provides.** Conventional install paths, declarative dependency on `systemd`, `apparmor` / `selinux-policy`, `dbus-daemon`. Package post-install scripts wire up the service.
-**Makes possible.** Ship a systemd unit, tmpfiles.d entry, sysusers.d entry, AppArmor profile, SELinux policy module, polkit rule, dbus policy file, all in one package. The platform-native way to deliver everything in §3.
-**Prevents.** Largely nothing, but conventions push you toward standard paths and discoverable hardening.
-**TPM access.** Native; package can include a udev rule (§9.8) that pins `/dev/tpmrm0` ownership.
-**D-Bus access.** Native; package can include a session-bus policy fragment.
-**Class delta.** Same as plain binary in capability, but **lower operational risk** — distro QA covers half the hardening work, and `apparmor_parser` / `restorecon` run automatically on install. Recommended for **Linux server distributions**.
+**What your users get.** Whatever the host provides — distro defaults. No MAC profile because there is no install path. No systemd integration. The launcher script is your only place to set JVM hardening flags.
 
-### 7.3 OCI containers (Docker / Podman / Kubernetes)
+**What you must add to the launcher (`bin/yourapp`):**
 
-**Auto-provides.** Default Docker security profile: namespaces (user, mount, network, PID, IPC), seccomp default profile (~50 syscalls denied), capability drop to a small default set, cgroup device deny-all. Read-only root if `--read-only`.
-**Makes possible.** Layer everything from §3 via container-native flags: `--cap-drop=ALL --cap-add=IPC_LOCK`, `--security-opt=seccomp=…`, `--security-opt=no-new-privileges`, `--read-only`, custom AppArmor profile via `--security-opt=apparmor=…`.
-**Prevents.** Direct access to host devices and IPC unless explicitly opted in.
-**TPM access.** Requires `--device=/dev/tpmrm0` plus, on systems where the TPM is in the `tss` group, mapping the container's UID into a host group with TPM access. This **erodes namespace isolation** for the device cgroup specifically.
-**D-Bus access.** Requires `--volume=$XDG_RUNTIME_DIR/bus:/run/user/1000/bus` (host-bus into container) or running an in-container dbus-daemon. Either way, the container is no longer fully sandboxed for IPC.
-**Class delta.** Strong against B in the multi-tenant case; class A is *unchanged* (a same-UID attacker on the host still bypasses container boundaries via `nsenter` / `docker exec` / kubelet API). **Not great when the workload needs the TPM**: each device pin-through is a hole in the sandbox.
+```bash
+#!/bin/sh
+set -eu
+ulimit -c 0    # no core dumps
+exec java \
+    -XX:+DisableAttachMechanism \
+    -XX:-HeapDumpOnOutOfMemoryError \
+    -Djava.security.egd=file:/dev/urandom \
+    -jar "$(dirname "$0")/../lib/yourapp.jar" "$@"
+```
+
+**Library configuration.** Use `EnvVarKeyMaterialProvider` for the pepper read from a config file, or `Tpm2KeyMaterialProvider` if you ship a `--init` step that runs `Tpm2Provisioner` on first launch. Backend: whatever is on the bus (gnome-keyring or KeePassXC).
+
+**Class coverage.**
+
+| Class | Without operator hardening | With your launcher's `-XX` flags |
+|---|---|---|
+| A | NONE | PARTIAL — JVM attach blocked; ptrace still works |
+| B | NONE | NONE |
+| C | depends on user's LUKS | same |
+| D | NOT_APPLICABLE for local-only | same |
+
+**Pitfalls.**
+- No place to ship a systemd-user unit, AppArmor profile, or D-Bus policy. Document them in your README so power users can wire them up.
+- Users *will* `wget | tar` your release; no signing, no integrity check by default. Ship `.tar.gz.sig` + a public key in the README.
+
+**Ship-readiness check.**
+```sh
+shellcheck bin/yourapp        # lint launcher
+sha256sum yourapp-3.0.0.tar.gz > yourapp-3.0.0.tar.gz.sha256
+```
+
+### 7.2 Self-contained JAR (`java -jar yourapp.jar`)
+
+**What this looks like.** A single `yourapp.jar` (Maven Shade / shadowJar / jlink runtime image). User runs `java -jar yourapp.jar`.
+
+**What your users get.** Even less than §7.1 — no launcher means no place for `ulimit -c 0` or `-XX:+DisableAttachMechanism` unless the user reads your README and types them in by hand.
+
+**Library configuration.** Same as §7.1. Add a runtime `mlockall` call via JNA early in `main()` so memory hygiene at least partially holds without operator help — see §3.9 for details and the `CAP_IPC_LOCK` requirement.
+
+**Class coverage.** Same as §7.1, *minus* the launcher-set JVM flags. Effectively no improvement over a vanilla `java -jar`.
+
+**Pitfalls.**
+- Shadow-JAR'ing `bcprov-jdk18on` (BouncyCastle) into your fat JAR can trip JCE provider signing requirements at runtime. Test on a vanilla JDK 21 install, not just your dev box.
+- `java -jar` ignores `-XX` flags before the `-jar` argument unless the user types them.
+
+**Ship-readiness check.**
+```sh
+mvn package
+java -jar target/yourapp-3.0.0.jar --version  # smoke test on JDK 21
+```
+
+**Recommendation.** Use §7.3 (jpackage) instead of §7.2 for desktop apps — it gives you the launcher and the install path for free.
+
+### 7.3 jpackage-built `.deb` / `.rpm`
+
+**What this looks like.** `jpackage` (bundled with JDK 17+) takes your runtime image and produces a native `.deb`, `.rpm`, `.dmg`, or `.exe`. Linux output: a proper system package with `/usr/bin/yourapp`, `/usr/lib/yourapp/`, `/usr/share/applications/yourapp.desktop`, optional systemd-user unit. **This is the right answer for Linux desktop distribution.**
+
+**Sample invocation.**
+```sh
+jpackage \
+    --type deb \
+    --name yourapp \
+    --app-version 3.0.0 \
+    --vendor "Your Org" \
+    --description "Description" \
+    --linux-shortcut \
+    --input target/distribution \
+    --main-jar yourapp.jar \
+    --main-class com.example.Main \
+    --java-options "-XX:+DisableAttachMechanism" \
+    --java-options "-XX:-HeapDumpOnOutOfMemoryError" \
+    --linux-package-deps "libsecret-1-0, dbus-x11"
+```
+
+**What your users get.** A native package signed and installable via `apt`/`dnf`. Distro hooks fire: `apparmor_parser` picks up profiles you ship in `/etc/apparmor.d/`, `restorecon` labels your binary for SELinux. `systemctl --user enable yourapp.service` works if you ship a `--linux-service` unit.
+
+**What you must add to the package.**
+- `/etc/apparmor.d/usr.bin.yourapp` (see §9.5 — copy-paste, adjust the binary path).
+- `/usr/share/dbus-1/session.d/yourapp.conf` if you want to lock down which UIDs talk to Secret Service.
+- `debian/postinst` runs `apparmor_parser -r /etc/apparmor.d/usr.bin.yourapp` for systems without the auto-hook.
+- Optional `/etc/udev/rules.d/99-yourapp-tpm.rules` to give the user's primary group TPM access.
+
+**Library configuration.** `Tpm2KeyMaterialProvider` is the recommended default here because:
+1. The install path is well-known so `pepper.tpm2blob` lives somewhere predictable (`~/.config/yourapp/pepper.tpm2blob`).
+2. `Tpm2Provisioner` can run as a systemd-user oneshot on first launch.
+3. The AppArmor profile you ship covers `/dev/tpmrm0` access.
+
+**Class coverage.**
+
+| Class | Coverage |
+|---|---|
+| A | **REAL** with shipped AppArmor profile + interactive KeePassXC backend |
+| B | **REAL** with shipped D-Bus policy fragment |
+| C | **REAL** with TPM-bound pepper (TPM-bound LUKS recommended on top) |
+| D | NOT_APPLICABLE for local-only apps |
+
+**Pitfalls.**
+- Two binaries means two MAC profiles. If you bundle a JRE in the package, point the AppArmor profile at the bundled `java`, not `/usr/bin/java`.
+- jpackage's launcher is a tiny C binary; AppArmor must allow it to `exec` the bundled JVM.
+
+**Ship-readiness check.**
+```sh
+lintian yourapp_3.0.0_amd64.deb
+apparmor_parser -Q /etc/apparmor.d/usr.bin.yourapp  # syntax check on built profile
+systemd-analyze verify build/yourapp.service        # if you ship a unit
+```
 
 ### 7.4 AppImage
 
-**Auto-provides.** Nothing. AppImage is a self-extracting squashfs that runs as the user. Zero sandboxing.
-**Makes possible.** The user can apply external sandboxing (Firejail, bubblewrap), but that's manual.
-**Prevents.** Nothing.
-**TPM access.** Native — same as a plain binary the user runs.
-**D-Bus access.** Native.
-**Class delta.** Strictly worse than `tar.gz` + systemd unit: there's no install path, so there's no place for the packager to drop a unit file or a MAC profile. The user runs an unconfined binary.
-**Recommendation: avoid AppImage for hardened deployments.** AppImage is a great UX for "click to run" desktop apps; it is not a security-conscious distribution format for a daemon that handles secrets.
+**What this looks like.** A self-extracting `AppRun` binary containing a squashfs of your app. User downloads, `chmod +x`, double-clicks.
+
+**What your users get.** Zero sandboxing. The AppImage runs with the user's full privileges. No install path → no place for an AppArmor profile, no place for a D-Bus policy, no place for a systemd unit.
+
+**Class coverage.** Same as §7.1 *minus* the launcher script's JVM flags (some AppImage builders rewrite the entrypoint). NONE for everything except whatever the user already has set up host-side.
+
+**Pitfalls.**
+- Even when AppImage works fine functionally, **the security posture is strictly worse than `tar.gz`**. There is no `bin/launcher` on disk for an admin to inspect or harden.
+- Users sometimes use AppImageLauncher to "integrate" the AppImage with desktop menus; it adds a `.desktop` file but no MAC.
+
+**Recommendation.** Avoid AppImage for any desktop app whose threat model includes class A. Use §7.3 (jpackage `.deb`/`.rpm`) for hardened desktop distribution. AppImage is fine for, e.g., a one-off troubleshooting tool that doesn't touch secrets.
 
 ### 7.5 Flatpak
 
-**Auto-provides.** Strong sandbox: bubblewrap-based namespaces, seccomp filter, restricted filesystem view (only `~/.var/app/<id>/`), no host network unless declared, no devices unless declared. Portal-mediated access to host resources.
-**Makes possible.** Per-app capability declarations in the manifest (`finish-args`): which buses, which directories, which devices.
-**Prevents.** Direct talking to the host session bus unless `--socket=session-bus` is declared. Direct device access unless `--device=…` is declared.
-**TPM access.** **`/dev/tpmrm0` is not exposed by any Flatpak portal.** A Flatpak'd application that wants TPM access must declare `--device=all` (or `--device=tpm` if available, which is non-standard) — and that **breaks the sandbox** for the device cgroup, undoing much of Flatpak's benefit. The honest options under Flatpak:
-  1. Don't use the TPM provider; fall back to `EnvVarKeyMaterialProvider` with the loud warning. Class A: NONE; class B: depends.
-  2. Use `xdg-desktop-portal-secret` instead of this library's hardened wrapper. The portal mediates secret access by prompting the user; the application never sees the underlying daemon.
-**D-Bus access.** `--talk-name=org.freedesktop.portal.Secret` is the sandbox-friendly path. `--talk-name=org.freedesktop.secrets` opens the host's Secret Service daemon directly and is **discouraged** by Flatpak guidelines.
-**Class delta.** Strong against A and B for *non-TPM* workloads. The TPM tension means hardened wrapper + Flatpak is not a natural pairing.
-**Recommendation:** if you must distribute a secret-handling app via Flatpak, use the **portal**, accept that the TPM provider is unavailable, and rely on the portal's interactive prompts (close-to-class-A-PARTIAL).
+**What this looks like.** A `.flatpak` bundle distributed via Flathub or your own repo. Users `flatpak install`. The app runs in a bubblewrap sandbox with portal-mediated access to host resources.
+
+**What your users get.** Strong sandbox by default. No host filesystem, no host network, no devices, no access to the host session bus — unless you explicitly opt each in via `finish-args` in the manifest.
+
+**The TPM tension.** `/dev/tpmrm0` is **not exposed via any Flatpak portal**. To use the hardened wrapper's `Tpm2KeyMaterialProvider` from inside Flatpak, you must declare `--device=all` in your manifest, which gives access to *every* device node and effectively defeats the device-isolation half of the sandbox. **This is the single biggest reason Flatpak and the hardened wrapper do not pair well.**
+
+**The two honest options.**
+
+1. **Use the Flatpak portal instead of this library's wrapper.** `xdg-desktop-portal-secret` exposes Secret Service-shaped operations through the portal, with interactive user-consent prompts as the class-A defense. Your app talks to the portal, not the daemon — and not to this library at all for secret access. Manifest:
+   ```yaml
+   finish-args:
+     - --talk-name=org.freedesktop.portal.Secret
+     - --filesystem=xdg-data/yourapp:create
+     # NO --device=all, NO --socket=session-bus
+   ```
+2. **Drop Flatpak for this app.** If your threat model demands TPM, ship via §7.3 (`.deb`/`.rpm`) and document why Flatpak isn't on the menu.
+
+**Library configuration if you go with option 1.** You won't use `secret-service-hardened` or `secret-service-hardened-tpm2` from inside the Flatpak. The library is then irrelevant to the Flatpak'd build; consider conditionally compiling it out.
+
+**Class coverage (option 1, portal-based).**
+
+| Class | Coverage |
+|---|---|
+| A | PARTIAL — interactive portal prompt |
+| B | REAL — Flatpak namespace isolation |
+| C | depends on host LUKS |
+| D | NOT_APPLICABLE |
+
+**Pitfalls.**
+- Don't request `--socket=session-bus` "just in case" — that gives full session-bus access and undoes the portal's class-A defense.
+- The portal API is narrower than full Secret Service; advanced operations (custom collections, attribute search) are unavailable.
+
+**Ship-readiness check.**
+```sh
+flatpak-builder --force-clean --user --install build-dir org.example.YourApp.yml
+flatpak run --command=sh org.example.YourApp -c 'ls /dev/tpm* 2>&1'   # should fail / show no nodes
+```
 
 ### 7.6 Snap
 
-**Auto-provides.** AppArmor confinement (strict / classic / devmode), seccomp filter, namespace isolation. Mediated host access via "interfaces" — slot-based capabilities the user (or store policy) connects.
-**Makes possible.** Plug into typed interfaces: `tpm` (yes, this exists), `dbus` (system or session, with name restrictions), `home`, `removable-media`, etc.
-**Prevents.** Anything not declared in the snapcraft manifest.
-**TPM access.** **Better than Flatpak here**: there is a `tpm` interface (slot on `core`, plug in the snap). `snap connect <app>:tpm` enables it; the store can auto-connect on install if the developer declares it.
-**D-Bus access.** `dbus` plug with `name: org.freedesktop.secrets`, `interface: org.freedesktop.Secret.Service`. More restrictive than Flatpak's `--talk-name`.
-**Class delta.** Strong against A, B, C (LUKS still relevant). The TPM access path is straightforward — no manifest contortions.
-**Recommendation:** Snap is a **good fit** if you're targeting Ubuntu / Ubuntu Core where Snap is native; arguably better than Flatpak for TPM-using applications because `tpm` interface is a first-class concept.
+**What this looks like.** A `.snap` bundle distributed via the Snap Store. Users `snap install yourapp`. The app runs under AppArmor confinement with slot-based interfaces declared in `snapcraft.yaml`.
 
-### 7.7 Nix derivation / NixOS module
+**What your users get.** AppArmor confinement, seccomp filter, namespace isolation. **Crucially, Snap has a `tpm` interface** — a first-class concept for granting TPM access without breaking the sandbox. This makes Snap the only mainstream Linux app-format that pairs cleanly with the hardened wrapper.
 
-**Auto-provides.** Reproducible build, content-addressed store, `/nix/store` is read-only. NixOS modules wire up systemd units declaratively.
-**Makes possible.** A NixOS module can declare the package + systemd unit + AppArmor profile + udev rules + dbus policy in one Nix expression. Closest to "distribution format and policy in one place."
-**Prevents.** Nothing in particular at the runtime level — the binary still runs as a normal Linux process. Reproducibility helps against supply-chain attacks (recompile-from-source verification).
-**TPM access.** Native; the NixOS module can declare `services.tpm2.enable = true` and add the user to `tss`.
-**D-Bus access.** NixOS module can drop session/system policy fragments via `services.dbus.packages = [ pkgs.… ]`.
-**Class delta.** Equivalent to `.deb`/`.rpm` for a NixOS deployer, with the supply-chain bonus.
-**Recommendation:** if you're already on NixOS, package as a Nix derivation + module. Otherwise, `.deb`/`.rpm` is the more portable choice.
+**Sample manifest fragment.**
+```yaml
+name: yourapp
+base: core22
+confinement: strict
+apps:
+  yourapp:
+    command: bin/yourapp
+    plugs:
+      - tpm                   # /dev/tpmrm0 access via the TPM interface
+      - secret-service-client # session-bus to org.freedesktop.secrets
+      - home                  # user data
+plugs:
+  secret-service-client:
+    interface: dbus
+    bus: session
+    name: org.freedesktop.secrets
+```
 
-### 7.8 Format vs class-delta summary
+`snap connect yourapp:tpm` (or auto-connect via store policy) wires up the device cgroup. The user gets confined desktop integration plus working TPM.
+
+**Library configuration.** `Tpm2KeyMaterialProvider` works as expected; the sealed-blob lives at `$SNAP_USER_COMMON/pepper.tpm2blob` (typically `~/snap/yourapp/common/pepper.tpm2blob`).
+
+**Class coverage.**
+
+| Class | Coverage |
+|---|---|
+| A | PARTIAL — strict confinement; ptrace blocked by default seccomp |
+| B | REAL — namespace + AppArmor |
+| C | REAL with TPM provider; depends on host LUKS otherwise |
+| D | NOT_APPLICABLE |
+
+**Pitfalls.**
+- Auto-connect for `tpm` requires store-team review; expect delay between manifest update and "just works for users."
+- `snap install --classic` (classic confinement) **disables** all the above — only use it as a last resort, e.g. for ops tools that need raw filesystem access.
+
+**Ship-readiness check.**
+```sh
+snapcraft --use-lxd
+snap install --dangerous yourapp_3.0.0_amd64.snap
+snap connections yourapp                  # should list tpm + secret-service-client
+snap run yourapp --version                # smoke test
+```
+
+**Recommendation.** Snap is the **best Linux desktop format for secret-handling apps that benefit from the hardened wrapper + TPM**, especially when targeting Ubuntu / Ubuntu Core.
+
+### 7.7 Nix / NixPkgs / Home Manager
+
+**What this looks like.** A Nix derivation that produces a `/nix/store/<hash>-yourapp/` tree. NixOS / Home-Manager users add it to their config; non-NixOS users `nix-env -iA`.
+
+**What your users get.** Reproducible builds, content-addressed store, `/nix/store` is read-only by construction. NixOS modules can declare a complete deployment (package + AppArmor profile + udev rule + D-Bus policy) in one Nix expression. Closest thing to "distribution and policy in one place."
+
+**Library configuration.** Same as §7.3 — TPM provider is recommended, AppArmor profile shipped via the module's `security.apparmor.policies` option.
+
+**Class coverage.** Equivalent to §7.3 (`.deb`/`.rpm`) for a NixOS user, plus reproducibility (mitigates supply-chain class of attack against the build).
+
+**Recommendation.** Ship a Nix flake alongside §7.3 for the NixOS minority. Don't make Nix your only Linux distribution path — Nix-only desktop apps stay a niche.
+
+### 7.8 Quick decision tree for desktop apps
+
+```
+Does your app handle real user secrets?
+├── No  → AppImage is fine; ignore the rest of this section.
+└── Yes
+    ├── Do you need TPM-sealed pepper?
+    │   ├── Yes → §7.3 (.deb/.rpm) preferred; §7.6 (Snap) viable.
+    │   │        AVOID Flatpak (§7.5) — TPM tension.
+    │   └── No  → §7.3 (.deb/.rpm) for OS integration; §7.5 (Flatpak via
+    │             portal) for sandboxed cross-distro reach.
+    └── Are users primarily on Ubuntu / Ubuntu Core?
+        └── Strongly consider §7.6 (Snap) — best Linux sandbox + TPM.
+```
+
+The plain `tar.gz` (§7.1) and self-contained JAR (§7.2) remain useful for power-user releases and Java-savvy audiences but should not be your only Linux distribution channel for a secret-handling app.
+
+---
+
+
+## 8. CI Tool consumer scenarios
+
+You are building a tool that runs in a continuous-integration or build/deploy pipeline and depends on `de.swiesend:secret-service` to fetch credentials, signing keys, registry tokens, or similar build-time secrets. The environment is fundamentally different from §7:
+
+- **Headless** — no `$DBUS_SESSION_BUS_ADDRESS`, no `java.io.Console` for interactive prompts, no logged-in user. Most CI environments do not run a Secret Service daemon at all.
+- **Ephemeral or daemonised** — either a one-shot job (GitHub Actions, GitLab CI, Jenkins agent, Buildkite) that lives for minutes and is then torn down, or a long-lived self-hosted runner / build agent serving many jobs.
+- **Threat model dominated by:** class B (sidecar / cohabitating jobs leaking into yours), class C (job logs persisted by the platform, credential blobs left in build artifacts), and supply-chain attacks on the build itself. Class A is also relevant for self-hosted runners. Class D (HNDL) typically does not apply because secrets are short-lived.
+- **Backends:** rarely a desktop keyring. Usually file-based providers reading credentials injected by the platform (env var, `--password-fd`, mounted file), or an external KMS / secret manager (HashiCorp Vault, AWS KMS, GCP Secret Manager) called via its own SDK — outside the scope of this library.
+
+Step by step, by distribution format. The library can still help if you choose the right delivery shape.
+
+### 8.1 Release JAR (Maven Central / GitHub Releases)
+
+**What this looks like.** You publish the JAR; downstream pipelines depend on it via Maven/Gradle, or download a release artifact. The CI tool that consumes the JAR is itself the deployment unit.
+
+**What the consumer gets.** Whatever the host JDK provides. No isolation, no MAC, no JVM flags unless the consumer's wrapper script sets them. The library's discipline (zeroing, callback-only API) is the entire defense.
+
+**Library configuration.** `EnvVarKeyMaterialProvider` reading the pepper from an env var the CI platform injects (`SECRET_SERVICE_PEPPER`), or a file-based provider reading from a mounted file. The TPM provider is rarely available in CI; if your self-hosted runner has a TPM, document it as an opt-in.
+
+**Class coverage.**
+
+| Class | Coverage |
+|---|---|
+| A | NONE — anything on the runner shares your trust domain |
+| B | NONE — sibling jobs see your `/proc/<pid>/environ` |
+| C | depends entirely on whether the runner persists job state |
+| D | NOT_APPLICABLE for short-lived secrets |
+
+**Pitfalls.**
+- Build logs are the most underestimated class-C path. `mvn -X` echoes env vars; many CI platforms retain logs for 90+ days; some make logs public. Make sure the library never logs the pepper or DEK (it doesn't, but verify with `grep -ri pepper logs/`).
+- Test code that prints `System.getenv()` for debugging finds its way into a release. Ban `System.out.println(env)` patterns at PR-review time.
+
+**Ship-readiness check.**
+```sh
+mvn deploy -DperformRelease=true
+# After release, simulate consumer integration:
+mkdir -p /tmp/consumer && cd /tmp/consumer
+echo '<dependency>...</dependency>' > pom.xml  # template
+mvn dependency:tree | grep -i secret-service
+```
+
+### 8.2 Distribution package (`.deb` / `.rpm`) for self-hosted runner
+
+**What this looks like.** A self-hosted GitHub Actions runner, GitLab Runner, or Jenkins agent installed as a long-lived systemd service on a dedicated VM. Your tool is part of the runner's image or installed as a system package.
+
+**What the consumer gets.** Real systemd hardening (§3.10 directive set), AppArmor/SELinux integration (§3.4–§3.5), persistent state outside `~/.local/share/` (typically `/var/lib/<runner>/`).
+
+**Sample systemd unit fragment for the runner agent.** This is more aggressive than §7.3 because the daemon is fully headless and never needs to spawn child desktop processes:
+
+```ini
+[Service]
+User=ci-runner
+Group=ci-runner
+SupplementaryGroups=tss
+ExecStart=/usr/bin/java -jar /usr/lib/ci-runner/agent.jar
+LimitCORE=0
+LimitMEMLOCK=infinity
+AmbientCapabilities=CAP_IPC_LOCK
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DeviceAllow=/dev/tpmrm0 rw
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @ptrace
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/ci-runner
+```
+
+**Library configuration.** `Tpm2KeyMaterialProvider` is realistic here because the runner VM has stable hardware. Provision via `Tpm2Provisioner --password-fd 3 3<<<"$RUNNER_PEPPER_PASSWORD"` from a one-shot install hook; the password lives in the cloud provider's instance metadata or a dedicated secret store, never on disk.
+
+**Class coverage.** REAL for A/B/C with the unit above, the AppArmor profile from §9.5, and per-job UID isolation (one job → one ephemeral UID). Your CI orchestrator's job-level isolation does the heavy lifting; the systemd unit hardens the agent itself.
+
+**Pitfalls.**
+- Job-step processes inherit the agent's environment by default. Drop sensitive env vars before `Runtime.getRuntime().exec(...)` calls.
+- `RestrictAddressFamilies=AF_UNIX` breaks runners that need network access for artifact upload; widen to `AF_UNIX AF_INET AF_INET6` as needed.
+
+**Ship-readiness check.**
+```sh
+systemd-analyze verify ci-runner.service
+systemd-analyze security ci-runner.service   # target ≥ "OK" / score ≤ 4.0
+```
+
+### 8.3 OCI container (Docker, Podman, k8s) — the dominant CI format in 2026
+
+**What this looks like.** A `Dockerfile` that bakes your tool + a runtime JDK; the image runs as a CI step (`docker run`, `kubernetes pod`, `tekton task`). One image = one job.
+
+**What the consumer gets.** Default Docker security profile: namespaces, seccomp default, capability drop, cgroup device deny-all. Strong class-B defense between concurrent jobs by construction.
+
+**The Secret Service tension in containers.** Your container does **not** have a session bus. The Secret Service daemon is on the *host*'s bus, which the container cannot reach unless you bind-mount `$XDG_RUNTIME_DIR/bus` — and doing so undoes most of the container's class-A/B defense. **In practice, CI containers should not use Secret Service at all.** Read your secrets from:
+
+- An env var injected by the orchestrator (`docker run -e`, `kubernetes envFrom: secretRef`, GitHub Actions `env:`).
+- A mounted file (`docker run -v /run/secrets/pepper:/run/secrets/pepper:ro`, k8s `secret` volume).
+- An external secret manager via its SDK (Vault, AWS Secrets Manager).
+
+Use this library's `Tpm2Availability.isAvailable()` preflight (§3.13 of `secret-service-hardened-tpm2`) to detect "no TPM here, fall back to file-based provider" gracefully.
+
+**The TPM tension in containers.** `--device=/dev/tpmrm0` works in plain Docker but is **forbidden in most managed CI** (GitHub-hosted runners, GitLab.com SaaS runners, CircleCI). On self-hosted Kubernetes you can device-plugin through, but it's per-cluster ops work. Plan for "no TPM" as the CI default.
+
+**Sample Dockerfile.**
+
+```dockerfile
+FROM eclipse-temurin:21-jre-jammy
+RUN useradd -r -m -u 10001 ci-tool
+USER ci-tool
+ENV JAVA_TOOL_OPTIONS="-XX:+DisableAttachMechanism -XX:-HeapDumpOnOutOfMemoryError"
+COPY --chown=ci-tool:ci-tool target/ci-tool.jar /opt/ci-tool/ci-tool.jar
+ENTRYPOINT ["java", "-jar", "/opt/ci-tool/ci-tool.jar"]
+```
+
+**Sample Kubernetes pod spec fragment.**
+
+```yaml
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+  - name: ci-tool
+    image: ghcr.io/example/ci-tool:3.0.0
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities: { drop: ["ALL"] }
+    env:
+    - name: SECRET_SERVICE_PEPPER
+      valueFrom:
+        secretKeyRef: { name: ci-tool-secrets, key: pepper }
+```
+
+**Class coverage.**
+
+| Class | Coverage |
+|---|---|
+| A (host-level admin) | NONE — `kubectl exec` / `nsenter` bypass |
+| B (sibling pods/containers) | REAL — namespaces |
+| C (image layers retain secrets) | REAL only if you use BuildKit secret mounts |
+| D | NOT_APPLICABLE |
+
+**Pitfalls.**
+- **Never** `RUN echo $SECRET > /opt/.config` in a Dockerfile — the secret persists in a layer forever, even if a later layer deletes the file. Use `--mount=type=secret` (BuildKit).
+- `kubectl logs` retains everything written to stdout. Configure SLF4J to send sensitive paths to a file appender that the runtime tears down with the pod.
+- A `readOnlyRootFilesystem: true` container cannot write `/tmp` for the JVM; mount an `emptyDir { medium: Memory }` at `/tmp` so plaintext temp files at least never hit disk.
+
+**Ship-readiness check.**
+```sh
+docker build --no-cache -t ci-tool:test .
+docker run --rm --read-only --cap-drop=ALL --user=10001 ci-tool:test --version
+trivy image ci-tool:test    # CVE scan
+hadolint Dockerfile         # lint
+```
+
+### 8.4 GitHub Actions / GitLab CI integration
+
+**What this looks like.** You ship your CI tool as a reusable action (GH `action.yml` Docker or composite action, GitLab `include:` template). The platform's secret store injects credentials.
+
+**Sample GitHub Actions Docker action (`action.yml`).**
+
+```yaml
+name: 'Run secret-service tool'
+inputs:
+  pepper:
+    description: 'KeyMaterialProvider pepper'
+    required: true
+runs:
+  using: 'docker'
+  image: 'docker://ghcr.io/example/ci-tool:3.0.0'
+  env:
+    SECRET_SERVICE_PEPPER: ${{ inputs.pepper }}
+```
+
+**Caller workflow:**
+```yaml
+- uses: example/ci-tool@v3
+  with:
+    pepper: ${{ secrets.PEPPER }}     # GH Actions secret store
+```
+
+**Sample GitLab CI fragment.**
+
+```yaml
+variables:
+  SECRET_SERVICE_PEPPER: $PEPPER     # injected from GitLab CI variables (masked, protected)
+
+ci-tool-job:
+  image: ghcr.io/example/ci-tool:3.0.0
+  script:
+    - java -jar /opt/ci-tool/ci-tool.jar fetch
+```
+
+**Library configuration.** `EnvVarKeyMaterialProvider` reading `SECRET_SERVICE_PEPPER`. The library's loud warning at construction is appropriate: env-var pepper is class-A theatre. In CI that's acceptable because the CI runner *is* the trust boundary — there is no other class-A actor to defend against. Document this loudly so a copy-pasted snippet does not migrate to a desktop deployment.
+
+**Pitfalls.**
+- **GH Actions auto-masks the literal value of `secrets.PEPPER`** in logs, but only the literal string. If your tool transforms it (`base64 -d`, splits, hashes) the *transformed* form is unmasked. Use the raw secret end-to-end.
+- GitLab CI's "masked" variables only mask values that are 8+ characters and pass a charset check. A short or special-character pepper unmasks silently.
+- Forks of public repos do **not** receive secrets in PR/MR builds (by default). Test paths that depend on secrets must run only on `push` to the main repo.
+
+**Ship-readiness check.**
+```sh
+act -W .github/workflows/test.yml --secret-file .secrets   # local GHA dry-run
+gitlab-runner exec docker ci-tool-job --env-file .env      # local GitLab CI dry-run
+```
+
+### 8.5 Self-hosted long-running CI controller (Jenkins, Buildkite, Harness, …)
+
+**What this looks like.** A controller process that schedules jobs, fetches credentials, signs artifacts. Typically runs as `systemd` on a dedicated VM behind a load balancer.
+
+**What the consumer gets.** Same as §8.2 (`.deb`/`.rpm` self-hosted runner), but the controller talks to a real secret manager (Vault / KMS / cloud-native) over the network rather than reading peppers from disk.
+
+**Library configuration.** Implement a custom `KeyMaterialProvider` that delegates to your secret manager's SDK; cache the unsealed pepper for the JVM lifetime, zero on shutdown. The library's `KeyMaterialProvider` SPI is designed for exactly this.
+
+**Class coverage.** REAL for A/B/C provided the secret-manager SDK does its part (TLS, audit log, credential rotation). The library's role shrinks to "expose `char[] getPepper()`."
+
+**Pitfalls.**
+- Your `getPepper()` implementation is now on the hot path: every `withSecret` call hits it. Cache aggressively, refresh on rotation events.
+- Don't forget to zero the cached pepper on JVM shutdown — the library's `AutoCloseable` discipline applies to your custom provider too.
+
+### 8.6 Snap classic confinement (rare; ops-tool edge case)
+
+**What this looks like.** A `snap install --classic ci-tool`. Classic confinement disables AppArmor mediation — the snap runs with full filesystem and device access.
+
+**Recommendation.** Almost never appropriate for CI tools. Classic confinement exists for things like `snapcraft` itself or `kubectl` that need raw filesystem access. If your tool can run under `confinement: strict` (§7.6), do that instead. If you must use classic, the security posture is identical to a `tar.gz` (§7.1) with worse update semantics.
+
+### 8.7 Quick decision tree for CI tools
+
+```
+Is the CI environment ephemeral (one job, then torn down)?
+├── Yes (typical GHA / GitLab.com / CircleCI)
+│   ├── Use §8.3 (OCI container) + §8.4 (action wrapper).
+│   ├── EnvVarKeyMaterialProvider reading platform-injected secret.
+│   └── DO NOT try to use Secret Service or TPM here; they are not present.
+└── No — it's a long-lived runner / controller
+    ├── Self-hosted runner on dedicated VM → §8.2 (.deb/.rpm + systemd hardening).
+    ├── TPM available on the runner → Tpm2KeyMaterialProvider.
+    └── Centralised controller talking to KMS/Vault → §8.5 (custom KeyMaterialProvider).
+```
+
+The dominant honest path for CI is: **OCI container + platform-injected env-var pepper**. The hardened wrapper's class-A defense doesn't help against a CI platform compromise (the platform *is* class A in that environment). The wrapper's class-B defense via AEAD envelopes still matters when CI build artifacts are stored long-term — even if a later attacker exfiltrates them, the items are opaque.
+
+---
+
+
+## 9. Mitigation matrices and sample configurations
+
+This section is the cross-cutting reference: the format-vs-class summary, the backend stacking summary, and — most useful as a quick lookup — the **mitigation-vs-environment matrix** that lets a downstream consumer pick a row (their environment) and read off which guards apply, partially apply, or are unavailable. Sample configurations follow as subsections §9.4–§9.12 and are referenced from §7 and §8.
+
+### 9.1 Distribution format vs threat-class summary
 
 | Format | Class A | Class B | Class C | Notes |
 |---|---|---|---|---|
-| Plain binary | depends on operator | depends on operator | depends on operator | Operator owns it all |
-| `.deb`/`.rpm` | **REAL with MAC profile** | **REAL with policy fragment** | depends on LUKS | Distro-native, recommended for daemons |
-| OCI container | unchanged (host bypass) | REAL between containers | depends on host | Good for multi-tenant; tension with TPM |
-| AppImage | NONE | NONE | NONE | Avoid for secret-handling |
-| Flatpak | PARTIAL via portal | REAL | depends on LUKS | TPM tension; use portal not direct bus |
-| Snap | PARTIAL with strict confinement | REAL | depends on LUKS | Best sandbox + TPM combination |
-| Nix / NixOS | matches `.deb`/`.rpm` | matches `.deb`/`.rpm` | matches `.deb`/`.rpm` | Plus reproducibility |
+| Plain `tar.gz` (§7.1) / fat JAR (§7.2) | NONE | NONE | depends on user's LUKS | Operator owns the entire hardening story |
+| jpackage `.deb`/`.rpm` (§7.3) | **REAL** with shipped AppArmor profile + KeePassXC | **REAL** with shipped D-Bus policy | **REAL** with TPM provider + LUKS | Distro-native; recommended for desktop apps |
+| AppImage (§7.4) | NONE | NONE | depends on user's LUKS | Avoid for secret-handling |
+| Flatpak (§7.5) — portal-only | PARTIAL — interactive portal | REAL — namespace + portal | depends on host LUKS | TPM unavailable; library mostly bypassed |
+| Snap (§7.6) — strict confinement | PARTIAL — AppArmor + seccomp | REAL — namespace + AppArmor | REAL with TPM provider | Best Linux sandbox + TPM combination |
+| Nix / NixOS (§7.7) | matches `.deb`/`.rpm` | matches `.deb`/`.rpm` | matches `.deb`/`.rpm` | Plus reproducibility |
+| OCI container (§8.3) | NONE — host bypass | REAL — namespace | REAL with BuildKit secret mounts | Dominant in CI; TPM tension |
+| `.deb`/`.rpm` self-hosted runner (§8.2) | **REAL** with hardened systemd unit | **REAL** with policy fragment | **REAL** with TPM provider | Best CI runner posture |
 
----
+### 9.2 Backend stacking summary (from §5)
 
-## 8. Recommendation matrix (by deployment scenario)
+| Stack | Class A | Class B | Class C |
+|---|---|---|---|
+| gnome-keyring alone | NONE | depends on file modes | NONE if pepper colocated |
+| KeePassXC alone | PARTIAL — interactive prompt | PARTIAL | PARTIAL — Argon2 KDF |
+| gnome-keyring + hardened (TPM) | PARTIAL — needs MAC | REAL with file mode 0600 | **REAL** |
+| **KeePassXC + hardened (TPM)** | **PARTIAL → REAL** stacked | **REAL** | **REAL** — two layers |
 
-Each row picks one column for backend, distribution format, MAC framework, D-Bus posture, and LUKS expectation, with a one-sentence rationale.
+### 9.3 Mitigation-vs-environment matrix
 
-| Scenario | Backend | Format | MAC | D-Bus | LUKS | Hardened provider |
-|---|---|---|---|---|---|---|
-| **Headless Linux daemon** (CI runner, service account, autonomous agent) | own keyring under dedicated UID | `.deb`/`.rpm` + systemd | AppArmor or SELinux | session-bus restricted to service UID | required for at-rest defense | `Tpm2KeyMaterialProvider` |
-| **Multi-tenant container host / k8s** | per-tenant gnome-keyring inside namespace | OCI container | per-tenant AppArmor/SELinux label, tight seccomp | bind-mounted from host with caveats | host-level LUKS | `Tpm2KeyMaterialProvider` with explicit `--device=/dev/tpmrm0` |
-| **Linux desktop power-user app** (Cryptomator-shape) | **KeePassXC** | `.deb`/`.rpm` (avoid Flatpak for TPM) | distro default (AppArmor on Ubuntu/Debian, SELinux on Fedora) | per-user policy | required | `Tpm2KeyMaterialProvider` if the user has a TPM, else file-based |
-| **Sandboxed desktop app** (Flatpak / Snap) | portal (`xdg-desktop-portal-secret`) on Flatpak; KeePassXC on Snap with TPM interface | Snap preferred over Flatpak when TPM matters | sandbox MAC | portal-mediated | required | Snap-only; Flatpak with portal cannot use TPM |
-| **Cross-platform desktop app** | OS-native keychain (out of scope) | n/a | n/a | n/a | platform-default disk encryption | n/a — this library is Linux-only |
-| **Developer workstation / local CI** | gnome-keyring | plain binary or `.jar` | none | none | optional | `EnvVarKeyMaterialProvider` with the loud warning; document the gap |
+The grid below maps each mitigation listed in §3 (plus the application-layer additions from §5/§7/§8) against the deployment environments downstream consumers actually ship into. Read it like a lookup table: pick your row (environment), read off which mitigations apply.
 
-### Rationale for each row
+Legend:
+- **✓** — available and recommended in this environment
+- **◐** — partially available / partial value (see footnote below the table)
+- **—** — not applicable in this environment (the threat model doesn't include the class this mitigation addresses)
+- **✗** — unavailable / actively defeated by this environment's design
 
-- **Headless Linux daemon**: the deployer owns the host, can write systemd units and MAC profiles, and the threat model is dominated by C (offline backup theft) and B (sidecar / colocated services). Hardened wrapper + TPM is a natural fit; the daemon's UID isolates it from interactive user sessions.
+|  | Single-user desktop | Multi-user host | OCI container (CI / k8s) | Flatpak sandbox | Snap strict | Headless server (`.deb`/systemd) | Ephemeral CI job |
+|---|---|---|---|---|---|---|---|
+| **Storage** |  |  |  |  |  |  |  |
+| LUKS / dm-crypt full-disk | ✓ | ✓ | ◐ host-only | ◐ host-only | ◐ host-only | ✓ | — short-lived |
+| Encrypted swap / no-hibernate | ✓ | ✓ | — | — | — | ✓ | — |
+| Filesystem snapshot exclusion list | ✓ | ✓ | — | — | — | ✓ | — |
+| **File-system DAC** |  |  |  |  |  |  |  |
+| Pepper / blob file mode 0600 | ✓ | ✓ | ◐ via secret mount | ◐ inside `~/.var/app/` | ◐ inside `$SNAP_USER_COMMON` | ✓ | ◐ tmpfs |
+| Strict `umask 077` | ✓ | ✓ | ✓ via systemd `UMask=` | sandbox handles | sandbox handles | ✓ | ✓ |
+| Different-UID file owner check | ✗ same UID | ✓ | ✓ | — | — | ✓ | ◐ runner UID |
+| **Mandatory access control** |  |  |  |  |  |  |  |
+| AppArmor / SELinux profile shipped with package | ✗ no install path (tar.gz) / ✓ (`.deb`) | ✓ | ✓ via container or host | sandbox MAC | ✓ first-class | ✓ | — |
+| MAC restricting `/dev/tpmrm0` to your binary | ✓ if you ship the profile | ✓ | ◐ host-side only | ✗ portal-incompatible | ◐ via `tpm` interface | ✓ | — TPM rare |
+| **POSIX capabilities** |  |  |  |  |  |  |  |
+| `CAP_IPC_LOCK` granted (mlockall) | ◐ via systemd-user | ✓ | ◐ explicit `cap_add` | ✗ | ✓ via plug | ✓ | ◐ |
+| `CAP_SYS_PTRACE` dropped from bounding set | ✓ | ✓ | ✓ default | ✓ | ✓ | ✓ | ✓ default |
+| **Sandboxing primitives** |  |  |  |  |  |  |  |
+| Linux namespaces (mount/PID/net/IPC) | — | ◐ via firejail | ✓ | ✓ | ✓ | ◐ via systemd `Private*=` | ✓ |
+| seccomp-bpf syscall filter | ◐ via launcher | ◐ | ✓ default | ✓ | ✓ | ✓ via `SystemCallFilter=` | ✓ |
+| cgroups v2 device controller for TPM | — | ✓ | ✓ | partial | ✓ | ✓ | ✗ |
+| Read-only root filesystem | — | — | ✓ `--read-only` | ✓ | ✓ | ✓ via `ProtectSystem=strict` | ✓ |
+| **JVM memory hygiene** |  |  |  |  |  |  |  |
+| `-XX:+DisableAttachMechanism` | ✓ launcher | ✓ launcher | ✓ env | ✓ env | ✓ env | ✓ unit | ✓ env |
+| `-XX:-HeapDumpOnOutOfMemoryError` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `mlockall(MCL_CURRENT|FUTURE)` via JNA | ◐ needs cap | ✓ | ◐ | ✗ | ✓ | ✓ | ◐ |
+| `RLIMIT_CORE=0` / `ulimit -c 0` | ✓ launcher | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `prctl(PR_SET_DUMPABLE, 0)` | ✓ in main() | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **D-Bus posture** |  |  |  |  |  |  |  |
+| Session-bus policy fragment denying class B | ◐ user-writable | ✓ | — bus rarely present | sandbox handles | ✓ via plug | ✓ | — |
+| `xdg-desktop-portal-secret` via portal | — | — | ✗ | **✓** primary path | — | — | — |
+| KeePassXC backend (interactive ACL) | ✓ — best class A | ✓ | ✗ | ✗ | ◐ requires user interaction | ◐ unattended is awkward | ✗ |
+| **TPM (hardware root)** |  |  |  |  |  |  |  |
+| `Tpm2KeyMaterialProvider` available | ✓ if hardware present | ✓ | ◐ if `--device=/dev/tpmrm0` | ✗ no portal | ✓ via `tpm` plug | ✓ | ✗ typically |
+| TPM-bound LUKS (`systemd-cryptenroll`) | ✓ recommended | ✓ | — host-side | — | — | ✓ | — |
+| Secure Boot + measured boot chain | ✓ | ✓ | — | — | — | ✓ | — |
+| Dictionary-attack lockout (no `noDA` on seal) | ✓ baked into provider | ✓ | ✓ | — | ✓ | ✓ | — |
+| **Application-layer (this library)** |  |  |  |  |  |  |  |
+| AES-256-GCM envelope (hardened wrapper) | ✓ | ✓ | ✓ | ◐ via portal-only path | ✓ | ✓ | ✓ |
+| Hybrid PQ KEM (X25519 + ML-KEM-768) | — class D rare | — | — usually | — | — | ◐ if archived | ◐ if logs persist |
+| `withSecret` / `matchesSecret` callback API | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `EnvVarKeyMaterialProvider` (theatre, but appropriate in CI) | ✗ class A | ✗ | ◐ honest CI default | ◐ portal substitute | ◐ | ✗ | **✓** primary CI path |
 
-- **Multi-tenant container host**: each tenant gets its own namespace; class B between tenants is the dominant threat. OCI containers handle B by construction; TPM access requires explicit per-container device pinning, which is acceptable for trusted tenants but doesn't extend across namespaces. Class A (host-level admin) is unchanged — that's the host operator's job.
+**Footnotes for the ◐ cells:**
 
-- **Linux desktop power-user app**: KeePassXC's interactive prompt is the only realistic class-A defense available without operator-installed MAC. `.deb`/`.rpm` over Flatpak because the TPM tension under Flatpak (§7.5) is real. LUKS expected because the dominant threat for a laptop is "stolen device."
+- **LUKS in containers / sandboxes:** the host's LUKS protects the underlying disk; the container/sandbox cannot itself do FDE for its own filesystem layers, so the row is partial.
+- **`umask 077` inside sandboxes:** the sandbox enforces tighter permissions than 077 by default, so the rule applies but is often redundant.
+- **`CAP_IPC_LOCK` on systemd-user units:** newer systemd grants `CAP_IPC_LOCK` to user units when `LimitMEMLOCK=` is set, but older user-mode setups need a per-binary `setcap`.
+- **MAC profile via Snap `tpm` interface:** the snap's confinement is enforced; `tpm` plug specifically grants `/dev/tpmrm0` device access, so the MAC story is "good enough" but operator-visible policy is the snap's, not a separate AppArmor file.
+- **OCI / k8s + `--device=/dev/tpmrm0`:** works in self-hosted clusters and plain Docker; not available on most managed CI (GitHub-hosted runners, GitLab.com SaaS).
+- **`mlockall` outside container UID-mapped mode:** `--cap-add=IPC_LOCK` is required; on Kubernetes that's a `securityContext.capabilities.add: ["IPC_LOCK"]`.
+- **KeePassXC in headless server / CI:** the interactive prompt is a hard blocker in non-interactive contexts; either keep the database unlocked at startup (defeats class A) or pick a different backend.
+- **EnvVarKeyMaterialProvider in desktop / multi-user:** any process running as the user reads `/proc/<pid>/environ`; the provider's Javadoc warning calls this out and the builder refuses it without `acknowledgeSecurityTheater(true)`.
 
-- **Sandboxed desktop app**: if you're targeting Flatpak, embrace the portal — don't fight the sandbox. If you're targeting Snap and want the TPM, Snap's `tpm` interface (§7.6) is the cleaner path. Don't try to ship the same binary on both with full TPM support; the constraints are different.
+**How to use this matrix.** Pick your environment column. Each ✓ row is a guard you should adopt; each ◐ row is a guard worth adopting once you understand the footnote; each ✗ row is unavailable — if your threat model requires the class that mitigation addresses (cross-reference §3), you need to change environments.
 
-- **Cross-platform desktop app**: this library doesn't help you on Windows/macOS. Use the platform's OS keychain (Windows Credential Manager, macOS Keychain) directly via OS-native APIs.
-
-- **Developer workstation / local CI**: be honest. The wrapper buys little here against the developer themselves; the value is in proving the API works before deploying to the headless-daemon row above. Document the gap so a developer doesn't ship the dev configuration to production.
-
----
-
-## 9. Concrete sample configurations
-
-Each snippet is a drop-in starting point for a `secret-service-app` daemon under user `secretsvc` with the TPM-sealed pepper at `/var/lib/secret-service-app/pepper.tpm2blob`. Adjust paths and names for your binary. **Verify each snippet** with the command at the top of the section before deploying.
-
-### 9.1 systemd unit (`/etc/systemd/system/secret-service-app.service`)
+### 9.4 systemd unit (`/etc/systemd/system/secret-service-app.service`)
 
 ```ini
 # Verify with: systemd-analyze verify secret-service-app.service
@@ -689,7 +1170,7 @@ WantedBy=multi-user.target
 
 After dropping the unit: `systemctl daemon-reload && systemd-analyze security secret-service-app.service` (target score ≥ "OK").
 
-### 9.2 AppArmor profile (`/etc/apparmor.d/usr.bin.java.secret-service-app`)
+### 9.5 AppArmor profile (`/etc/apparmor.d/usr.bin.java.secret-service-app`)
 
 ```
 # Verify with: apparmor_parser -Q /etc/apparmor.d/usr.bin.java.secret-service-app
@@ -732,7 +1213,7 @@ profile secret-service-app /usr/bin/java {
 
 Enable with `apparmor_parser -r /etc/apparmor.d/usr.bin.java.secret-service-app && aa-enforce secret-service-app`.
 
-### 9.3 SELinux policy module (`secret_service_app.te`)
+### 9.6 SELinux policy module (`secret_service_app.te`)
 
 ```
 # Verify build with: checkmodule -M -m -o secret_service_app.mod secret_service_app.te
@@ -769,7 +1250,7 @@ neverallow * secret_service_app_t:process { ptrace };
 
 After install: `restorecon -R /var/lib/secret-service-app /usr/share/secret-service-app && setsebool -P …` as needed.
 
-### 9.4 D-Bus session-bus policy (`/usr/share/dbus-1/session.d/org.example.secret-service-app.conf`)
+### 9.7 D-Bus session-bus policy (`/usr/share/dbus-1/session.d/org.example.secret-service-app.conf`)
 
 ```xml
 <!-- Verify with: dbus-daemon --session --print-address --check-policy
@@ -807,7 +1288,7 @@ After install: `restorecon -R /var/lib/secret-service-app /usr/share/secret-serv
 </busconfig>
 ```
 
-### 9.5 Dockerfile + `docker-compose.yml`
+### 9.8 Dockerfile + `docker-compose.yml`
 
 ```dockerfile
 # Verify with: docker build --no-cache -t secret-service-app . \
@@ -849,7 +1330,7 @@ services:
       DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus"
 ```
 
-### 9.6 Flatpak manifest (`org.example.SecretServiceApp.yml`)
+### 9.9 Flatpak manifest (`org.example.SecretServiceApp.yml`)
 
 ```yaml
 # Verify with: flatpak-builder --force-clean build-dir org.example.SecretServiceApp.yml
@@ -874,7 +1355,7 @@ modules:
         path: secret-service-app-3.0.0.tar.gz
 ```
 
-### 9.7 Snap recipe (`snap/snapcraft.yaml`)
+### 9.10 Snap recipe (`snap/snapcraft.yaml`)
 
 ```yaml
 # Verify with: snapcraft --use-lxd
@@ -907,7 +1388,7 @@ parts:
     source: .
 ```
 
-### 9.8 udev rule (`/etc/udev/rules.d/99-secret-service-tpm.rules`)
+### 9.11 udev rule (`/etc/udev/rules.d/99-secret-service-tpm.rules`)
 
 ```
 # Verify with: udevadm control --reload && udevadm test /sys/class/tpm/tpm0
@@ -919,7 +1400,7 @@ KERNEL=="tpm0",   SUBSYSTEM=="tpm", GROUP="tss", MODE="0660"
 
 After install: `udevadm control --reload && udevadm trigger`. Verify with `ls -la /dev/tpmrm0`.
 
-### 9.9 JVM launcher (`/usr/bin/secret-service-app`)
+### 9.12 JVM launcher (`/usr/bin/secret-service-app`)
 
 ```bash
 #!/bin/sh
