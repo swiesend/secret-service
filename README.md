@@ -17,6 +17,8 @@ For KDE systems there is the [`kdewallet`](https://github.com/purejava/kdewallet
 
 ## Security Issues
 
+> **Deployment guidance**: for the full threat model, OS-level mitigations (D-Bus policies, MAC, systemd hardening, LUKS), and per-distribution-format recommendations (`.deb`/`.rpm`, OCI, Flatpak, Snap, …), see [`docs/mitigate_threat_models_and_mitigation.md`](docs/mitigate_threat_models_and_mitigation.md).
+
 ### CVE-2018-19358 (Vulnerability)
 
 There is an investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked).

@@ -2,6 +2,8 @@
 
 This document captures the design goals, known issues, and planned direction for the 2.x.x line of `secret-service`.
 
+> **Deployment & threat model**: for OS-level mitigations, D-Bus policy, MAC, systemd hardening, LUKS, and distribution-format guidance see [`mitigate_threat_models_and_mitigation.md`](mitigate_threat_models_and_mitigation.md).
+
 ## Background
 
 The 1.x API shipped a single high-level entry point (`SimpleCollection`) backed by a static D-Bus connection. While this made basic usage straightforward, the design created several fundamental problems that surfaced as the library gained adoption in projects like [Cryptomator](https://github.com/cryptomator/integrations-linux) and [KeePassXC](https://keepassxc.org/) integrations.
