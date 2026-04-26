@@ -84,6 +84,16 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
+                <groupId>de.swiesend</groupId>
+                <artifactId>secret-service-hardened</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.swiesend</groupId>
+                <artifactId>secret-service-hardened-tpm2</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>at.favre.lib</groupId>
                 <artifactId>hkdf</artifactId>
                 <version>${hkdf.version}</version>

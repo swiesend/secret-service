@@ -69,21 +69,86 @@ Authorization:
 
 The library provides two API layers, both using transport-encrypted secrets over the D-Bus.
 
-### Dependency
+### Coordinates (three independently published artifacts, same version)
 
-Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version. The current version requires at least _JDK 17_.
+Since `3.0.0-alpha` the project is a Maven reactor with **three separately published jars**, all released in lockstep at the same version number. **Standard consumers add only `secret-service` and pay zero overhead from the optional layers.**
+
+| Artifact | JDK floor | Adds | Pulls extra runtime deps? |
+|---|---|---|---|
+| `de.swiesend:secret-service` | 17 | The classical Secret Service 0.2 client + transport encryption | hkdf, dbus-java, slf4j-api |
+| `de.swiesend:secret-service-hardened` | 21 | Optional app-layer AES-256-GCM envelopes, `KeyMaterialProvider` SPI | none beyond core (BouncyCastle is `provided/optional` for opt-in PQ) |
+| `de.swiesend:secret-service-hardened-tpm2` | 21 | TPM-sealed pepper provider | none beyond hardened (TSS.Java is `provided/optional`) |
+
+**Most consumers want only the first row:**
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>3.0.0-beta</version>
-    <exclusions>
-        <exclusion>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </exclusion>
-    </exclusions>
+    <version>3.0.0-alpha</version>
+</dependency>
+```
+
+A `mvn dependency:tree` for that single declaration shows four transitive deps and nothing from the hardened or TPM modules. See [`docs/mitigate_threat_models_and_mitigation.md`](docs/mitigate_threat_models_and_mitigation.md) §7 to decide whether you also need the optional layers.
+
+**Optional: app-layer encryption** (adds AES-256-GCM envelopes; requires JDK 21):
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service-hardened</artifactId>
+    <version>3.0.0-alpha</version>
+</dependency>
+```
+
+**Optional: TPM-sealed pepper** (Linux + TPM 2.0 hardware required at runtime; requires JDK 21):
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service-hardened-tpm2</artifactId>
+    <version>3.0.0-alpha</version>
+</dependency>
+<!-- TSS.Java is required at runtime to actually open the TPM (provided/optional in our pom): -->
+<dependency>
+    <groupId>com.microsoft.azure</groupId>
+    <artifactId>TSS.Java</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+**Pinning all three at the same version with one BOM import:**
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>de.swiesend</groupId>
+      <artifactId>secret-service-parent</artifactId>
+      <version>3.0.0-alpha</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+
+<dependencies>
+  <dependency><groupId>de.swiesend</groupId><artifactId>secret-service</artifactId></dependency>
+  <!-- add the hardened / hardened-tpm2 ones here; no <version> needed -->
+</dependencies>
+```
+
+To swap out an incompatible `slf4j-api`, exclude it from `secret-service` (the only artifact that pulls it transitively).
+
+### Legacy (`2.x.x`) coordinates
+
+The 2.x line continues to ship as a single artifact for consumers who don't want the 3.x module split:
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service</artifactId>
+    <version>2.0.1-alpha</version>
 </dependency>
 ```
 
