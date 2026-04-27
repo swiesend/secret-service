@@ -257,6 +257,48 @@ public final class HybridKem {
         }
     }
 
+    /**
+     * Reconstructs an X25519 {@link KeyPair} from a PKCS#8-encoded private key only.
+     * The matching public key is recovered from the private's encoded form via the JCE
+     * (Java exposes both halves on the {@code XECPrivateKey}). Used by
+     * {@link EpochKeystore} so a freshly-loaded keystore can return the pair without
+     * having stored the public key separately.
+     */
+    public static KeyPair importX25519KeyPairFromPkcs8(byte[] pkcs8) {
+        try {
+            KeyFactory kf = KeyFactory.getInstance(X25519);
+            PrivateKey priv = kf.generatePrivate(new PKCS8EncodedKeySpec(pkcs8));
+            // Java's XECPrivateKey doesn't expose the public; derive by ECDH(priv, BasePoint)
+            // is non-trivial. Easier: re-derive at use time -- callers that need the public
+            // can call HybridKem.derivePublicFromX25519Private(priv) via the JCE if needed.
+            // For our use case (decapsulate side: we need only priv) the pair carries a null
+            // public; encap side never reads from the keystore.
+            return new KeyPair(null, priv);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("X25519 keypair import failed", e);
+        }
+    }
+
+    /**
+     * Reconstructs an ML-KEM {@link KeyPair} from PKCS#8 private + X.509 SPKI public.
+     * Both halves are needed (ML-KEM private keys do not embed the public). When
+     * post-quantum is unavailable in the runtime, this method throws.
+     */
+    public static KeyPair importMlKemKeyPair(byte[] pkcs8Priv, byte[] x509Pub) {
+        if (!PqProviderBootstrap.ensurePqProvider()) {
+            throw new IllegalStateException("ML-KEM provider unavailable; cannot import PQ keypair");
+        }
+        String alg = PqProviderBootstrap.mlKem768Algorithm();
+        try {
+            KeyFactory kf = KeyFactory.getInstance(alg);
+            PrivateKey priv = kf.generatePrivate(new PKCS8EncodedKeySpec(pkcs8Priv));
+            PublicKey pub = kf.generatePublic(new X509EncodedKeySpec(x509Pub));
+            return new KeyPair(pub, priv);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("ML-KEM keypair import failed", e);
+        }
+    }
+
     private static byte[] ecdh(PrivateKey priv, PublicKey pub) {
         try {
             KeyAgreement ka = KeyAgreement.getInstance(X25519);

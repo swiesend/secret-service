@@ -65,6 +65,71 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void defaultBuilderWritesKemIdNone() {
+        // Without enablePostQuantum(true), envelopes must carry kem_id=KEM_ID_NONE and
+        // an empty kem_ct. The PQ flag is opt-in.
+        HardenedCollection h = build();
+        String path = h.createItem("x", "secret").orElseThrow();
+        FakeCollection.Item stored = fake.rawItems().get(path);
+        byte[] envBytes = Base64.getDecoder().decode(stored.rawSecret());
+        Envelope env = Envelope.fromBytes(envBytes);
+        assertEquals(Envelope.KEM_ID_NONE, env.kemId());
+        assertEquals(0, env.kemCiphertext().length);
+        assertEquals("0x00", stored.attrs().get(HardenedCollection.ATTR_KEM_ID));
+    }
+
+    @Test
+    void postQuantumRoundTripWritesKemCtAndRecoversPlaintext() {
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .enablePostQuantum(true)
+                .build();
+
+        // Write an item via the PQ path.
+        String path = h.createItem("pq-item", "h@rd3ned-PQ-secret").orElseThrow();
+
+        // Inspect the envelope: kem_id should be KEM_ID_X25519_MLKEM768 and kem_ct must be non-empty.
+        FakeCollection.Item stored = fake.rawItems().get(path);
+        byte[] envBytes = Base64.getDecoder().decode(stored.rawSecret());
+        Envelope env = Envelope.fromBytes(envBytes);
+        assertEquals(Envelope.KEM_ID_X25519_MLKEM768, env.kemId(),
+                "PQ envelopes must carry kem_id=KEM_ID_X25519_MLKEM768");
+        assertTrue(env.kemCiphertext().length > 1000,
+                "PQ kem_ct must include the ML-KEM-768 ciphertext (1088 bytes) plus the X25519 SPKI");
+        assertTrue(env.hasFlag(Envelope.FLAG_PQ_HYBRID));
+
+        // The item must round-trip via the same HardenedCollection (uses the in-collection keystore).
+        String recovered = h.withSecret(path, String::new).orElseThrow();
+        assertEquals("h@rd3ned-PQ-secret", recovered);
+    }
+
+    @Test
+    void rotateEpochProvidesForwardSecrecyForPqItems() {
+        // Write a PQ item, capture its envelope bytes, rotate the epoch, then try to read
+        // the captured envelope as if it had been exfiltrated pre-rotation. The keystore's
+        // previous-epoch entry has been destroyed, so decapsulation must fail.
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .enablePostQuantum(true)
+                .build();
+
+        String path = h.createItem("pre-rotate", "leaky-secret").orElseThrow();
+        FakeCollection.Item snapshot = fake.rawItems().get(path);
+        String capturedSecret = snapshot.rawSecret();
+        Map<String, String> capturedAttrs = new HashMap<>(snapshot.attrs());
+
+        assertTrue(h.rotateEpoch(), "rotateEpoch must succeed");
+
+        // Re-seed the original (pre-rotate) item byte-for-byte at a fresh path so we can
+        // ask the wrapper to read it as if it had survived rotation. Forward secrecy means
+        // this read must fail because the old epoch's private key is destroyed.
+        fake.seedRaw("/replay/pre-rotate", "pre-rotate", capturedSecret, capturedAttrs);
+        Optional<String> recovered = h.withSecret("/replay/pre-rotate", String::new);
+        assertTrue(recovered.isEmpty(),
+                "Captured pre-rotation envelope must be unreadable after rotateEpoch destroys the old keypair");
+    }
+
+    @Test
     void emittedSecretIsBase64EnvelopeNotPlaintext() {
         HardenedCollection h = build();
         String path = h.createItem("x", "plaintext-value").orElseThrow();

@@ -18,16 +18,19 @@ class EnvelopeTest {
         return a;
     }
 
+    private static byte[] EMPTY = new byte[0];
+
     @Test
-    void roundTripPreservesAllFields() {
+    void roundTripPreservesAllFields_withKemCt() {
         byte[] salt = bytes(Envelope.SALT_LEN, 0x11);
         byte[] epoch = "epoch-abc".getBytes();
+        byte[] kemCt = bytes(1090, 0x44);   // size of a real ML-KEM ciphertext + X25519 spki
         byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
         byte[] ct = bytes(64, 0x33);
         Envelope original = new Envelope(Envelope.VERSION_1,
                 (byte) (Envelope.FLAG_PQ_HYBRID | Envelope.FLAG_STORED_STEP_TOTP),
                 Envelope.KEM_ID_X25519_MLKEM768,
-                salt, epoch, nonce, ct);
+                salt, epoch, kemCt, nonce, ct);
 
         Envelope parsed = Envelope.fromBytes(original.toBytes());
 
@@ -38,8 +41,35 @@ class EnvelopeTest {
         assertEquals(Envelope.KEM_ID_X25519_MLKEM768, parsed.kemId());
         assertArrayEquals(salt, parsed.salt());
         assertArrayEquals(epoch, parsed.epochId());
+        assertArrayEquals(kemCt, parsed.kemCiphertext());
         assertArrayEquals(nonce, parsed.nonce());
         assertArrayEquals(ct, parsed.aeadCiphertext());
+    }
+
+    @Test
+    void roundTripPreservesAllFields_classicalNoKemCt() {
+        byte[] salt = bytes(Envelope.SALT_LEN, 0x11);
+        byte[] epoch = "epoch-classical".getBytes();
+        byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
+        byte[] ct = bytes(48, 0x33);
+        Envelope original = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
+                salt, epoch, EMPTY, nonce, ct);
+        Envelope parsed = Envelope.fromBytes(original.toBytes());
+        assertEquals(Envelope.KEM_ID_NONE, parsed.kemId());
+        assertArrayEquals(EMPTY, parsed.kemCiphertext());
+        assertArrayEquals(ct, parsed.aeadCiphertext());
+    }
+
+    @Test
+    void kemIdAndKemCtMustBeConsistent() {
+        // kem_id == NONE but kem_ct non-empty -- reject
+        assertThrows(IllegalArgumentException.class, () -> new Envelope(
+                Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
+                bytes(16, 1), "e".getBytes(), bytes(8, 9), bytes(12, 2), bytes(32, 3)));
+        // kem_id != NONE but kem_ct empty -- reject
+        assertThrows(IllegalArgumentException.class, () -> new Envelope(
+                Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_X25519_MLKEM768,
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)));
     }
 
     @Test
@@ -48,12 +78,16 @@ class EnvelopeTest {
         byte[] epoch = "e".getBytes();
         byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
         byte[] ct = bytes(32, 0x33);
+        // With kem_id != NONE, kem_ct must be non-empty (any size is fine for the round-trip).
+        byte[] kemCtForPq = bytes(64, 0x55);
+        Envelope none = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
+                salt, epoch, EMPTY, nonce, ct);
+        assertEquals(Envelope.KEM_ID_NONE, Envelope.fromBytes(none.toBytes()).kemId());
         for (byte id : new byte[]{
-                Envelope.KEM_ID_NONE,
                 Envelope.KEM_ID_X25519_MLKEM768,
                 Envelope.KEM_ID_X25519_HQC192,
                 (byte) 0x7f}) {  // arbitrary unknown id -- agility check
-            Envelope env = new Envelope(Envelope.VERSION_1, (byte) 0, id, salt, epoch, nonce, ct);
+            Envelope env = new Envelope(Envelope.VERSION_1, (byte) 0, id, salt, epoch, kemCtForPq, nonce, ct);
             assertEquals(id, Envelope.fromBytes(env.toBytes()).kemId());
         }
     }
@@ -71,7 +105,7 @@ class EnvelopeTest {
     @Test
     void magicIsRequired() {
         byte[] env = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(12, 2), bytes(32, 3)).toBytes();
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)).toBytes();
         env[0] = 'X';
         assertThrows(IllegalArgumentException.class, () -> Envelope.fromBytes(env));
     }
@@ -79,15 +113,15 @@ class EnvelopeTest {
     @Test
     void rejectsUnsupportedVersion() {
         byte[] env = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(12, 2), bytes(32, 3)).toBytes();
-        env[4] = 99; // version byte
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)).toBytes();
+        env[4] = 99;
         assertThrows(IllegalArgumentException.class, () -> Envelope.fromBytes(env));
     }
 
     @Test
     void rejectsTruncatedInput() {
         byte[] env = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(12, 2), bytes(32, 3)).toBytes();
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)).toBytes();
         byte[] truncated = Arrays.copyOf(env, 10);
         assertThrows(IllegalArgumentException.class, () -> Envelope.fromBytes(truncated));
     }
@@ -95,7 +129,7 @@ class EnvelopeTest {
     @Test
     void rejectsTooShortAeadCiphertext() {
         byte[] env = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(12, 2), bytes(32, 3)).toBytes();
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)).toBytes();
         byte[] truncated = Arrays.copyOf(env, env.length - 20);
         assertThrows(IllegalArgumentException.class, () -> Envelope.fromBytes(truncated));
     }
@@ -103,9 +137,8 @@ class EnvelopeTest {
     @Test
     void rejectsInvalidSaltLengthField() {
         byte[] env = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(12, 2), bytes(32, 3)).toBytes();
-        // With kem_id inserted, salt_len now lives at offset 7 (magic[4] + version + flags + kem_id).
-        env[7] = 8; // fake salt_len = 8
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)).toBytes();
+        env[7] = 8; // fake salt_len = 8 (real is 16)
         assertThrows(IllegalArgumentException.class, () -> Envelope.fromBytes(env));
     }
 
@@ -115,23 +148,27 @@ class EnvelopeTest {
         assertFalse(Envelope.looksLikeEnvelope(new byte[]{'S', 'S'}));
         assertFalse(Envelope.looksLikeEnvelope("plain secret".getBytes()));
         byte[] good = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(12, 2), bytes(32, 3)).toBytes();
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)).toBytes();
         assertTrue(Envelope.looksLikeEnvelope(good));
     }
 
     @Test
     void constructorValidatesLengths() {
+        // bad salt len
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(15, 1), "e".getBytes(), bytes(12, 2), bytes(32, 3)));
+                bytes(15, 1), "e".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3)));
+        // bad nonce len
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(11, 2), bytes(32, 3)));
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(11, 2), bytes(32, 3)));
+        // empty epoch
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), new byte[0], bytes(12, 2), bytes(32, 3)));
+                bytes(16, 1), new byte[0], EMPTY, bytes(12, 2), bytes(32, 3)));
+        // empty aead ct
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), bytes(12, 2), new byte[0]));
+                bytes(16, 1), "e".getBytes(), EMPTY, bytes(12, 2), new byte[0]));
     }
 }

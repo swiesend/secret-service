@@ -1,0 +1,329 @@
+package de.swiesend.secretservice.hardened;
+
+import at.favre.lib.hkdf.HKDF;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.KeyPair;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Per-collection store of {@code epoch_id → (X25519 keypair, ML-KEM keypair)} pairs.
+ * Persisted as a single hardened item inside the wrapped {@code CollectionInterface},
+ * encrypted under a deterministic AES-256-GCM key derived from the pepper.
+ *
+ * <h3>Why a separate item</h3>
+ * <p>Real PQ wiring needs the KEM private key on read. We can't derive it from the
+ * pepper alone (then it would not survive {@link HardenedCollection#rotateEpoch}
+ * destroying it), and we don't want yet another out-of-band file. Storing the
+ * keystore as a hardened-but-special item in the same collection means the same
+ * backup that captures the user's secrets also captures the epoch keys -- which
+ * is the realistic operational story (lose the keyring file → lose access).
+ * The keystore is encrypted; the ciphertext-at-rest is opaque to the daemon,
+ * the same as any other hardened item.</p>
+ *
+ * <h3>Forward secrecy via destruction</h3>
+ * <p>{@link #removeEpoch(String)} drops a (epochId → keypairs) entry from the
+ * internal map and re-persists the keystore. After {@link HardenedCollection#rotateEpoch}
+ * has rewrapped all items under the new epoch and removed the old epoch's entry,
+ * old envelopes (e.g. captured from a backup taken pre-rotation) cannot be
+ * decapsulated even by an attacker who later compromises the host -- the private
+ * key is gone. This is the class-D / HNDL defense the {@code kem_id} byte
+ * advertises.</p>
+ *
+ * <h3>Wire format (inside the AES-256-GCM ciphertext)</h3>
+ * <pre>
+ * version(1)=0x01 | n_entries(2) |
+ *   ( id_len(1) | id[id_len] | x25519_priv_len(2) | x25519_priv[..] |
+ *     mlkem_priv_len(2) | mlkem_priv[..] | mlkem_pub_len(2) | mlkem_pub[..] ) repeated
+ * </pre>
+ *
+ * <p>X25519 public keys are derivable from the private; ML-KEM public keys are
+ * larger, and we keep them so re-wraps don't have to recompute. Private parts
+ * are PKCS#8-encoded; ML-KEM public is X.509 SPKI.</p>
+ *
+ * <h3>On-bus envelope</h3>
+ * <p>The keystore item lives at label {@link #LABEL} with attribute
+ * {@code hardened.kind = epoch-keystore}. The body is base64 of
+ * {@code nonce(12) || aead_ct} -- a vanilla AES-256-GCM envelope, no further
+ * structure (no kem_id, no salt, no item_uuid: the keystore IS the keystore for
+ * everything else).</p>
+ */
+final class EpochKeystore {
+
+    private static final Logger log = LoggerFactory.getLogger(EpochKeystore.class);
+
+    static final String LABEL = "__hardened_epoch_keystore__";
+    static final String ATTR_KIND = "hardened.kind";
+    static final String KIND_VALUE = "epoch-keystore";
+
+    private static final byte VERSION_1 = 0x01;
+    private static final int NONCE_LEN = 12;
+    private static final int KEK_LEN = 32; // AES-256
+    private static final int TAG_BITS = 128;
+    private static final byte[] KEK_INFO = "secret-service/hardened/epoch-keystore-v1".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] KEK_FIXED_SALT = "epoch-keystore-salt-v1".getBytes(StandardCharsets.UTF_8);
+
+    static final class EpochKeyPair {
+        final KeyPair x25519;
+        final KeyPair mlkem;            // null when PQ is not used for this epoch
+        final byte[] mlkemPubEncoded;   // cached so we don't re-encode on every encap
+
+        EpochKeyPair(KeyPair x25519, KeyPair mlkem, byte[] mlkemPubEncoded) {
+            this.x25519 = x25519;
+            this.mlkem = mlkem;
+            this.mlkemPubEncoded = mlkemPubEncoded == null ? null : mlkemPubEncoded.clone();
+        }
+    }
+
+    private final CollectionInterface wrapped;
+    private final KeyMaterialProvider provider;
+    /** Mutable in-memory map; persisted on every change via {@link #persist}. */
+    private final Map<String, EpochKeyPair> entries = new LinkedHashMap<>();
+    /** Path of the persisted keystore item, set after first persist or load. */
+    private String keystorePath;
+
+    EpochKeystore(CollectionInterface wrapped, KeyMaterialProvider provider) {
+        this.wrapped = Objects.requireNonNull(wrapped, "wrapped");
+        this.provider = Objects.requireNonNull(provider, "provider");
+    }
+
+    /**
+     * Read the keystore from the wrapped collection, decrypt, populate the in-memory map.
+     * Idempotent; safe to call before reads / writes that touch the keystore.
+     */
+    synchronized void loadIfPresent() {
+        if (keystorePath != null) return; // already loaded
+        Optional<List<String>> paths = wrapped.getItems(Map.of(ATTR_KIND, KIND_VALUE));
+        if (paths.isEmpty() || paths.get().isEmpty()) {
+            return;
+        }
+        String path = paths.get().get(0);
+        Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
+        if (attrs.isEmpty() || !KIND_VALUE.equals(attrs.get().get(ATTR_KIND))) return;
+        Boolean ok = wrapped.withSecret(path, body -> {
+            try {
+                byte[] raw = Base64.getDecoder().decode(new String(body));
+                try {
+                    byte[] plain = aeadDecrypt(deriveKek(provider.getPepper()), raw);
+                    try {
+                        deserialize(plain);
+                        return Boolean.TRUE;
+                    } finally {
+                        Arrays.fill(plain, (byte) 0);
+                    }
+                } catch (GeneralSecurityException e) {
+                    log.warn("EpochKeystore: existing keystore at {} could not be decrypted: {}",
+                            path, e.getMessage());
+                    return Boolean.FALSE;
+                } finally {
+                    Arrays.fill(raw, (byte) 0);
+                }
+            } catch (IllegalArgumentException e) {
+                log.warn("EpochKeystore: keystore body is not valid base64");
+                return Boolean.FALSE;
+            }
+        }).orElse(Boolean.FALSE);
+        if (Boolean.TRUE.equals(ok)) {
+            this.keystorePath = path;
+        }
+    }
+
+    /** Returns the keypairs for {@code epochId}, generating + persisting them on first use. */
+    synchronized EpochKeyPair getOrCreate(String epochId, HybridKem kem) {
+        loadIfPresent();
+        EpochKeyPair existing = entries.get(epochId);
+        if (existing != null) return existing;
+        KeyPair x = kem.generateEpochKeyPair();
+        KeyPair pq = null;
+        byte[] pqPub = null;
+        if (kem.postQuantumAvailable()) {
+            pq = kem.generatePqKeyPair();
+            pqPub = pq.getPublic().getEncoded();
+        }
+        EpochKeyPair fresh = new EpochKeyPair(x, pq, pqPub);
+        entries.put(epochId, fresh);
+        persist();
+        return fresh;
+    }
+
+    /** Removes an epoch entry (forward-secrecy primitive); persists the new state. */
+    synchronized void removeEpoch(String epochId) {
+        loadIfPresent();
+        if (entries.remove(epochId) != null) {
+            persist();
+        }
+    }
+
+    synchronized Optional<EpochKeyPair> get(String epochId) {
+        loadIfPresent();
+        return Optional.ofNullable(entries.get(epochId));
+    }
+
+    // --------- internal: AES-GCM under pepper-derived KEK ---------
+
+    private void persist() {
+        byte[] plain = serialize();
+        byte[] aead = null;
+        try {
+            try {
+                aead = aeadEncrypt(deriveKek(provider.getPepper()), plain);
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("EpochKeystore: AES-GCM encryption failed", e);
+            }
+            String body = Base64.getEncoder().encodeToString(aead);
+            Map<String, String> attrs = new HashMap<>();
+            attrs.put(ATTR_KIND, KIND_VALUE);
+            if (keystorePath != null) {
+                // Replace the existing keystore item: delete + create. The keystore is the sole
+                // authority for epoch keys, so a brief absence between delete and create is
+                // harmless -- decryption requires the keystore anyway.
+                wrapped.deleteItem(keystorePath);
+                keystorePath = null;
+            }
+            Optional<String> created = wrapped.createItem(LABEL, body, attrs);
+            if (created.isEmpty()) {
+                throw new IllegalStateException("EpochKeystore: persist failed -- createItem returned empty");
+            }
+            keystorePath = created.get();
+        } finally {
+            Arrays.fill(plain, (byte) 0);
+            if (aead != null) Arrays.fill(aead, (byte) 0);
+        }
+    }
+
+    private byte[] aeadEncrypt(byte[] kek, byte[] plain) throws GeneralSecurityException {
+        byte[] nonce = new byte[NONCE_LEN];
+        new SecureRandom().nextBytes(nonce);
+        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(TAG_BITS, nonce));
+        byte[] ct = c.doFinal(plain);
+        Arrays.fill(kek, (byte) 0);
+        ByteBuffer out = ByteBuffer.allocate(NONCE_LEN + ct.length);
+        out.put(nonce);
+        out.put(ct);
+        return out.array();
+    }
+
+    private byte[] aeadDecrypt(byte[] kek, byte[] noncePlusCt) throws GeneralSecurityException {
+        if (noncePlusCt.length < NONCE_LEN + 16) {
+            throw new GeneralSecurityException("keystore body too short");
+        }
+        byte[] nonce = Arrays.copyOf(noncePlusCt, NONCE_LEN);
+        byte[] ct = Arrays.copyOfRange(noncePlusCt, NONCE_LEN, noncePlusCt.length);
+        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(Cipher.DECRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(TAG_BITS, nonce));
+        try {
+            return c.doFinal(ct);
+        } finally {
+            Arrays.fill(kek, (byte) 0);
+        }
+    }
+
+    private static byte[] deriveKek(char[] pepper) {
+        // Deterministic: same pepper → same KEK → keystore decryptable across JVM restarts.
+        ByteBuffer enc = StandardCharsets.UTF_8.encode(CharBuffer.wrap(pepper));
+        byte[] pepperBytes = new byte[enc.remaining()];
+        enc.get(pepperBytes);
+        try {
+            byte[] prk = HKDF.fromHmacSha256().extract(KEK_FIXED_SALT, pepperBytes);
+            try {
+                return HKDF.fromHmacSha256().expand(prk, KEK_INFO, KEK_LEN);
+            } finally {
+                Arrays.fill(prk, (byte) 0);
+            }
+        } finally {
+            Arrays.fill(pepperBytes, (byte) 0);
+            Arrays.fill(pepper, '\0');
+        }
+    }
+
+    // --------- internal: serialise / deserialise the entry map ---------
+
+    private byte[] serialize() {
+        // Compute total size first
+        int total = 1 + 2;
+        for (Map.Entry<String, EpochKeyPair> e : entries.entrySet()) {
+            byte[] id = e.getKey().getBytes(StandardCharsets.US_ASCII);
+            byte[] xPriv = e.getValue().x25519.getPrivate().getEncoded();
+            byte[] mPriv = e.getValue().mlkem == null ? new byte[0] : e.getValue().mlkem.getPrivate().getEncoded();
+            byte[] mPub = e.getValue().mlkemPubEncoded == null ? new byte[0] : e.getValue().mlkemPubEncoded;
+            total += 1 + id.length + 2 + xPriv.length + 2 + mPriv.length + 2 + mPub.length;
+        }
+        ByteBuffer buf = ByteBuffer.allocate(total);
+        buf.put(VERSION_1);
+        buf.putShort((short) entries.size());
+        for (Map.Entry<String, EpochKeyPair> e : entries.entrySet()) {
+            byte[] id = e.getKey().getBytes(StandardCharsets.US_ASCII);
+            byte[] xPriv = e.getValue().x25519.getPrivate().getEncoded();
+            byte[] mPriv = e.getValue().mlkem == null ? new byte[0] : e.getValue().mlkem.getPrivate().getEncoded();
+            byte[] mPub = e.getValue().mlkemPubEncoded == null ? new byte[0] : e.getValue().mlkemPubEncoded;
+            buf.put((byte) id.length);
+            buf.put(id);
+            buf.putShort((short) xPriv.length).put(xPriv);
+            buf.putShort((short) mPriv.length).put(mPriv);
+            buf.putShort((short) mPub.length).put(mPub);
+            Arrays.fill(xPriv, (byte) 0);
+            Arrays.fill(mPriv, (byte) 0);
+        }
+        return buf.array();
+    }
+
+    private void deserialize(byte[] in) {
+        ByteBuffer buf = ByteBuffer.wrap(in);
+        byte version = buf.get();
+        if (version != VERSION_1) {
+            throw new IllegalArgumentException("unsupported keystore version: " + version);
+        }
+        int n = Short.toUnsignedInt(buf.getShort());
+        entries.clear();
+        for (int i = 0; i < n; i++) {
+            int idLen = Byte.toUnsignedInt(buf.get());
+            byte[] id = new byte[idLen]; buf.get(id);
+            int xPrivLen = Short.toUnsignedInt(buf.getShort());
+            byte[] xPriv = new byte[xPrivLen]; buf.get(xPriv);
+            int mPrivLen = Short.toUnsignedInt(buf.getShort());
+            byte[] mPriv = new byte[mPrivLen]; buf.get(mPriv);
+            int mPubLen = Short.toUnsignedInt(buf.getShort());
+            byte[] mPub = new byte[mPubLen]; buf.get(mPub);
+
+            KeyPair x;
+            try {
+                x = HybridKem.importX25519KeyPairFromPkcs8(xPriv);
+            } finally {
+                Arrays.fill(xPriv, (byte) 0);
+            }
+            KeyPair m = null;
+            byte[] mPubKept = mPub.length == 0 ? null : mPub;
+            if (mPrivLen > 0 && mPubLen > 0) {
+                try {
+                    m = HybridKem.importMlKemKeyPair(mPriv, mPub);
+                } catch (RuntimeException e) {
+                    log.warn("EpochKeystore: ML-KEM keypair could not be re-imported: {}", e.toString());
+                } finally {
+                    Arrays.fill(mPriv, (byte) 0);
+                }
+            }
+            entries.put(new String(id, StandardCharsets.US_ASCII), new EpochKeyPair(x, m, mPubKept));
+        }
+    }
+
+    /** For tests: direct access to in-memory entry count. */
+    synchronized int sizeForTest() { return entries.size(); }
+}

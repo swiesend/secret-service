@@ -13,11 +13,19 @@ import java.util.Objects;
  * magic(4="SSv1") | version(1) | flags(1) | kem_id(1) |
  * salt_len(1)    | salt[16]    |
  * epoch_len(1)   | epoch_id[n] |
- * nonce(12)      | aead_ct[...] | tag(16 included in aead_ct by GCM)
+ * kem_ct_len(2)  | kem_ct[m]   |  // KEM ciphertext (m=0 when kem_id=KEM_ID_NONE)
+ * nonce(12)      | aead_ct[...]   // tag(16) included in aead_ct by GCM
  * </pre>
  *
  * <p>The envelope is stored as the raw secret body; transport encryption then
  * wraps it.</p>
+ *
+ * <p>The {@code kem_ct} field carries the public part of a KEM encapsulation
+ * (e.g. ephemeral X25519 SPKI followed by ML-KEM ciphertext when
+ * {@link #KEM_ID_X25519_MLKEM768}). The reader pairs it with the matching epoch
+ * private key (held by the EpochKeystore) to recover the shared secret that
+ * participates in HKDF DEK derivation. {@code kem_ct_len = 0} means the
+ * envelope used no KEM and the DEK was derived from pepper + TOTP + salt only.</p>
  *
  * <h3>Algorithm agility via {@code kem_id}</h3>
  * <p>The {@code kem_id} byte declares which KEM the envelope was sealed under.
@@ -57,21 +65,32 @@ public final class Envelope {
     private final byte kemId;
     private final byte[] salt;
     private final byte[] epochId;
+    private final byte[] kemCiphertext;
     private final byte[] nonce;
     private final byte[] aeadCiphertext;
 
-    public Envelope(byte version, byte flags, byte kemId, byte[] salt, byte[] epochId, byte[] nonce, byte[] aeadCiphertext) {
+    public Envelope(byte version, byte flags, byte kemId, byte[] salt, byte[] epochId,
+                    byte[] kemCiphertext, byte[] nonce, byte[] aeadCiphertext) {
         this.version = version;
         this.flags = flags;
         this.kemId = kemId;
         this.salt = Objects.requireNonNull(salt, "salt");
         this.epochId = Objects.requireNonNull(epochId, "epochId");
+        this.kemCiphertext = Objects.requireNonNull(kemCiphertext, "kemCiphertext");
         this.nonce = Objects.requireNonNull(nonce, "nonce");
         this.aeadCiphertext = Objects.requireNonNull(aeadCiphertext, "aeadCiphertext");
         if (salt.length != SALT_LEN) throw new IllegalArgumentException("salt must be " + SALT_LEN + " bytes");
         if (nonce.length != NONCE_LEN) throw new IllegalArgumentException("nonce must be " + NONCE_LEN + " bytes");
         if (epochId.length > 255) throw new IllegalArgumentException("epochId too long (max 255)");
         if (epochId.length == 0) throw new IllegalArgumentException("epochId must not be empty");
+        if (kemCiphertext.length > 0xFFFF) {
+            throw new IllegalArgumentException("kemCiphertext too long (max 65535)");
+        }
+        if ((kemId == KEM_ID_NONE) != (kemCiphertext.length == 0)) {
+            throw new IllegalArgumentException(
+                    "kemCiphertext length must be 0 iff kem_id == KEM_ID_NONE; got kem_id=0x"
+                            + Integer.toHexString(kemId & 0xff) + ", kemCiphertext.len=" + kemCiphertext.length);
+        }
         if (aeadCiphertext.length == 0) throw new IllegalArgumentException("aeadCiphertext must not be empty");
     }
 
@@ -80,6 +99,7 @@ public final class Envelope {
     public byte kemId()   { return kemId; }
     public byte[] salt()           { return salt.clone(); }
     public byte[] epochId()        { return epochId.clone(); }
+    public byte[] kemCiphertext()  { return kemCiphertext.clone(); }
     public byte[] nonce()          { return nonce.clone(); }
     public byte[] aeadCiphertext() { return aeadCiphertext.clone(); }
 
@@ -92,6 +112,7 @@ public final class Envelope {
                 + 1 // kem_id
                 + 1 + salt.length
                 + 1 + epochId.length
+                + 2 + kemCiphertext.length
                 + nonce.length
                 + aeadCiphertext.length;
         ByteBuffer buf = ByteBuffer.allocate(total).order(ByteOrder.BIG_ENDIAN);
@@ -103,6 +124,8 @@ public final class Envelope {
         buf.put(salt);
         buf.put((byte) epochId.length);
         buf.put(epochId);
+        buf.putShort((short) kemCiphertext.length);
+        buf.put(kemCiphertext);
         buf.put(nonce);
         buf.put(aeadCiphertext);
         return buf.array();
@@ -110,7 +133,9 @@ public final class Envelope {
 
     public static Envelope fromBytes(byte[] input) {
         Objects.requireNonNull(input, "input");
-        if (input.length < MAGIC.length + 3 + 1 + SALT_LEN + 1 + 1 + NONCE_LEN) {
+        // minimum: magic + version + flags + kem_id + salt_len + salt + epoch_len + 1 +
+        //          kem_ct_len(2) + nonce + aead_ct(>=16)
+        if (input.length < MAGIC.length + 1 + 1 + 1 + 1 + SALT_LEN + 1 + 1 + 2 + NONCE_LEN + 16) {
             throw new IllegalArgumentException("envelope too short");
         }
         ByteBuffer buf = ByteBuffer.wrap(input).order(ByteOrder.BIG_ENDIAN);
@@ -136,6 +161,13 @@ public final class Envelope {
             byte[] epochId = new byte[epochLen];
             buf.get(epochId);
 
+            int kemCtLen = Short.toUnsignedInt(buf.getShort());
+            if (kemCtLen > buf.remaining() - NONCE_LEN - 16) {
+                throw new IllegalArgumentException("kem_ct_len overruns envelope: " + kemCtLen);
+            }
+            byte[] kemCt = new byte[kemCtLen];
+            buf.get(kemCt);
+
             byte[] nonce = new byte[NONCE_LEN];
             buf.get(nonce);
 
@@ -145,7 +177,7 @@ public final class Envelope {
             byte[] ct = new byte[ctLen];
             buf.get(ct);
 
-            return new Envelope(version, flags, kemId, salt, epochId, nonce, ct);
+            return new Envelope(version, flags, kemId, salt, epochId, kemCt, nonce, ct);
         } catch (BufferUnderflowException e) {
             throw new IllegalArgumentException("truncated envelope", e);
         }

@@ -33,6 +33,11 @@ final class FakeCollection implements CollectionInterface {
         items.put(path, new Item(label, secret, new LinkedHashMap<>(attrs)));
     }
 
+    /** Test hook for replay tests: insert an item with arbitrary already-encoded raw bytes. */
+    void seedRaw(String path, String label, String rawSecret, Map<String, String> attrs) {
+        items.put(path, new Item(label, rawSecret, new LinkedHashMap<>(attrs)));
+    }
+
     /** Test hook: next call to createItem returns Optional.empty() without mutating state. */
     void setNextCreateItemFails(boolean v) { this.nextCreateFails = v; }
 
