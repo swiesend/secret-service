@@ -37,7 +37,7 @@ public class ServiceTest {
     public void openSession() {
         context.ensureService();
 
-        Optional<Pair<Variant<byte[]>, DBusPath>> response = context.service.openSession(Static.Algorithm.PLAIN, new Variant(""));
+        Optional<Pair<Variant<byte[]>, DBusPath>> response = context.service.openSession(Static.Algorithm.PLAIN, new Variant<>(""));
         log.info(response.toString());
 
         assertEquals("s", response.get().a.getSig());
@@ -72,10 +72,10 @@ public class ServiceTest {
         assertEquals(128, input.length);
 
         Optional<Pair<Variant<byte[]>, DBusPath>> response = context.service.openSession(
-                Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant(input));
+                Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant<>(input));
         log.info(response.toString());
 
-        byte[] peerPublicKey = response.get().a.getValue();
+        byte[] peerPublicKey = Static.Utils.toByteArray(response.get().a.getValue());
         assertEquals(128, peerPublicKey.length);
 
         DBusPath sessionPath = response.get().b;

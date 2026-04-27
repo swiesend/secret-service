@@ -3,6 +3,7 @@ package de.swiesend.secretservice.handlers;
 import de.swiesend.secretservice.Static;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.messages.MessageFactory;
 import org.freedesktop.dbus.messages.MethodCall;
 import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
@@ -31,7 +32,8 @@ public class MessageHandler {
 
     public Optional<Object[]> send(String service, String path, String iface, String method, String signature, Object... args) {
         try {
-            org.freedesktop.dbus.messages.Message message = new MethodCall(
+            MessageFactory msgFactory = connection.getMessageFactory();
+            org.freedesktop.dbus.messages.Message message = msgFactory.createMethodCall(
                     service,
                     path,
                     iface,
@@ -53,7 +55,7 @@ public class MessageHandler {
                     log.debug("Response parameters for method " + iface + "/" + method + ": " + Arrays.deepToString(parameters));
             }
 
-            if (response instanceof org.freedesktop.dbus.errors.Error) {
+            if (response instanceof org.freedesktop.dbus.messages.Error) {
                 String error = response.getName();
                 switch (error) {
                     case "org.freedesktop.Secret.Error.NoSession":
@@ -93,8 +95,6 @@ public class MessageHandler {
                         }
                         return Optional.empty();
                     case "org.freedesktop.DBus.Local.Disconnected":
-                    case "org.freedesktop.dbus.exceptions.FatalDBusException":
-                    case "org.freedesktop.dbus.exceptions.NotConnected":
                         if (log.isDebugEnabled()) log.debug(error);
                         return Optional.empty();
                     default:
@@ -108,8 +108,12 @@ public class MessageHandler {
                     return Optional.ofNullable(parameters);
                 }
             }
+        } catch (org.freedesktop.dbus.exceptions.FatalDBusException e) {
+            if (log.isDebugEnabled()) log.debug(e.getClass().getName(), e);
         } catch (DBusException e) {
             log.error("Unexpected D-Bus response: ", e);
+        } catch (org.freedesktop.dbus.exceptions.NotConnected e) {
+            if (log.isDebugEnabled()) log.debug(e.getClass().getName(), e);
         } catch (RuntimeException e) {
             log.error("Unexpected: ", e);
         }

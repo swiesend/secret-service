@@ -103,7 +103,7 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     @Override
     public Optional<List<DBusPath>> getCollections() {
         return getProperty("Collections").flatMap(variant ->
-                variant == null ? Optional.empty() : Optional.ofNullable((ArrayList<DBusPath>) variant.getValue())
+                variant == null ? Optional.empty() : Optional.ofNullable((List<DBusPath>) variant.getValue())
         );
     }
 

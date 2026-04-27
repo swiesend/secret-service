@@ -121,10 +121,10 @@ public class TransportEncryption implements AutoCloseable {
             // open session with "Client DH pub key as an array of bytes" without prime or generator
             return service.openSession(
                     Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7,
-                    new Variant(ya.toByteArray())
+                    new Variant<>(ya.toByteArray())
             ).flatMap(pair -> {
                 // transform peer's raw Y to a public key
-                yb = pair.a.getValue();
+                yb = Static.Utils.toByteArray(pair.a.getValue());
 
                 DBusPath sessionPath = pair.b;
                 session = new Session(sessionPath, service);

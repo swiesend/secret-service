@@ -36,7 +36,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     public void beforeEach() throws DBusException {
         connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         service = new Service(connection);
-        Pair<Variant<byte[]>, DBusPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant("")).get();
+        Pair<Variant<byte[]>, DBusPath> pair = service.openSession(Static.Algorithm.PLAIN, new Variant<>("")).get();
         DBusPath sessionPath = pair.b;
         iugri = new InternalUnsupportedGuiltRiddenInterface(service);
         original = new Secret(sessionPath, "".getBytes(), "test".getBytes());
@@ -57,7 +57,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         List<String> cs = Static.Convert.toStrings(collections);
         if (!cs.contains("/org/freedesktop/secrets/collection/test")) {
             HashMap<String, Variant> properties = new HashMap<>();
-            properties.put("org.freedesktop.Secret.Collection.Label", new Variant("test"));
+            properties.put("org.freedesktop.Secret.Collection.Label", new Variant<>("test"));
             iugri.createWithMasterPassword(properties, original);
             Thread.sleep(100L);
         }
@@ -95,7 +95,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         }
 
         HashMap<String, Variant> properties = new HashMap<>();
-        properties.put("org.freedesktop.Secret.Collection.Label", new Variant("test"));
+        properties.put("org.freedesktop.Secret.Collection.Label", new Variant<>("test"));
         iugri.createWithMasterPassword(properties, original);
         Thread.sleep(100L); // await signal: Service.CollectionCreated
 
