@@ -207,6 +207,27 @@ public class Static {
         public static boolean isNullOrEmpty(Object[] objects) {
             return objects == null || objects.length == 0;
         }
+
+        // dbus-java 5.1.0+ may unmarshal `ay` as either byte[] or List<Byte>; normalize to byte[].
+        @SuppressWarnings("unchecked")
+        public static byte[] toByteArray(Object value) {
+            if (value == null) {
+                throw new IllegalStateException("Unexpected D-Bus byte array representation: null");
+            }
+            if (value instanceof byte[]) {
+                return (byte[]) value;
+            }
+            if (value instanceof List) {
+                List<Byte> byteList = (List<Byte>) value;
+                byte[] result = new byte[byteList.size()];
+                for (int i = 0; i < byteList.size(); i++) {
+                    result[i] = byteList.get(i);
+                }
+                return result;
+            }
+            throw new IllegalStateException(
+                    "Unexpected D-Bus byte array representation: " + value.getClass().getName());
+        }
     }
 
     /**

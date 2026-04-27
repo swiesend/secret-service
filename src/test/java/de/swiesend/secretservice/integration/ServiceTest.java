@@ -75,19 +75,7 @@ public class ServiceTest {
                 Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant<>(input));
         log.info(response.toString());
 
-        Object value = response.get().a.getValue();
-        byte[] peerPublicKey;
-        if (value instanceof byte[]) {
-            peerPublicKey = (byte[]) value;
-        } else if (value instanceof List) {
-            List<Byte> byteList = (List<Byte>) value;
-            peerPublicKey = new byte[byteList.size()];
-            for (int i = 0; i < byteList.size(); i++) {
-                peerPublicKey[i] = byteList.get(i);
-            }
-        } else {
-            throw new IllegalStateException("Unexpected value type: " + value.getClass().getName());
-        }
+        byte[] peerPublicKey = Static.Utils.toByteArray(response.get().a.getValue());
         assertEquals(128, peerPublicKey.length);
 
         DBusPath sessionPath = response.get().b;

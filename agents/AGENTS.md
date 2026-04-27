@@ -83,7 +83,7 @@ src/test/java/
 - `MessageHandler` constructs `MethodCall` messages via `connection.getMessageFactory().createMethodCall(...)`. The direct `new MethodCall(...)` constructor was made non-public in dbus-java 5.x; `MessageFactory` is the supported public alternative and works without reflection or `--add-opens`.
 - dbus-java is pinned at 5.2.0. This resolves classpath collisions (e.g. issue #51) when other libraries on the classpath ship a newer dbus-java that no longer provides the 4.x public `MethodCall` constructor.
 - Error responses are checked via `instanceof org.freedesktop.dbus.messages.Error` (the class moved from `org.freedesktop.dbus.errors.Error` in 4.x).
-- D-Bus byte arrays (signature `ay`) may be unmarshalled as either `byte[]` or `List<Byte>` in dbus-java 5.1.0+. `TransportEncryption.toBytes(Object)` normalizes both representations to `byte[]`.
+- D-Bus byte arrays (signature `ay`) may be unmarshalled as either `byte[]` or `List<Byte>` in dbus-java 5.1.0+. `Static.Utils.toByteArray(Object)` normalizes both representations to `byte[]`.
 
 ### JPMS Module
 
