@@ -64,6 +64,25 @@ import java.util.function.Supplier;
  * and audit logs. There is no safe way to accept a password as a command-line
  * argument, so the option is simply gone.</p>
  *
+ * <p>By default the tool generates a fresh base64-encoded ASCII pepper internally
+ * (32 bytes of {@link SecureRandom} → ~44 ASCII chars). Operators who need to
+ * cross-host-escrow the pepper (so that re-provisioning on a different TPM still
+ * yields the same {@code KeyMaterialProvider#getPepper()} char sequence) can
+ * supply their own pepper via one of:</p>
+ *
+ * <ul>
+ *   <li>{@code --pepper-stdin} — read one line from stdin (mutually exclusive with
+ *       {@code --password-stdin}).</li>
+ *   <li>{@code --pepper-env VAR} — read from environment variable {@code VAR}.</li>
+ *   <li>{@code --pepper-fd N} — read one line from file descriptor {@code N}.</li>
+ * </ul>
+ *
+ * <p>The supplied pepper is sealed verbatim; whatever bytes the operator provides
+ * are exactly what {@code Tpm2KeyMaterialProvider.getPepper()} will return on
+ * unseal. Pepper round-trip uses UTF-8, so caller-supplied input must be valid
+ * UTF-8 text — typically ASCII (a base64 random pepper from
+ * {@code openssl rand -base64 32} works perfectly).</p>
+ *
  * <p>After sealing, the in-process pepper and password buffers are zeroed.
  * The only artefact on disk is the TPM-wrapped blob; losing the TPM or the
  * password renders the blob unopenable (by design).</p>
@@ -86,7 +105,7 @@ public final class Tpm2Provisioner {
         }
 
         char[] password = null;
-        byte[] pepper = new byte[32];
+        byte[] pepper = null;
         try {
             password = parsed.passwordSource.read();
             if (password.length == 0) {
@@ -94,10 +113,15 @@ public final class Tpm2Provisioner {
                 System.exit(2);
                 return;
             }
+            pepper = parsed.pepperSource.read();
+            if (pepper.length == 0) {
+                System.err.println("tpm2-provisioner: pepper is empty");
+                System.exit(2);
+                return;
+            }
             Supplier<Tpm> tpmSupplier = parsed.simulator
                     ? TpmFactory::localTpmSimulator
                     : TpmFactory::platformTpm;
-            new SecureRandom().nextBytes(pepper);
             Tpm2SealedBlob blob = seal(pepper, password, tpmSupplier);
             blob.writeTo(parsed.outputPath);
             System.out.println("wrote sealed blob to " + parsed.outputPath);
@@ -109,7 +133,7 @@ public final class Tpm2Provisioner {
             System.err.println("tpm2-provisioner: TPM error: " + e.getMessage());
             System.exit(4);
         } finally {
-            Arrays.fill(pepper, (byte) 0);
+            if (pepper != null) Arrays.fill(pepper, (byte) 0);
             if (password != null) Arrays.fill(password, '\0');
         }
     }
@@ -189,7 +213,7 @@ public final class Tpm2Provisioner {
     }
 
     private static void usage(PrintStream out) {
-        out.println("usage: Tpm2Provisioner --out <path> [password-source] [--simulator]");
+        out.println("usage: Tpm2Provisioner --out <path> [password-source] [pepper-source] [--simulator]");
         out.println("  --out               path of the sealed-blob file to create (mode 0600)");
         out.println("  --simulator         use localhost:2321 TPM simulator instead of platform TPM");
         out.println();
@@ -198,6 +222,14 @@ public final class Tpm2Provisioner {
         out.println("  --password-env VAR  read from environment variable VAR");
         out.println("  --password-fd N     read one line from file descriptor N");
         out.println("  --password-prompt   interactive, echoing disabled via java.io.Console");
+        out.println();
+        out.println("pepper source (default: base64-encoded 32-byte SecureRandom):");
+        out.println("  --pepper-stdin      read one line from stdin (conflicts with --password-stdin)");
+        out.println("  --pepper-env VAR    read from environment variable VAR");
+        out.println("  --pepper-fd N       read one line from file descriptor N");
+        out.println();
+        out.println("(operator-supplied pepper enables cross-host escrow; default random pepper is");
+        out.println(" generated in the JVM and not visible outside the sealed blob.)");
     }
 
     // ---------- password source plumbing ----------
@@ -255,24 +287,85 @@ public final class Tpm2Provisioner {
         return line.toCharArray();
     }
 
+    // ---------- pepper source plumbing ----------
+
+    /** Source of pepper bytes that get sealed into the TPM. */
+    @FunctionalInterface
+    interface PepperSource {
+        byte[] read() throws IOException;
+    }
+
+    /**
+     * Default pepper: 32 random bytes encoded as base64 ASCII (~44 chars). Base64 ASCII is
+     * always valid UTF-8, so the pepper round-trips through {@code Tpm2KeyMaterialProvider}
+     * losslessly via {@code utf8ToChars}. (Raw random 32 bytes would have ~50% chance of
+     * containing invalid UTF-8 sequences and corrupt on read.)
+     */
+    static PepperSource randomPepperSource() {
+        return () -> {
+            byte[] raw = new byte[32];
+            new SecureRandom().nextBytes(raw);
+            byte[] base64 = java.util.Base64.getEncoder().encode(raw);
+            Arrays.fill(raw, (byte) 0);
+            return base64;
+        };
+    }
+
+    static PepperSource pepperStdinSource() {
+        return () -> readLineUtf8Bytes(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+    }
+
+    static PepperSource pepperEnvSource(String varName) {
+        return () -> {
+            String val = System.getenv(varName);
+            if (val == null) throw new IOException("env var " + varName + " is unset");
+            return val.getBytes(StandardCharsets.UTF_8);
+        };
+    }
+
+    static PepperSource pepperFdSource(int fd) {
+        return () -> {
+            if (fd == 0) return readLineUtf8Bytes(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+            Path fdPath = Path.of("/dev/fd/" + fd);
+            try (var reader = new FileReader(fdPath.toFile(), StandardCharsets.UTF_8)) {
+                return readLineUtf8Bytes(reader);
+            }
+        };
+    }
+
+    private static byte[] readLineUtf8Bytes(java.io.Reader reader) throws IOException {
+        BufferedReader br = new BufferedReader(reader);
+        String line = br.readLine();
+        if (line == null) throw new IOException("empty input; no pepper line available");
+        int len = line.length();
+        if (len > 0 && line.charAt(len - 1) == '\r') line = line.substring(0, len - 1);
+        return line.getBytes(StandardCharsets.UTF_8);
+    }
+
     // ---------- argv parsing ----------
 
     static final class Args {
         final Path outputPath;
         final PasswordSource passwordSource;
+        final PepperSource pepperSource;
         final boolean simulator;
 
-        Args(Path outputPath, PasswordSource passwordSource, boolean simulator) {
+        Args(Path outputPath, PasswordSource passwordSource, PepperSource pepperSource, boolean simulator) {
             this.outputPath = outputPath;
             this.passwordSource = passwordSource;
+            this.pepperSource = pepperSource;
             this.simulator = simulator;
         }
 
         static Args parse(String[] argv) {
             Path out = null;
             PasswordSource pwSource = null;
+            PepperSource pepperSource = null;
+            boolean passwordOnStdin = false;
+            boolean pepperOnStdin = false;
             boolean simulator = false;
-            int sourcesSpecified = 0;
+            int pwSourcesSpecified = 0;
+            int pepperSourcesSpecified = 0;
             for (int i = 0; i < argv.length; i++) {
                 String a = argv[i];
                 switch (a) {
@@ -280,11 +373,15 @@ public final class Tpm2Provisioner {
                         if (++i >= argv.length) throw new IllegalArgumentException("--out requires a path argument");
                         out = Path.of(argv[i]);
                     }
-                    case "--password-stdin" -> { pwSource = stdinSource(); sourcesSpecified++; }
+                    case "--password-stdin" -> {
+                        pwSource = stdinSource();
+                        pwSourcesSpecified++;
+                        passwordOnStdin = true;
+                    }
                     case "--password-env" -> {
                         if (++i >= argv.length) throw new IllegalArgumentException("--password-env requires a var name");
                         pwSource = envSource(argv[i]);
-                        sourcesSpecified++;
+                        pwSourcesSpecified++;
                     }
                     case "--password-fd" -> {
                         if (++i >= argv.length) throw new IllegalArgumentException("--password-fd requires an integer");
@@ -294,22 +391,57 @@ public final class Tpm2Provisioner {
                             throw new IllegalArgumentException("--password-fd must be an integer, got: " + argv[i]);
                         }
                         pwSource = fdSource(fd);
-                        sourcesSpecified++;
+                        pwSourcesSpecified++;
+                        if (fd == 0) passwordOnStdin = true;
                     }
-                    case "--password-prompt" -> { pwSource = promptSource(); sourcesSpecified++; }
+                    case "--password-prompt" -> { pwSource = promptSource(); pwSourcesSpecified++; }
+                    case "--pepper-stdin" -> {
+                        pepperSource = pepperStdinSource();
+                        pepperSourcesSpecified++;
+                        pepperOnStdin = true;
+                    }
+                    case "--pepper-env" -> {
+                        if (++i >= argv.length) throw new IllegalArgumentException("--pepper-env requires a var name");
+                        pepperSource = pepperEnvSource(argv[i]);
+                        pepperSourcesSpecified++;
+                    }
+                    case "--pepper-fd" -> {
+                        if (++i >= argv.length) throw new IllegalArgumentException("--pepper-fd requires an integer");
+                        int fd;
+                        try { fd = Integer.parseInt(argv[i]); }
+                        catch (NumberFormatException e) {
+                            throw new IllegalArgumentException("--pepper-fd must be an integer, got: " + argv[i]);
+                        }
+                        pepperSource = pepperFdSource(fd);
+                        pepperSourcesSpecified++;
+                        if (fd == 0) pepperOnStdin = true;
+                    }
                     case "--simulator" -> simulator = true;
                     default -> throw new IllegalArgumentException("unknown flag: " + a);
                 }
             }
             if (out == null) throw new IllegalArgumentException("--out is required");
-            if (sourcesSpecified > 1) {
+            if (pwSourcesSpecified > 1) {
                 throw new IllegalArgumentException("specify at most one password source");
+            }
+            if (pepperSourcesSpecified > 1) {
+                throw new IllegalArgumentException("specify at most one pepper source");
+            }
+            if (passwordOnStdin && pepperOnStdin) {
+                throw new IllegalArgumentException(
+                        "password and pepper cannot both come from stdin (file descriptor 0); "
+                                + "use --password-env or --password-fd N for one of them");
             }
             if (pwSource == null) {
                 // Default to interactive prompt; at read() time this fails closed if no tty.
                 pwSource = promptSource();
             }
-            return new Args(out, pwSource, simulator);
+            if (pepperSource == null) {
+                // Default: tool generates a fresh base64-encoded random pepper. The operator
+                // never sees it; pepper recovery requires re-provisioning on the same TPM.
+                pepperSource = randomPepperSource();
+            }
+            return new Args(out, pwSource, pepperSource, simulator);
         }
     }
 }

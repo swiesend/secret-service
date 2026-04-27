@@ -156,6 +156,8 @@ The 2.x line continues to ship as a single artifact for consumers who don't want
 
 The functional API uses instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle management.
 
+> **Worked code samples**: end-to-end examples for core, hardened, and hardened-tpm2 — including custom `KeyMaterialProvider` implementations, the `Tpm2Provisioner` CLI flows, and `enablePostQuantum(true)` / `rotateEpoch()` — live in [`docs/usage_examples.md`](docs/usage_examples.md).
+
 #### Basic Usage
 
 ```java
