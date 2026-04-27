@@ -95,8 +95,6 @@ public class MessageHandler {
                         }
                         return Optional.empty();
                     case "org.freedesktop.DBus.Local.Disconnected":
-                    case "org.freedesktop.dbus.exceptions.FatalDBusException":
-                    case "org.freedesktop.dbus.exceptions.NotConnected":
                         if (log.isDebugEnabled()) log.debug(error);
                         return Optional.empty();
                     default:
@@ -110,8 +108,12 @@ public class MessageHandler {
                     return Optional.ofNullable(parameters);
                 }
             }
+        } catch (org.freedesktop.dbus.exceptions.FatalDBusException e) {
+            if (log.isDebugEnabled()) log.debug(e.getClass().getName(), e);
         } catch (DBusException e) {
             log.error("Unexpected D-Bus response: ", e);
+        } catch (org.freedesktop.dbus.exceptions.NotConnected e) {
+            if (log.isDebugEnabled()) log.debug(e.getClass().getName(), e);
         } catch (RuntimeException e) {
             log.error("Unexpected: ", e);
         }
