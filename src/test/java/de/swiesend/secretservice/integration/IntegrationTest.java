@@ -101,7 +101,7 @@ public class IntegrationTest {
         Item item = new Item(itemPath, service);
         Secret actual = item.getSecret(session.getPath()).get();
 
-        assertEquals(encrypted.getSession(), actual.getSession());
+        assertEquals(encrypted.getSession().getPath(), actual.getSession().getPath());
         assertEquals(encrypted.getContentType(), actual.getContentType());
 
         decrypted = encryptedSession.decrypt(actual).get();

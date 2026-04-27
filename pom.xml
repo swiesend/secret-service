@@ -63,7 +63,7 @@
 
         <!-- 3rd party dependencies -->
         <hkdf.version>2.0.0</hkdf.version>
-        <dbus-java.version>4.3.1</dbus-java.version>
+        <dbus-java.version>5.2.0</dbus-java.version>
         <slf4j.version>2.0.17</slf4j.version>
 
         <!-- test dependencies -->

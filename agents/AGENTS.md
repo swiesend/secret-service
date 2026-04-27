@@ -80,9 +80,10 @@ src/test/java/
 
 ### D-Bus Message Handling
 
-- `MessageHandler` constructs `MethodCall` messages directly using dbus-java's public constructor API.
-- dbus-java 4.x is pinned at 4.3.1. The 5.x upgrade is deferred because 5.2.0 made all `MethodCall` constructors protected with no public alternative, requiring reflection + `--add-opens` which is not acceptable for library consumers on strict JPMS.
-- Error responses are checked via `instanceof org.freedesktop.dbus.errors.Error` (4.x package location; moved to `messages.Error` in 5.x).
+- `MessageHandler` constructs `MethodCall` messages via `connection.getMessageFactory().createMethodCall(...)`. The direct `new MethodCall(...)` constructor was made non-public in dbus-java 5.x; `MessageFactory` is the supported public alternative and works without reflection or `--add-opens`.
+- dbus-java is pinned at 5.2.0. This resolves classpath collisions (e.g. issue #51) when other libraries on the classpath ship a newer dbus-java that no longer provides the 4.x public `MethodCall` constructor.
+- Error responses are checked via `instanceof org.freedesktop.dbus.messages.Error` (the class moved from `org.freedesktop.dbus.errors.Error` in 4.x).
+- D-Bus byte arrays (signature `ay`) may be unmarshalled as either `byte[]` or `List<Byte>` in dbus-java 5.1.0+. `TransportEncryption.toBytes(Object)` normalizes both representations to `byte[]`.
 
 ### JPMS Module
 
@@ -105,8 +106,8 @@ module de.swiesend.secretservice {
 
 | Dependency | Version | Purpose |
 |---|---|---|
-| `dbus-java-core` | 4.3.1 | D-Bus communication |
-| `dbus-java-transport-native-unixsocket` | 4.3.1 | Unix socket transport |
+| `dbus-java-core` | 5.2.0 | D-Bus communication |
+| `dbus-java-transport-native-unixsocket` | 5.2.0 | Unix socket transport |
 | `hkdf` (at.favre.lib) | 2.0.0 | HMAC-based key derivation |
 | `slf4j-api` | 2.0.17 | Logging |
 | `junit-jupiter` | 5.10.5 | Testing (test scope) |

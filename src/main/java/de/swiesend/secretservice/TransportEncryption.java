@@ -21,6 +21,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
+import java.util.List;
 import java.util.Optional;
 
 public class TransportEncryption implements AutoCloseable {
@@ -121,16 +122,34 @@ public class TransportEncryption implements AutoCloseable {
             // open session with "Client DH pub key as an array of bytes" without prime or generator
             return service.openSession(
                     Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7,
-                    new Variant(ya.toByteArray())
+                    new Variant<>(ya.toByteArray())
             ).flatMap(pair -> {
                 // transform peer's raw Y to a public key
-                yb = pair.a.getValue();
+                yb = toBytes(pair.a.getValue());
 
                 DBusPath sessionPath = pair.b;
                 session = new Session(sessionPath, service);
                 return Optional.of(new OpenedSession());
             });
         }
+    }
+
+    // dbus-java 5.1.0+ may unmarshal `ay` as either byte[] or List<Byte>; normalize to byte[].
+    @SuppressWarnings("unchecked")
+    private static byte[] toBytes(Object value) {
+        if (value instanceof byte[]) {
+            return (byte[]) value;
+        }
+        if (value instanceof List) {
+            List<Byte> byteList = (List<Byte>) value;
+            byte[] result = new byte[byteList.size()];
+            for (int i = 0; i < byteList.size(); i++) {
+                result[i] = byteList.get(i);
+            }
+            return result;
+        }
+        throw new IllegalStateException(
+                "Unexpected D-Bus byte array representation: " + (value == null ? "null" : value.getClass().getName()));
     }
 
     public class OpenedSession {
