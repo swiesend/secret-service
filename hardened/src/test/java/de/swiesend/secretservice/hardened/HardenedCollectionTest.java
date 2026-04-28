@@ -65,6 +65,64 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void migrateRefusesWithoutBuilderFlag() {
+        // No .allowMigration(true) on the builder -> SecurityTheaterException
+        HardenedCollection h = build();
+        SecurityTheaterException e = assertThrows(SecurityTheaterException.class,
+                () -> h.migrateNonHardenedToHardened(c -> true));
+        assertTrue(e.getMessage().contains("allowMigration"));
+    }
+
+    @Test
+    void migrateRefusesWithoutEnvVar() {
+        // Builder flag set, but env var missing -> SecurityTheaterException
+        // (unless this test runs with the env var actually set, in which case skip).
+        if ("1".equals(System.getenv(HardenedCollection.ENV_ALLOW_MIGRATION))) {
+            return;
+        }
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .allowMigration(true)
+                .build();
+        SecurityTheaterException e = assertThrows(SecurityTheaterException.class,
+                () -> h.migrateNonHardenedToHardened(c -> true));
+        assertTrue(e.getMessage().contains(HardenedCollection.ENV_ALLOW_MIGRATION));
+    }
+
+    @Test
+    void migrationBodyConvertsPlainItemsToHardened() {
+        // Pre-seed a couple of plain items in the wrapped collection.
+        fake.seedPlain("/legacy/a", "leg-a", "plain-a", Map.of("source", "legacy"));
+        fake.seedPlain("/legacy/b", "leg-b", "plain-b", Map.of("source", "legacy"));
+        fake.seedPlain("/legacy/c", "leg-c", "plain-c", Map.of("source", "other"));
+
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .allowMigration(true)
+                .build();
+
+        // Use the test-only hook (env var is awkward to set portably). Selector picks only
+        // items with source=legacy.
+        HardenedCollection.MigrationReport r = h.migrateNonHardenedToHardenedForTest(
+                c -> "legacy".equals(c.attributes().get("source")));
+
+        assertEquals(2, r.migrated(), "two items match the selector");
+        assertEquals(1, r.skipped(), "the source=other item is skipped by the selector");
+        assertEquals(0, r.failed());
+        // Original plain items are gone:
+        assertFalse(fake.rawItems().containsKey("/legacy/a"));
+        assertFalse(fake.rawItems().containsKey("/legacy/b"));
+        // Non-matching plain item remains:
+        assertTrue(fake.rawItems().containsKey("/legacy/c"));
+        // The two hardened items are readable through the wrapper, with original attributes preserved.
+        long hardenedCount = fake.rawItems().values().stream()
+                .filter(it -> "1".equals(it.attrs().get(HardenedCollection.ATTR_VERSION)))
+                .filter(it -> "legacy".equals(it.attrs().get("source")))
+                .count();
+        assertEquals(2, hardenedCount);
+    }
+
+    @Test
     void closePropagatesToProvider() {
         // A provider that records its own close() call. HardenedCollection.close() must call it.
         java.util.concurrent.atomic.AtomicBoolean providerClosed = new java.util.concurrent.atomic.AtomicBoolean(false);
