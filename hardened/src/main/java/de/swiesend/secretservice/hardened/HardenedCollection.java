@@ -156,7 +156,13 @@ public final class HardenedCollection implements HardenedCollectionInterface {
          * used so old envelopes remain readable.</p>
          */
         public Builder enablePostQuantum(boolean b) { this.enablePostQuantum = b; return this; }
-        public Builder epochId(String id) { this.epochId = id; return this; }
+        // Test/internal-only: lets tests pin a deterministic epoch id. NOT public because
+        // operator code that hard-codes an epoch id silently disables forward secrecy
+        // (rotateEpoch generates a new id; if the operator keeps overriding it, the keystore
+        // never rotates) and a typo in a config file ("yourapp-prod " vs "yourapp-prod")
+        // partitions items into unreadable parallel epochs. Production code should let the
+        // constructor pick a UUID.
+        Builder epochId(String id) { this.epochId = id; return this; }
 
         public HardenedCollection build() { return new HardenedCollection(this); }
     }
