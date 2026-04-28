@@ -450,6 +450,15 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
     @Override
     public void close() {
+        // Close in reverse construction order: provider first (zeroes the pepper cache and
+        // releases TPM handles), then the wrapped CollectionInterface. We swallow each
+        // failure independently so a broken provider can't strand the wrapped connection
+        // and vice versa.
+        try {
+            provider.close();
+        } catch (RuntimeException e) {
+            log.warn("provider.close() threw: {}", e.toString());
+        }
         try {
             wrapped.close();
         } catch (Exception e) {

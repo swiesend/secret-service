@@ -11,8 +11,14 @@ import java.util.Optional;
  *
  * <p>Callers receive fresh byte/char arrays that they are expected to zero after use.
  * Callbacks inside {@code HardenedCollection} do this automatically.</p>
+ *
+ * <p>The interface extends {@link AutoCloseable} so providers that hold sensitive
+ * material (cached pepper, open TPM handles, etc.) can scrub themselves on shutdown.
+ * The default {@link #close()} is a no-op for stateless providers; implementations
+ * that hold state should override it. {@link HardenedCollection#close()} propagates
+ * to its provider so a try-with-resources on the wrapper is sufficient.</p>
  */
-public interface KeyMaterialProvider {
+public interface KeyMaterialProvider extends AutoCloseable {
 
     /**
      * Retrieve the application pepper. The returned array is owned by the caller and
@@ -47,6 +53,15 @@ public interface KeyMaterialProvider {
      */
     ThreatCoverage threatCoverage();
 
+    /**
+     * Release any sensitive material the provider holds (cached peppers, TPM handles,
+     * etc.). The default is a no-op so stateless providers do not need to implement it.
+     * Re-throws as unchecked because most provider {@code close()} paths cannot fail
+     * meaningfully and forcing checked-exception handling on every consumer is noise.
+     */
+    @Override
+    default void close() {}
+
     enum Mode {
         /** No time-binding; salt + pepper + KEM only. */
         NO_TOTP,
@@ -56,3 +71,4 @@ public interface KeyMaterialProvider {
         LIVE_CODE
     }
 }
+

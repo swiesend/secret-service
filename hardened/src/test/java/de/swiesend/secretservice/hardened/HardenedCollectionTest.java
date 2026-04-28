@@ -65,6 +65,30 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void closePropagatesToProvider() {
+        // A provider that records its own close() call. HardenedCollection.close() must call it.
+        java.util.concurrent.atomic.AtomicBoolean providerClosed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        KeyMaterialProvider counting = new KeyMaterialProvider() {
+            @Override public char[] getPepper() { return "p3pper-of-decent-length-yo!".toCharArray(); }
+            @Override public Optional<byte[]> getTotpSeed() { return Optional.empty(); }
+            @Override public Mode mode() { return Mode.NO_TOTP; }
+            @Override public ThreatCoverage threatCoverage() {
+                return new ThreatCoverage(
+                        ThreatCoverage.Level.PARTIAL, ThreatCoverage.Level.REAL,
+                        ThreatCoverage.Level.REAL, ThreatCoverage.Level.NOT_APPLICABLE,
+                        "test provider with close-tracking");
+            }
+            @Override public void close() { providerClosed.set(true); }
+        };
+
+        try (HardenedCollection h = HardenedCollection.builder(fake, counting).build()) {
+            h.createItem("x", "secret").orElseThrow();
+        }
+        assertTrue(providerClosed.get(),
+                "HardenedCollection.close() must propagate to provider.close()");
+    }
+
+    @Test
     void defaultBuilderWritesKemIdNone() {
         // Without enablePostQuantum(true), envelopes must carry kem_id=KEM_ID_NONE and
         // an empty kem_ct. The PQ flag is opt-in.
