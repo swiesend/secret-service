@@ -16,6 +16,25 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
 - `Fixed`:
   - Tolerate gnome-keyring's asynchronously-injected `xdg:schema` attribute in the functional attribute tests: `createItemWithAttribute` compares by containment, and `getAttributes` compares only user-defined keys — the latter's strict assertion previously raced and flaked (~1 run in 10) [#68](https://github.com/swiesend/secret-service/pull/68).
 
+### Hardened application-layer encryption — opt-in, not yet released
+
+New `secret-service-hardened` and `secret-service-hardened-tpm2` artifacts plus a Maven reactor split. Core consumers upgrade by changing only the version (no API change for `secret-service`); consumers who want application-layer encryption opt into the new artefacts.
+
+- `Added` — architecture:
+  - **Maven reactor split into three artifacts** at one version: `de.swiesend:secret-service` (JDK 17 classical client; only the build moved into a `core/` submodule — GAV unchanged), `de.swiesend:secret-service-hardened` (JDK 21; opt-in AES-256-GCM envelopes with HKDF-derived per-item DEKs, a pluggable `KeyMaterialProvider` SPI, optional Argon2id pepper-stretching, optional hybrid X25519 + ML-KEM-768 with persisted-and-destroyable epoch keypairs for forward secrecy), and `de.swiesend:secret-service-hardened-tpm2` (JDK 21; optional `Tpm2KeyMaterialProvider` + `Tpm2Provisioner` CLI for TPM-sealed peppers, classpath-only). Parent pom is a BOM pinning all three at one version.
+- `Added` — hardened layer:
+  - `HardenedCollection` decorator (`createItem` / `withSecret` / `withSecrets` / `matchesSecret` / `rotateEpoch` / `migrateNonHardenedToHardened`).
+  - `KeyMaterialProvider` SPI (`getPepper`, `getTotpSeed`, `mode`, `threatCoverage`, `close()`); providers `EnvVarKeyMaterialProvider` (CI/dev only, loud warning), `FileKeyMaterialProvider`, `NoTotpKeyMaterialProvider`, and `Argon2KeyMaterialProvider` (Argon2id over the pepper; EMBEDDED/INTERACTIVE/SENSITIVE profiles per RFC 9106).
+  - `HybridKem` (X25519 + ML-KEM-768): `enablePostQuantum(true)` writes `kem_id=0x01` envelopes whose AEAD key derives from HKDF including the ML-KEM shared secret; `EpochKeystore` persists per-epoch keypairs as an encrypted item and `rotateEpoch` destroys the previous epoch's key for forward secrecy.
+  - `HardenedHealthCheck` (structured /healthz-style diagnostic, `toMap` for JSON), `ThreatCoverage` (per-class A/B/C/D `Level` ratings), `HardenedStatus` (epoch, time-binding mode, algorithms), and a one-line startup posture log.
+  - `migrateNonHardenedToHardened(Predicate)` — dual-gated (Builder flag + `SECRET_SERVICE_HARDENED_ALLOW_MIGRATION=1`), per-item `MigrationReport`, create-then-delete ordering so crashes never lose data.
+- `Added` — hardened-tpm2 layer:
+  - `Tpm2KeyMaterialProvider.forPlatformTpm(...)` / `forSimulator(...)`; `Tpm2Provisioner` CLI with `--password-{stdin,env,fd,prompt}` and `--pepper-{stdin,env,fd}` sources (stdin conflict refused; no plaintext `--password`); versioned `Tpm2SealedBlob` (stable wire bytes, atomic mode-0600 write, group/other read refused); `Tpm2Availability.isAvailable()` preflight; TPM dictionary-attack lockout on the sealed object.
+- `Added` — documentation:
+  - `docs/threat_models_and_mitigation.md` (deployment threat-model guide) and `docs/usage_examples.md` (worked core/hardened/TPM examples).
+- `Removed`:
+  - `Tpm2Provisioner` no longer accepts `--password <plaintext>` (leaked into `/proc/<pid>/cmdline`); use the `--password-*` sources.
+
 ## [3.0.0-alpha] - 2026-06-11
 
 Major release introducing a new functional API and an upgrade to dbus-java 5. Requires **JDK 17**. Delivered on the `develop-2.x.x` line (now merged to `main`).
