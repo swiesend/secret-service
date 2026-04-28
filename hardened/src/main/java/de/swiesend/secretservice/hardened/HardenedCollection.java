@@ -454,6 +454,15 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         );
     }
 
+    /**
+     * Class name of the {@link KeyMaterialProvider} backing this collection. Useful for
+     * diagnostics ({@link HardenedHealthCheck}) and logging without exposing the provider
+     * itself, which may hold sensitive material.
+     */
+    public String providerClassName() {
+        return provider.getClass().getName();
+    }
+
     @Override
     public void close() {
         // Close in reverse construction order: provider first (zeroes the pepper cache and

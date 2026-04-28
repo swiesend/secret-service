@@ -12,6 +12,7 @@ module de.swiesend.secretservice.hardened {
     requires at.favre.lib.hkdf;
     requires org.slf4j;
     requires static org.bouncycastle.provider;
+    requires java.management;   // ManagementFactory in HardenedHealthCheck
 
     exports de.swiesend.secretservice.hardened;
     exports de.swiesend.secretservice.hardened.providers;
