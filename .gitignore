@@ -261,3 +261,7 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.gitignore.io/api/osx,java,linux,windows,eclipse,netbeans,intellij
+
+.vscode/
+.metals/
+cursor
