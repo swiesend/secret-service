@@ -46,12 +46,11 @@ public class SignalHandler implements DBusSigHandler {
         if (signals != null) {
             try {
                 for (Class sc : signals) {
-                    AutoCloseable reg;
-                    if (sourcePath != null && !"/".equals(sourcePath)) {
-                        reg = connection.addSigHandler(sc, sourcePath, this);
-                    } else {
-                        reg = connection.addSigHandler(sc, this);
-                    }
+                    // Register signal handler without specifying a sender (the DBus API
+                    // parameter is the sender/bus name, not the object path). We perform
+                    // path-scoping in `handle()` to avoid InvalidBusNameException when
+                    // a path-like string is provided.
+                    AutoCloseable reg = connection.addSigHandler(sc, this);
                     registrations.add(reg);
                 }
             } catch (DBusException e) {
@@ -84,6 +83,18 @@ public class SignalHandler implements DBusSigHandler {
 
     @Override
     public void handle(DBusSignal s) {
+        // If a source path was provided during connect(), ignore signals that
+        // do not originate from that object path. This provides the path-scoped
+        // semantics we want while using the global DBus addSigHandler registration.
+        if (this.sourcePath != null && !"/".equals(this.sourcePath)) {
+            try {
+                if (!this.sourcePath.equals(s.getPath())) {
+                    return; // ignore signals from other object paths
+                }
+            } catch (Exception e) {
+                // In case s.getPath() throws or is null, fall through and handle
+            }
+        }
 
         synchronized (handled) {
             Collections.rotate(Arrays.asList(handled), 1);
@@ -136,7 +147,16 @@ public class SignalHandler implements DBusSigHandler {
         return Arrays.stream(handled)
                 .filter(signal -> signal != null)
                 .filter(signal -> signal.getClass().equals(s))
-                .filter(signal -> signal.getPath().equals(path))
+                .filter(signal -> {
+                    String sigPath = signal.getPath();
+                    if (path == null || "/".equals(path)) return true;
+                    if (sigPath == null) return false;
+                    if (sigPath.equals(path)) return true;
+                    // Item signals may be emitted with the item's object path
+                    // (e.g. /org/freedesktop/secrets/collection/<id>/<item>). Accept
+                    // signals that start with the requested collection path + '/'.
+                    return sigPath.startsWith(path + "/");
+                })
                 .map(signal -> (S) signal)
                 .collect(Collectors.toList());
     }
