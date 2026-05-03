@@ -27,12 +27,26 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 /**
  * High-level API for storing secrets in the user's keyring.
  *
- * <p>This class preserves the original 1.x API surface (static connection, null returns,
- * checked exceptions) for backward compatibility, while delegating internally to the
- * functional API ({@code de.swiesend.secretservice.functional}).</p>
+ * <p><strong>Deprecated.</strong> This class preserves the original 1.x API surface
+ * (static shared D-Bus connection, {@code null} returns, checked exceptions) for backward
+ * compatibility only. It will be removed in version 3.0.</p>
  *
- * <p>New code should prefer the functional API directly via {@link SecretService#create()}.</p>
+ * <p><strong>Migration:</strong> Replace usages with the functional API:
+ * <pre>{@code
+ * try (var sys    = de.swiesend.secretservice.functional.System.connect();
+ *      var svc    = SecretService.create(Optional.of(sys)).orElseThrow();
+ *      var sess   = svc.openSession().orElseThrow();
+ *      var col    = Collection.openDefault(Optional.of(sess)).orElseThrow()) {
+ *     col.createItem("My label", "s3cr3t", Map.of());
+ * }
+ * }</pre>
+ * </p>
+ *
+ * @deprecated since 2.0, for removal in 3.0. Use
+ *             {@link de.swiesend.secretservice.functional.SecretService#create()} and the
+ *             {@link de.swiesend.secretservice.functional.interfaces.CollectionInterface} instead.
  */
+@Deprecated(since = "2.0", forRemoval = true)
 public final class SimpleCollection extends de.swiesend.secretservice.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
@@ -45,10 +59,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
 
     /**
-     * The default collection.
+     * Opens the default collection.
      *
      * @throws IOException Could not communicate properly with the DBus. Check the logs.
+     * @deprecated since 2.0, for removal in 3.0. Use
+     *             {@link de.swiesend.secretservice.functional.Collection#openDefault} instead.
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public SimpleCollection() throws IOException {
         try {
             init();
@@ -75,7 +92,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      *                 as the <code>id</code> is inferred by the given label.
      * @param password Password of the collection
      * @throws IOException Could not communicate properly with the DBus. Check the logs.
+     * @deprecated since 2.0, for removal in 3.0. Use
+     *             {@link de.swiesend.secretservice.functional.Collection#open} instead.
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
             init();
@@ -93,7 +113,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * Try to get a new DBus connection.
      *
      * @return a new DBusConnection or null
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     private static DBusConnection getConnection() {
         try {
             return DBusConnectionBuilder.forSessionBus().withShared(false).build();
@@ -111,7 +133,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * Checks the D-Bus connection status.
      *
      * @return true if connected to the D-Bus, otherwise false
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public static boolean isConnected() {
         if (connection != null) {
             return connection.isConnected();
@@ -127,7 +151,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * <code>org.gnome.keyring</code>
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public static boolean isAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
@@ -179,7 +205,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * <code>org.gnome.keyring</code>
      *
      * @return true if the secret service provider is gnome keyring, otherwise false and will log a warning message.
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public static boolean isGnomeKeyringAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
@@ -210,7 +238,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
     /**
      * Close the DBus connection immediately. Waits for the DBus connection to close within 2 seconds.
+     *
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     synchronized public static boolean disconnect() {
         try {
             if (connection != null && connection.isConnected()) {
