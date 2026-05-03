@@ -528,9 +528,86 @@ public class Collection implements CollectionInterface {
         if (attributes == null) return Optional.empty();
         unlock();
 
+        // KeePassXC returns nothing for SearchItems({}) (empty map = no criteria match).
+        // Use the Items property directly when no filter is specified — it always returns all items.
+        if (attributes.isEmpty()) {
+            return collection.getItems()
+                    .filter(list -> !list.isEmpty())
+                    .map(Static.Convert::toStrings);
+        }
+
         return Optional.ofNullable(collection.searchItems(attributes))
                 .filter(objects -> !objects.isEmpty())
                 .flatMap(objects -> objects.map(Static.Convert::toStrings));
+    }
+
+    @Override
+    public List<String> search(String query, SearchMode mode) {
+        Objects.requireNonNull(query, "query must not be null");
+        Objects.requireNonNull(mode, "mode must not be null");
+        Optional<List<String>> maybeAll = getItems(Map.of());
+        if (maybeAll.isEmpty()) return List.of();
+        List<String> all = maybeAll.get();
+        if (query.isEmpty()) return all;
+        String lq = query.toLowerCase(java.util.Locale.ROOT);
+        List<String> matched = new ArrayList<>();
+        for (String path : all) {
+            if (matchesSubstring(path, lq, mode)) matched.add(path);
+        }
+        return java.util.Collections.unmodifiableList(matched);
+    }
+
+    @Override
+    public List<String> search(String query, SearchMode mode, int maxDistance) {
+        Objects.requireNonNull(query, "query must not be null");
+        Objects.requireNonNull(mode, "mode must not be null");
+        if (maxDistance < 0) throw new IllegalArgumentException("maxDistance must be >= 0");
+        if (maxDistance == 0) return search(query, mode);
+        Optional<List<String>> maybeAll = getItems(Map.of());
+        if (maybeAll.isEmpty()) return List.of();
+        List<String> all = maybeAll.get();
+        if (query.isEmpty()) return all;
+        String lq = query.toLowerCase(java.util.Locale.ROOT);
+        List<String> matched = new ArrayList<>();
+        for (String path : all) {
+            if (matchesFuzzy(path, lq, mode, maxDistance)) matched.add(path);
+        }
+        return java.util.Collections.unmodifiableList(matched);
+    }
+
+    // ── Search helpers ─────────────────────────────────────────────
+
+    private boolean matchesSubstring(String path, String lq, SearchMode mode) {
+        return switch (mode) {
+            case BY_NAME -> getItemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT).contains(lq);
+            case BY_ATTRIBUTE_KEY -> getAttributes(path).orElse(Map.of()).keySet()
+                    .stream().anyMatch(k -> k.toLowerCase(java.util.Locale.ROOT).contains(lq));
+            case BY_ATTRIBUTE_VALUE -> getAttributes(path).orElse(Map.of()).values()
+                    .stream().anyMatch(v -> v.toLowerCase(java.util.Locale.ROOT).contains(lq));
+            case BY_OBJECT_ID -> {
+                String id = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
+                yield id.toLowerCase(java.util.Locale.ROOT).contains(lq);
+            }
+            case BY_OBJECT_PATH -> path.toLowerCase(java.util.Locale.ROOT).contains(lq);
+        };
+    }
+
+    private boolean matchesFuzzy(String path, String lq, SearchMode mode, int maxDistance) {
+        return switch (mode) {
+            case BY_NAME -> {
+                String candidate = getItemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT);
+                yield Static.Utils.minSubstringDistance(candidate, lq) <= maxDistance;
+            }
+            case BY_ATTRIBUTE_KEY -> getAttributes(path).orElse(Map.of()).keySet().stream()
+                    .anyMatch(k -> Static.Utils.minSubstringDistance(k.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance);
+            case BY_ATTRIBUTE_VALUE -> getAttributes(path).orElse(Map.of()).values().stream()
+                    .anyMatch(v -> Static.Utils.minSubstringDistance(v.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance);
+            case BY_OBJECT_ID -> {
+                String id = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
+                yield Static.Utils.minSubstringDistance(id.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance;
+            }
+            case BY_OBJECT_PATH -> Static.Utils.minSubstringDistance(path.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance;
+        };
     }
 
     @Override
