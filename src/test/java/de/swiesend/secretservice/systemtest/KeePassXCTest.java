@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * and a database named "test.kdbx" (collection id "test", password "test").
  */
 @Tag("system-test")
-public class KeePassXCManualTest {
+public class KeePassXCTest {
 
     static final String COLLECTION_ID = "test";
 
