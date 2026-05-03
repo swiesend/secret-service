@@ -69,27 +69,46 @@ public class SecretServiceGuiTest {
 
     /** Apply an Adwaita-inspired flat theme to the Swing UIManager. */
     private static void applyGnomeTheme() {
-        // Prefer GTK look-and-feel when running on Linux; fall back gracefully
+        // Prefer GTK look-and-feel on Linux (it inherits the system dark/light preference).
+        // Do NOT return early — we still need to detect dark-mode and apply overrides.
         try {
+            boolean found = false;
             for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
                 if (info.getName().contains("GTK")) {
                     UIManager.setLookAndFeel(info.getClassName());
-                    return;
+                    found = true;
+                    break;
                 }
             }
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            if (!found) UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception ignored) {}
 
-        // Adwaita palette overrides (applied on top of whatever L&F loaded)
-        Color bg     = new Color(0xF6F5F4);
-        Color card   = Color.WHITE;
-        Color text   = new Color(0x2E3436);
-        Color accent = new Color(0x3584E4);
+        // Detect dark mode from the luminance of the Panel background the L&F just set.
+        Color panelBg = UIManager.getColor("Panel.background");
+        SecretServiceFrame.isDark = panelBg != null && luminance(panelBg) < 0.4;
+
+        // Adwaita palette overrides — light or dark variant
+        Color bg, card, text, muted, accent, border;
+        if (SecretServiceFrame.isDark) {
+            bg     = new Color(0x242424);
+            card   = new Color(0x2D2D2D);
+            text   = new Color(0xEBEBEB);
+            muted  = new Color(0xB9B9B9);
+            border = new Color(0x3D3D3D);
+        } else {
+            bg     = new Color(0xF6F5F4);
+            card   = Color.WHITE;
+            text   = new Color(0x2E3436);
+            muted  = new Color(0x77767B);
+            border = new Color(0xDEDDDA);
+        }
+        accent = new Color(0x3584E4);
 
         UIManager.put("Panel.background",          bg);
         UIManager.put("ScrollPane.background",     bg);
         UIManager.put("Viewport.background",       card);
         UIManager.put("Table.background",          card);
+        UIManager.put("Table.gridColor",           border);
         UIManager.put("List.background",           card);
         UIManager.put("TextArea.background",       card);
         UIManager.put("TextField.background",      card);
@@ -100,7 +119,22 @@ public class SecretServiceGuiTest {
         UIManager.put("TabbedPane.background",     bg);
         UIManager.put("TabbedPane.selected",       card);
         UIManager.put("SplitPane.background",      bg);
-        UIManager.put("TitledBorder.titleColor",   new Color(0x77767B));
+        UIManager.put("TitledBorder.titleColor",   muted);
+
+        // Store derived colors for helpers
+        SecretServiceFrame.COL_CARD     = card;
+        SecretServiceFrame.COL_BORDER   = border;
+        SecretServiceFrame.COL_MUTED    = muted;
+        SecretServiceFrame.COL_TEXT     = text;
+        SecretServiceFrame.COL_HINT     = SecretServiceFrame.isDark ? new Color(0x808080) : new Color(0x9A9996);
+        SecretServiceFrame.COL_DANGER   = SecretServiceFrame.isDark ? new Color(0x3D0A0A) : new Color(0xFFF0EE);
+        SecretServiceFrame.COL_DANGER_B = SecretServiceFrame.isDark ? new Color(0x6B1A1A) : new Color(0xF5C2C7);
+    }
+
+    /** Relative luminance (sRGB) – used for dark-mode detection. */
+    private static double luminance(Color c) {
+        double r = c.getRed() / 255.0, g = c.getGreen() / 255.0, b = c.getBlue() / 255.0;
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     }
 
     // ─── GUI implementation ───────────────────────────────────────────────
@@ -108,6 +142,16 @@ public class SecretServiceGuiTest {
     static final class SecretServiceFrame extends JFrame {
 
         private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
+
+        // Theme — set by applyGnomeTheme() before the frame is constructed
+        static boolean isDark    = false;
+        static Color COL_CARD    = Color.WHITE;
+        static Color COL_BORDER  = new Color(0xDEDDDA);
+        static Color COL_MUTED   = new Color(0x77767B);
+        static Color COL_TEXT    = new Color(0x2E3436);
+        static Color COL_HINT    = new Color(0x9A9996);
+        static Color COL_DANGER  = new Color(0xFFF0EE);
+        static Color COL_DANGER_B = new Color(0xF5C2C7);
 
         // Collection panel
         private final ButtonGroup collectionGroup = new ButtonGroup();
@@ -455,9 +499,9 @@ public class SecretServiceGuiTest {
 
             // ── Danger Zone ─────────────────────────────────────────
             JPanel dangerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 6));
-            dangerPanel.setBackground(new Color(0xFFF0EE));
+            dangerPanel.setBackground(COL_DANGER);
             dangerPanel.setBorder(BorderFactory.createCompoundBorder(
-                    new MatteBorder(1, 0, 0, 0, new Color(0xF5C2C7)),
+                    new MatteBorder(1, 0, 0, 0, COL_DANGER_B),
                     new EmptyBorder(2, 8, 2, 8)));
             styleButton(btnDeleteItem,       new Color(0xE01B24), Color.WHITE);
             styleButton(btnDeleteCollection, new Color(0xE01B24), Color.WHITE);
@@ -476,24 +520,18 @@ public class SecretServiceGuiTest {
 
         private JPanel buildDebugTab() {
             JPanel panel = new JPanel(new BorderLayout(0, 0));
-            panel.setBackground(new Color(0xF6F5F4));
+            panel.setBackground(new Color(isDark ? 0x242424 : 0xF6F5F4));
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
 
-            // Four sections stacked vertically: System → Service → Session → Collection
-            JPanel stack = new JPanel();
+            // Four sections stacked vertically, each stretching to fill equal share of height.
+            // GridLayout(4,1) gives each section exactly 1/4 of the available height.
+            JPanel stack = new JPanel(new GridLayout(4, 1, 0, 4));
             stack.setOpaque(false);
-            stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
             stack.add(buildDebugSection("System",     debugSystemModel));
-            stack.add(Box.createVerticalStrut(4));
             stack.add(buildDebugSection("Service",    debugServiceModel));
-            stack.add(Box.createVerticalStrut(4));
             stack.add(buildDebugSection("Session",    debugSessionModel));
-            stack.add(Box.createVerticalStrut(4));
             stack.add(buildDebugSection("Collection", debugCollectionModel));
-
-            JScrollPane scrollPane = new JScrollPane(stack);
-            scrollPane.setBorder(new EmptyBorder(0, 0, 0, 0));
-            panel.add(scrollPane, BorderLayout.CENTER);
+            panel.add(stack, BorderLayout.CENTER);
 
             JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 4));
             bottom.setOpaque(false);
@@ -513,13 +551,10 @@ public class SecretServiceGuiTest {
             table.getColumnModel().getColumn(0).setPreferredWidth(200);
             table.getColumnModel().getColumn(1).setPreferredWidth(300);
             JScrollPane scroll = new JScrollPane(table);
-            scroll.setPreferredSize(new Dimension(0, 110));
             JPanel inner = new JPanel(new BorderLayout());
             inner.setOpaque(false);
             inner.add(scroll, BorderLayout.CENTER);
-            JPanel c = card(title, inner);
-            c.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
-            return c;
+            return card(title, inner);
         }
 
         private JPanel buildLogPanel() {
@@ -527,9 +562,15 @@ public class SecretServiceGuiTest {
             inner.setOpaque(false);
             logArea.setEditable(false);
             logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-            logArea.setBackground(new Color(0x1E1E2E));
-            logArea.setForeground(new Color(0xCDD6F4));
-            logArea.setCaretColor(new Color(0xCDD6F4));
+            if (isDark) {
+                logArea.setBackground(new Color(0x1A1A1A));
+                logArea.setForeground(new Color(0xCDD6F4));
+                logArea.setCaretColor(new Color(0xCDD6F4));
+            } else {
+                logArea.setBackground(new Color(0x1E1E2E));
+                logArea.setForeground(new Color(0xCDD6F4));
+                logArea.setCaretColor(new Color(0xCDD6F4));
+            }
             JScrollPane scroll = new JScrollPane(logArea);
             scroll.setPreferredSize(new Dimension(0, 160));
             inner.add(scroll, BorderLayout.CENTER);
@@ -548,13 +589,13 @@ public class SecretServiceGuiTest {
         /** Flat card panel with a bold section title and a subtle border. */
         private static JPanel card(String title, JPanel content) {
             JPanel card = new JPanel(new BorderLayout(0, 4));
-            card.setBackground(Color.WHITE);
+            card.setBackground(COL_CARD);
             card.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(new Color(0xDEDDDA), 1, true),
+                    BorderFactory.createLineBorder(COL_BORDER, 1, true),
                     new EmptyBorder(8, 10, 10, 10)));
             JLabel header = new JLabel(title);
             header.setFont(header.getFont().deriveFont(Font.BOLD, 12f));
-            header.setForeground(new Color(0x77767B));
+            header.setForeground(COL_MUTED);
             header.setBorder(new EmptyBorder(0, 0, 4, 0));
             card.add(header, BorderLayout.NORTH);
             card.add(content, BorderLayout.CENTER);
@@ -568,25 +609,39 @@ public class SecretServiceGuiTest {
         /** Small muted label for field captions. */
         private static JLabel dimLabel(String text) {
             JLabel l = new JLabel(text);
-            l.setForeground(new Color(0x77767B));
+            l.setForeground(COL_MUTED);
             return l;
         }
 
         /** Small italic hint label. */
         private static JLabel hintLabel(String text) {
             JLabel l = new JLabel("<html><small><i>" + text + "</i></small></html>");
-            l.setForeground(new Color(0x9A9996));
+            l.setForeground(COL_HINT);
             return l;
         }
 
-        /** Flat Adwaita-inspired button styling. */
+        /** Flat Adwaita-inspired button with rounded corners. */
         private static void styleButton(JButton btn, Color bg, Color fg) {
-            btn.setBackground(bg);
             btn.setForeground(fg);
-            btn.setOpaque(true);
+            btn.setContentAreaFilled(false);
+            btn.setOpaque(false);
             btn.setBorderPainted(false);
             btn.setFocusPainted(false);
             btn.setBorder(new EmptyBorder(6, 14, 6, 14));
+            // Paint rounded fill BEFORE the text so the label stays readable.
+            btn.setUI(new javax.swing.plaf.basic.BasicButtonUI() {
+                @Override
+                public void paint(Graphics g, JComponent c) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(bg);
+                    g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), 10, 10);
+                    g2.setColor(bg.darker());
+                    g2.drawRoundRect(0, 0, c.getWidth() - 1, c.getHeight() - 1, 10, 10);
+                    g2.dispose();
+                    super.paint(g, c); // draws text + icon on top
+                }
+            });
         }
 
         // ── Actions ───────────────────────────────────────────────────
