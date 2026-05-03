@@ -31,16 +31,27 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
  * (static shared D-Bus connection, {@code null} returns, checked exceptions) for backward
  * compatibility only. It will be removed in version 3.0.</p>
  *
- * <p><strong>Migration:</strong> Replace usages with the functional API:
+ * <p><strong>Migration:</strong> Replace usages with the functional API.</p>
+ *
+ * <p>Simple example — let the collection manage its own session:</p>
  * <pre>{@code
- * try (var sys    = de.swiesend.secretservice.functional.System.connect();
- *      var svc    = SecretService.create(Optional.of(sys)).orElseThrow();
- *      var sess   = svc.openSession().orElseThrow();
- *      var col    = Collection.openDefault(Optional.of(sess)).orElseThrow()) {
- *     col.createItem("My label", "s3cr3t", Map.of());
+ * Collection.openDefault().ifPresentOrElse(collection -> {
+ *     collection.createItem("My label", "s3cr3t", Map.of());
+ * }, () -> log.error("Could not open the default collection."));
+ * }</pre>
+ *
+ * <p>Full example — manage the connection lifecycle explicitly:</p>
+ * <pre>{@code
+ * try (var system = de.swiesend.secretservice.functional.System.connect()) {
+ *     SecretService.create(Optional.of(system)).ifPresentOrElse(service -> {
+ *         service.openSession().ifPresentOrElse(session -> {
+ *             Collection.openDefault(Optional.of(session)).ifPresentOrElse(collection -> {
+ *                 collection.createItem("My label", "s3cr3t", Map.of());
+ *             }, () -> log.error("Could not open the default collection."));
+ *         }, () -> log.error("Could not open an encrypted session."));
+ *     }, () -> log.error("Could not connect to the secret service."));
  * }
  * }</pre>
- * </p>
  *
  * @deprecated since 2.0, for removal in 3.0. Use
  *             {@link de.swiesend.secretservice.functional.SecretService#create()} and the
