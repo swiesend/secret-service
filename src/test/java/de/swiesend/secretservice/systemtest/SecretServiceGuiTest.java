@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.border.MatteBorder;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -60,110 +60,14 @@ public class SecretServiceGuiTest {
 
         CountDownLatch latch = new CountDownLatch(1);
         SwingUtilities.invokeLater(() -> {
-            applyGnomeTheme();
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {
+            }
             SecretServiceFrame frame = new SecretServiceFrame(latch);
             frame.setVisible(true);
         });
         latch.await(); // block until the user closes the window
-    }
-
-    /** Apply an Adwaita-inspired flat theme to the Swing UIManager. */
-    private static void applyGnomeTheme() {
-        applyGnomeTheme(ThemeMode.SYSTEM);
-    }
-
-    enum ThemeMode { SYSTEM, LIGHT, DARK }
-
-    /** Apply theme for the given mode. SYSTEM auto-detects from the GTK L&F. */
-    static void applyGnomeTheme(ThemeMode mode) {
-        // Load GTK / system L&F once so we can read its defaults for SYSTEM detection.
-        try {
-            boolean found = false;
-            for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
-                if (info.getName().contains("GTK")) {
-                    UIManager.setLookAndFeel(info.getClassName());
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {}
-
-        // Resolve actual dark/light
-        boolean dark;
-        if (mode == ThemeMode.DARK) {
-            dark = true;
-        } else if (mode == ThemeMode.LIGHT) {
-            dark = false;
-        } else { // SYSTEM — detect from L&F Panel background luminance
-            Color panelBg = UIManager.getColor("Panel.background");
-            dark = panelBg != null && luminance(panelBg) < 0.4;
-        }
-        SecretServiceFrame.isDark = dark;
-
-        // Adwaita palette overrides — light or dark variant
-        Color bg, card, text, muted, accent, border;
-        if (dark) {
-            bg     = new Color(0x242424);
-            card   = new Color(0x2D2D2D);
-            text   = new Color(0xEBEBEB);
-            muted  = new Color(0xB9B9B9);
-            border = new Color(0x3D3D3D);
-        } else {
-            bg     = new Color(0xF6F5F4);
-            card   = Color.WHITE;
-            text   = new Color(0x2E3436);
-            muted  = new Color(0x77767B);
-            border = new Color(0xDEDDDA);
-        }
-        accent = new Color(0x3584E4);
-
-        UIManager.put("Panel.background",          bg);
-        UIManager.put("ScrollPane.background",     bg);
-        UIManager.put("Viewport.background",       card);
-        UIManager.put("Table.background",          card);
-        UIManager.put("Table.foreground",          text);
-        UIManager.put("Table.gridColor",           border);
-        UIManager.put("List.background",           card);
-        UIManager.put("List.foreground",           text);
-        UIManager.put("TextArea.background",       card);
-        UIManager.put("TextArea.foreground",       text);
-        UIManager.put("TextField.background",      card);
-        UIManager.put("TextField.foreground",      text);
-        UIManager.put("PasswordField.background",  card);
-        UIManager.put("PasswordField.foreground",  text);
-        UIManager.put("ComboBox.background",       card);
-        UIManager.put("ComboBox.foreground",       text);
-        UIManager.put("Label.foreground",          text);
-        UIManager.put("CheckBox.foreground",       text);
-        UIManager.put("RadioButton.foreground",    text);
-        UIManager.put("Button.focus",              new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 80));
-        UIManager.put("TabbedPane.background",     bg);
-        UIManager.put("TabbedPane.foreground",     text);
-        UIManager.put("TabbedPane.selected",       card);
-        UIManager.put("SplitPane.background",      bg);
-        UIManager.put("TitledBorder.titleColor",   muted);
-        UIManager.put("TableHeader.background",    bg);
-        UIManager.put("TableHeader.foreground",    muted);
-
-        // Store derived colors for component helpers
-        SecretServiceFrame.COL_CARD      = card;
-        SecretServiceFrame.COL_BORDER    = border;
-        SecretServiceFrame.COL_MUTED     = muted;
-        SecretServiceFrame.COL_TEXT      = text;
-        SecretServiceFrame.COL_BG        = bg;
-        SecretServiceFrame.COL_HINT      = dark ? new Color(0x808080)  : new Color(0x9A9996);
-        SecretServiceFrame.COL_DANGER    = dark ? new Color(0x3D0A0A)  : new Color(0xFFF0EE);
-        SecretServiceFrame.COL_DANGER_B  = dark ? new Color(0x6B1A1A)  : new Color(0xF5C2C7);
-        // Secondary button: clearly visible against the background in both modes
-        SecretServiceFrame.COL_BTN_SEC    = new Color(0x3584E4);
-        SecretServiceFrame.COL_BTN_SEC_FG = Color.WHITE;
-    }
-
-    /** Relative luminance (sRGB) – used for dark-mode detection. */
-    private static double luminance(Color c) {
-        double r = c.getRed() / 255.0, g = c.getGreen() / 255.0, b = c.getBlue() / 255.0;
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     }
 
     // ─── GUI implementation ───────────────────────────────────────────────
@@ -171,19 +75,6 @@ public class SecretServiceGuiTest {
     static final class SecretServiceFrame extends JFrame {
 
         private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
-
-        // Theme — set by applyGnomeTheme() before the frame is constructed
-        static boolean isDark      = false;
-        static Color COL_CARD      = Color.WHITE;
-        static Color COL_BORDER    = new Color(0xDEDDDA);
-        static Color COL_MUTED     = new Color(0x77767B);
-        static Color COL_TEXT      = new Color(0x2E3436);
-        static Color COL_BG        = new Color(0xF6F5F4);
-        static Color COL_HINT      = new Color(0x9A9996);
-        static Color COL_DANGER    = new Color(0xFFF0EE);
-        static Color COL_DANGER_B  = new Color(0xF5C2C7);
-        static Color COL_BTN_SEC   = new Color(0x3584E4);
-        static Color COL_BTN_SEC_FG = Color.WHITE;
 
         // Collection panel
         private final ButtonGroup collectionGroup = new ButtonGroup();
@@ -290,45 +181,14 @@ public class SecretServiceGuiTest {
 
         // ── Layout ────────────────────────────────────────────────────
 
-        /** Re-applies current palette to all instance-field components that persist across buildUi() calls. */
-        private void reapplyThemeToComponents() {
-            Color text = COL_TEXT;
-            // Labels
-            lblDbusConnected.setForeground(text);
-            lblDbusAvailable.setForeground(text);
-            lblProvider.setForeground(text);
-            lblDetailPath.setForeground(text);
-            lblDetailLabel.setForeground(text);
-            lblDetailSecret.setForeground(text);
-            // Interactive controls
-            rbDefault.setForeground(text);
-            rbTest.setForeground(text);
-            cbAutoSync.setForeground(text);
-            tfCollectionLabel.setForeground(text);
-            tfCollectionId.setForeground(text);
-            pfCollectionPassword.setForeground(text);
-            tfLabel.setForeground(text);
-            tfSecret.setForeground(text);
-            tfAttributeKey.setForeground(text);
-            tfAttributeValue.setForeground(text);
-            tfSearch.setForeground(text);
-        }
-
         private void buildUi() {
-            // Re-apply theme colours to instance-field components that survive across
-            // buildUi() calls. Without this they keep whatever foreground the previous
-            // L&F injected and don't pick up the new UIManager values automatically.
-            reapplyThemeToComponents();
-
             JTabbedPane tabs = new JTabbedPane();
-            tabs.setBorder(new EmptyBorder(0, 0, 0, 0));
 
             // ── Main tab ──
-            JPanel mainTab = new JPanel(new BorderLayout(0, 0));
-            mainTab.setBackground(COL_BG);
+            JPanel mainTab = new JPanel(new BorderLayout(8, 8));
+            mainTab.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-            JPanel topPanel = new JPanel(new BorderLayout(0, 0));
-            topPanel.setBackground(COL_BG);
+            JPanel topPanel = new JPanel(new BorderLayout(0, 4));
             topPanel.add(buildSystemPanel(), BorderLayout.NORTH);
             topPanel.add(buildCollectionPanel(), BorderLayout.SOUTH);
             mainTab.add(topPanel, BorderLayout.NORTH);
@@ -339,114 +199,52 @@ public class SecretServiceGuiTest {
             // ── Debug tab ──
             tabs.addTab("Debug", buildDebugTab());
 
-            // ── View tab ──
-            tabs.addTab("View", buildViewTab(tabs));
-
             setContentPane(tabs);
         }
 
-        private JPanel buildViewTab(JTabbedPane tabs) {
-            JPanel inner = new JPanel(new GridBagLayout());
-            inner.setOpaque(false);
-            GridBagConstraints gbc = gbc();
-
-            JLabel heading = new JLabel("Theme");
-            heading.setFont(heading.getFont().deriveFont(Font.BOLD, 14f));
-            heading.setForeground(COL_TEXT);
-            gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 1; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(heading, gbc);
-
-            ButtonGroup themeGroup = new ButtonGroup();
-            JRadioButton rbSystem = new JRadioButton("System default", true);
-            JRadioButton rbLight  = new JRadioButton("Light");
-            JRadioButton rbDark   = new JRadioButton("Dark");
-            rbSystem.setOpaque(false); rbLight.setOpaque(false); rbDark.setOpaque(false);
-            themeGroup.add(rbSystem); themeGroup.add(rbLight); themeGroup.add(rbDark);
-
-            gbc.gridy = 1; inner.add(rbSystem, gbc);
-            gbc.gridy = 2; inner.add(rbLight,  gbc);
-            gbc.gridy = 3; inner.add(rbDark,   gbc);
-
-            JButton btnApply = new JButton("Apply");
-            styleButton(btnApply, new Color(0x3584E4), Color.WHITE);
-            gbc.gridy = 4; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(btnApply, gbc);
-
-            JLabel hint = hintLabel("Restart is not required — the UI is rebuilt in-place.");
-            gbc.gridy = 5; inner.add(hint, gbc);
-
-            btnApply.addActionListener(e -> {
-                ThemeMode mode = rbDark.isSelected() ? ThemeMode.DARK
-                               : rbLight.isSelected() ? ThemeMode.LIGHT
-                               : ThemeMode.SYSTEM;
-                applyGnomeTheme(mode);
-                // Rebuild UI so every component picks up the new colours.
-                // updateComponentTreeUI must NOT be called after buildUi() as it
-                // would replace the custom BasicButtonUI set by styleButton() with
-                // the L&F default, stripping button colours.
-                getContentPane().removeAll();
-                buildUi();
-                revalidate();
-                repaint();
-                // Restore View tab selection
-                ((JTabbedPane) getContentPane()).setSelectedIndex(2);
-            });
-
-            JPanel viewPanel = new JPanel(new BorderLayout(0, 0));
-            viewPanel.setBackground(COL_BG);
-            JPanel wrapper = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-            wrapper.setOpaque(false);
-            wrapper.add(card("Appearance", inner));
-            viewPanel.add(wrapper, BorderLayout.NORTH);
-            return viewPanel;
-        }
-
         private JPanel buildSystemPanel() {
-            JPanel inner = new JPanel(new GridBagLayout());
-            inner.setOpaque(false);
+            JPanel panel = new JPanel();
+            panel.setBorder(new TitledBorder("System"));
+            panel.setLayout(new GridBagLayout());
             GridBagConstraints gbc = gbc();
 
             // Row 0: connection icon + Connect / Disconnect
             gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 6; gbc.anchor = GridBagConstraints.CENTER;
             JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-            btnRow.setOpaque(false);
-            styleButton(btnConnect,    new Color(0x3584E4), Color.WHITE);
-            styleButton(btnDisconnect, COL_BTN_SEC, COL_BTN_SEC_FG);
             btnRow.add(lblConnectionStatus);
             btnRow.add(btnConnect);
             btnRow.add(btnDisconnect);
-            inner.add(btnRow, gbc);
+            panel.add(btnRow, gbc);
 
             // Row 1: D-Bus status indicators
             gbc.gridwidth = 1;
             gbc.gridx = 0; gbc.gridy = 1; gbc.anchor = GridBagConstraints.EAST;
-            inner.add(dimLabel("D-Bus:"), gbc);
+            panel.add(new JLabel("D-Bus:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(lblDbusConnected, gbc);
+            panel.add(lblDbusConnected, gbc);
 
             gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
-            inner.add(dimLabel("Service:"), gbc);
+            panel.add(new JLabel("Service:"), gbc);
             gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(lblDbusAvailable, gbc);
+            panel.add(lblDbusAvailable, gbc);
 
             gbc.gridx = 4; gbc.anchor = GridBagConstraints.EAST;
-            inner.add(dimLabel("Provider:"), gbc);
+            panel.add(new JLabel("Provider:"), gbc);
             gbc.gridx = 5; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(lblProvider, gbc);
+            panel.add(lblProvider, gbc);
 
             updateConnectionIcon(false);
-            return card("System", inner);
+            return panel;
         }
 
         private JPanel buildCollectionPanel() {
-            JPanel inner = new JPanel(new GridBagLayout());
-            inner.setOpaque(false);
+            JPanel panel = new JPanel();
+            panel.setBorder(new TitledBorder("Collection"));
+            panel.setLayout(new GridBagLayout());
             GridBagConstraints gbc = gbc();
 
             collectionGroup.add(rbDefault);
             collectionGroup.add(rbTest);
-            rbDefault.setOpaque(false);
-            rbTest.setOpaque(false);
 
             rbDefault.addActionListener(e -> {
                 tfCollectionLabel.setEnabled(false);
@@ -460,95 +258,89 @@ public class SecretServiceGuiTest {
             });
 
             gbc.gridx = 0; gbc.gridy = 0;
-            inner.add(rbDefault, gbc);
+            panel.add(rbDefault, gbc);
             gbc.gridx = 1;
-            inner.add(rbTest, gbc);
+            panel.add(rbTest, gbc);
 
             gbc.gridx = 0; gbc.gridy = 1; gbc.anchor = GridBagConstraints.EAST;
-            inner.add(dimLabel("Label:"), gbc);
+            panel.add(new JLabel("Label:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(tfCollectionLabel, gbc);
+            panel.add(tfCollectionLabel, gbc);
             gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
-            inner.add(dimLabel("ID:"), gbc);
+            panel.add(new JLabel("ID:"), gbc);
             gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(tfCollectionId, gbc);
+            panel.add(tfCollectionId, gbc);
 
             gbc.gridx = 0; gbc.gridy = 2; gbc.anchor = GridBagConstraints.EAST;
-            inner.add(dimLabel("Password:"), gbc);
+            panel.add(new JLabel("Password:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(pfCollectionPassword, gbc);
+            panel.add(pfCollectionPassword, gbc);
 
-            JLabel hintId  = hintLabel("ID = D-Bus path segment (e.g. \"test\"). Used when opening an existing collection by id."
-                    + " In KeePassXC this is the name of the exposed group.");
-            JLabel hintLbl = hintLabel("Label = human-readable name (e.g. \"Test\"). Used when creating a new collection."
-                    + " In KeePassXC this is the database name.");
+            JLabel hintId = new JLabel("<html><small><i>ID = D-Bus path segment (e.g. \"test\"). Used when opening an existing collection by id."
+                    + " In KeePassXC this is the name of the exposed group.</i></small></html>");
+            JLabel hintLabel = new JLabel("<html><small><i>Label = human-readable name (e.g. \"Test\"). Used when creating a new collection."
+                    + " In KeePassXC this is the database name.</i></small></html>");
             gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.WEST;
-            inner.add(hintLbl, gbc);
+            panel.add(hintLabel, gbc);
             gbc.gridy = 4;
-            inner.add(hintId, gbc);
+            panel.add(hintId, gbc);
             gbc.gridwidth = 1;
 
-            return card("Collection", inner);
+            return panel;
         }
 
         private JPanel buildCenterPanel() {
-            JPanel panel = new JPanel(new BorderLayout(0, 0));
-            panel.setBackground(COL_BG);
+            JPanel panel = new JPanel(new BorderLayout(8, 8));
 
             // ── Create-item fields ──────────────────────────────────
-            JPanel createInner = new JPanel(new GridBagLayout());
-            createInner.setOpaque(false);
+            JPanel createPanel = new JPanel();
+            createPanel.setBorder(new TitledBorder("Create Item"));
+            createPanel.setLayout(new GridBagLayout());
             GridBagConstraints gbc = gbc();
 
             gbc.gridx = 0; gbc.gridy = 0; gbc.anchor = GridBagConstraints.EAST;
-            createInner.add(dimLabel("Label:"), gbc);
+            createPanel.add(new JLabel("Label:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST; gbc.gridwidth = 3;
-            createInner.add(tfLabel, gbc);
+            createPanel.add(tfLabel, gbc);
 
             gbc.gridwidth = 1;
             gbc.gridx = 0; gbc.gridy = 1; gbc.anchor = GridBagConstraints.EAST;
-            createInner.add(dimLabel("Secret:"), gbc);
+            createPanel.add(new JLabel("Secret:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST; gbc.gridwidth = 3;
-            createInner.add(tfSecret, gbc);
+            createPanel.add(tfSecret, gbc);
 
             gbc.gridwidth = 1;
             gbc.gridx = 0; gbc.gridy = 2; gbc.anchor = GridBagConstraints.EAST;
-            createInner.add(dimLabel("Attribute key:"), gbc);
+            createPanel.add(new JLabel("Attribute key:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            createInner.add(tfAttributeKey, gbc);
+            createPanel.add(tfAttributeKey, gbc);
             gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
-            createInner.add(dimLabel("value:"), gbc);
+            createPanel.add(new JLabel("value:"), gbc);
             gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            createInner.add(tfAttributeValue, gbc);
+            createPanel.add(tfAttributeValue, gbc);
 
             gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.CENTER;
             JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
-            createRow.setOpaque(false);
-            styleButton(btnCreate,      new Color(0x3584E4), Color.WHITE);
-            styleButton(btnClearCreate, COL_BTN_SEC, COL_BTN_SEC_FG);
             createRow.add(btnCreate);
             createRow.add(btnClearCreate);
-            createInner.add(createRow, gbc);
+            createPanel.add(createRow, gbc);
 
-            panel.add(card("Create Item", createInner), BorderLayout.NORTH);
+            panel.add(createPanel, BorderLayout.NORTH);
 
             // ── Center split: items list (left) + detail (right) ────
             JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
             splitPane.setResizeWeight(0.45);
-            splitPane.setBorder(new EmptyBorder(0, 0, 0, 0));
 
             // Items list
-            JPanel listInner = new JPanel(new BorderLayout(4, 4));
-            listInner.setOpaque(false);
+            JPanel listPanel = new JPanel(new BorderLayout(4, 4));
+            listPanel.setBorder(new TitledBorder("Items (select to inspect)"));
             itemsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
             JScrollPane listScroll = new JScrollPane(itemsList);
             listScroll.setPreferredSize(new Dimension(260, 160));
 
             // Search bar
             JPanel searchPanel = new JPanel(new BorderLayout(4, 2));
-            searchPanel.setOpaque(false);
             JPanel searchFields = new JPanel(new BorderLayout(4, 0));
-            searchFields.setOpaque(false);
             cmbMaxDistance.setSelectedItem(1);
             cmbMaxDistance.setToolTipText("<html>Fuzzy search tolerance (Levenshtein distance):<br>"
                     + "<b>0</b> – substring match only (fastest, exact)<br>"
@@ -558,75 +350,68 @@ public class SecretServiceGuiTest {
             JLabel lblDistance = new JLabel("~");
             lblDistance.setToolTipText("Fuzzy distance: 0 = exact substring, 1-3 = tolerate typos");
             JPanel modeAndDistance = new JPanel(new BorderLayout(2, 0));
-            modeAndDistance.setOpaque(false);
             modeAndDistance.add(cmbSearchMode, BorderLayout.CENTER);
             JPanel distancePanel = new JPanel(new BorderLayout(2, 0));
-            distancePanel.setOpaque(false);
             distancePanel.add(lblDistance, BorderLayout.WEST);
             distancePanel.add(cmbMaxDistance, BorderLayout.CENTER);
             modeAndDistance.add(distancePanel, BorderLayout.EAST);
             searchFields.add(tfSearch, BorderLayout.CENTER);
             searchFields.add(modeAndDistance, BorderLayout.EAST);
-            styleButton(btnSearch, new Color(0x3584E4), Color.WHITE);
             searchPanel.add(searchFields, BorderLayout.CENTER);
             searchPanel.add(btnSearch, BorderLayout.EAST);
 
-            listInner.add(searchPanel, BorderLayout.NORTH);
-            listInner.add(listScroll, BorderLayout.CENTER);
-            styleButton(btnList, COL_BTN_SEC, COL_BTN_SEC_FG);
-            listInner.add(btnList, BorderLayout.SOUTH);
-            splitPane.setLeftComponent(card("Items (select to inspect)", listInner));
+            listPanel.add(searchPanel, BorderLayout.NORTH);
+            listPanel.add(listScroll, BorderLayout.CENTER);
+            listPanel.add(btnList, BorderLayout.SOUTH);
+            splitPane.setLeftComponent(listPanel);
 
             // Item detail
-            JPanel detailInner = new JPanel(new GridBagLayout());
-            detailInner.setOpaque(false);
+            JPanel detailPanel = new JPanel();
+            detailPanel.setBorder(new TitledBorder("Selected Item"));
+            detailPanel.setLayout(new GridBagLayout());
             GridBagConstraints dg = gbc();
 
             dg.gridx = 0; dg.gridy = 0; dg.anchor = GridBagConstraints.EAST;
-            detailInner.add(dimLabel("Path:"), dg);
+            detailPanel.add(new JLabel("Path:"), dg);
             dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            detailInner.add(lblDetailPath, dg);
+            detailPanel.add(lblDetailPath, dg);
 
             dg.weightx = 0;
             dg.gridx = 0; dg.gridy = 1; dg.anchor = GridBagConstraints.EAST;
-            detailInner.add(dimLabel("Label:"), dg);
+            detailPanel.add(new JLabel("Label:"), dg);
             dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            detailInner.add(lblDetailLabel, dg);
+            detailPanel.add(lblDetailLabel, dg);
 
             dg.weightx = 0;
             dg.gridx = 0; dg.gridy = 2; dg.anchor = GridBagConstraints.EAST;
-            detailInner.add(dimLabel("Secret:"), dg);
+            detailPanel.add(new JLabel("Secret:"), dg);
             dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            detailInner.add(lblDetailSecret, dg);
+            detailPanel.add(lblDetailSecret, dg);
 
             dg.weightx = 0;
             dg.gridx = 0; dg.gridy = 3; dg.gridwidth = 2; dg.anchor = GridBagConstraints.CENTER;
             JPanel detailBtnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
-            detailBtnRow.setOpaque(false);
-            styleButton(btnRead, new Color(0x3584E4), Color.WHITE);
             detailBtnRow.add(btnRead);
-            detailInner.add(detailBtnRow, dg);
+            detailPanel.add(detailBtnRow, dg);
 
             dg.gridx = 0; dg.gridy = 4; dg.gridwidth = 2; dg.weighty = 1.0;
             dg.fill = GridBagConstraints.BOTH;
             JScrollPane attributesScroll = new JScrollPane(attributesTable);
             attributesScroll.setPreferredSize(new Dimension(0, 80));
             attributesTable.setFillsViewportHeight(true);
-            detailInner.add(attributesScroll, dg);
+            detailPanel.add(attributesScroll, dg);
 
-            splitPane.setRightComponent(card("Selected Item", detailInner));
+            splitPane.setRightComponent(detailPanel);
             panel.add(splitPane, BorderLayout.CENTER);
 
             // ── Danger Zone ─────────────────────────────────────────
-            JPanel dangerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 6));
-            dangerPanel.setBackground(COL_DANGER);
-            dangerPanel.setBorder(BorderFactory.createCompoundBorder(
-                    new MatteBorder(1, 0, 0, 0, COL_DANGER_B),
-                    new EmptyBorder(2, 8, 2, 8)));
-            styleButton(btnDeleteItem,       new Color(0xE01B24), Color.WHITE);
-            styleButton(btnDeleteCollection, new Color(0xE01B24), Color.WHITE);
-            styleButton(btnKillKeyring,      COL_BTN_SEC, COL_BTN_SEC_FG);
-            styleButton(btnStartKeyring,     COL_BTN_SEC, COL_BTN_SEC_FG);
+            JPanel dangerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 4));
+            dangerPanel.setBorder(BorderFactory.createTitledBorder(
+                    BorderFactory.createLineBorder(Color.RED), "Danger Zone",
+                    TitledBorder.DEFAULT_JUSTIFICATION, TitledBorder.DEFAULT_POSITION,
+                    dangerPanel.getFont(), Color.RED));
+            btnDeleteItem.setForeground(Color.RED);
+            btnDeleteCollection.setForeground(Color.RED);
             dangerPanel.add(btnDeleteItem);
             dangerPanel.add(btnDeleteCollection);
             dangerPanel.add(btnKillKeyring);
@@ -639,24 +424,18 @@ public class SecretServiceGuiTest {
         // ── Debug tab ─────────────────────────────────────────────────
 
         private JPanel buildDebugTab() {
-            JPanel panel = new JPanel(new BorderLayout(0, 0));
-            panel.setBackground(COL_BG);
-            panel.setBorder(new EmptyBorder(4, 4, 4, 4));
+            JPanel panel = new JPanel(new BorderLayout(8, 8));
+            panel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-            // Four sections stacked vertically, each stretching to fill equal share of height.
-            // GridLayout(4,1) gives each section exactly 1/4 of the available height.
-            JPanel stack = new JPanel(new GridLayout(4, 1, 0, 4));
-            stack.setOpaque(false);
-            stack.add(buildDebugSection("System",     debugSystemModel));
-            stack.add(buildDebugSection("Service",    debugServiceModel));
-            stack.add(buildDebugSection("Session",    debugSessionModel));
-            stack.add(buildDebugSection("Collection", debugCollectionModel));
-            panel.add(stack, BorderLayout.CENTER);
+            // Four state sections stacked vertically
+            JPanel grid = new JPanel(new GridLayout(4, 1, 8, 8));
+            grid.add(buildDebugSection("System", debugSystemModel));
+            grid.add(buildDebugSection("Service", debugServiceModel));
+            grid.add(buildDebugSection("Session", debugSessionModel));
+            grid.add(buildDebugSection("Collection", debugCollectionModel));
+            panel.add(grid, BorderLayout.CENTER);
 
             JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 4));
-            bottom.setOpaque(false);
-            cbAutoSync.setOpaque(false);
-            styleButton(btnDebugRefresh, new Color(0x3584E4), Color.WHITE);
             bottom.add(cbAutoSync);
             bottom.add(btnDebugRefresh);
             panel.add(bottom, BorderLayout.SOUTH);
@@ -665,119 +444,33 @@ public class SecretServiceGuiTest {
         }
 
         private static JPanel buildDebugSection(String title, DefaultTableModel model) {
+            JPanel section = new JPanel(new BorderLayout());
+            section.setBorder(new TitledBorder(title));
             JTable table = new JTable(model);
             table.setFillsViewportHeight(true);
-            table.setRowHeight(22);
-            table.getColumnModel().getColumn(0).setPreferredWidth(200);
-            table.getColumnModel().getColumn(1).setPreferredWidth(300);
-            JScrollPane scroll = new JScrollPane(table);
-            JPanel inner = new JPanel(new BorderLayout());
-            inner.setOpaque(false);
-            inner.add(scroll, BorderLayout.CENTER);
-            return card(title, inner);
+            table.getColumnModel().getColumn(0).setPreferredWidth(180);
+            table.getColumnModel().getColumn(1).setPreferredWidth(260);
+            section.add(new JScrollPane(table), BorderLayout.CENTER);
+            return section;
         }
 
         private JPanel buildLogPanel() {
-            JPanel inner = new JPanel(new BorderLayout(4, 4));
-            inner.setOpaque(false);
+            JPanel panel = new JPanel(new BorderLayout(4, 4));
+            panel.setBorder(new TitledBorder("Log"));
             logArea.setEditable(false);
             logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-            if (isDark) {
-                logArea.setBackground(new Color(0x1A1A1A));
-                logArea.setForeground(new Color(0xCDD6F4));
-                logArea.setCaretColor(new Color(0xCDD6F4));
-            } else {
-                logArea.setBackground(new Color(0x1E1E2E));
-                logArea.setForeground(new Color(0xCDD6F4));
-                logArea.setCaretColor(new Color(0xCDD6F4));
-            }
             JScrollPane scroll = new JScrollPane(logArea);
-            scroll.setPreferredSize(new Dimension(0, 160));
-            inner.add(scroll, BorderLayout.CENTER);
-            styleButton(btnClearLog, COL_BTN_SEC, COL_BTN_SEC_FG);
-            inner.add(btnClearLog, BorderLayout.SOUTH);
-            return card("Log", inner);
+            scroll.setPreferredSize(new Dimension(0, 180));
+            panel.add(scroll, BorderLayout.CENTER);
+            panel.add(btnClearLog, BorderLayout.SOUTH);
+            return panel;
         }
 
         private static GridBagConstraints gbc() {
             GridBagConstraints gbc = new GridBagConstraints();
-            gbc.insets = new Insets(4, 8, 4, 8);
+            gbc.insets = new Insets(3, 6, 3, 6);
             gbc.fill = GridBagConstraints.HORIZONTAL;
             return gbc;
-        }
-
-        /** Flat card panel with a bold section title and a subtle border. */
-        private static JPanel card(String title, JPanel content) {
-            JPanel card = new JPanel(new BorderLayout(0, 4));
-            card.setBackground(COL_CARD);
-            card.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(COL_BORDER, 1, true),
-                    new EmptyBorder(8, 10, 10, 10)));
-            JLabel header = new JLabel(title);
-            header.setFont(header.getFont().deriveFont(Font.BOLD, 12f));
-            header.setForeground(COL_MUTED);
-            header.setBorder(new EmptyBorder(0, 0, 4, 0));
-            card.add(header, BorderLayout.NORTH);
-            card.add(content, BorderLayout.CENTER);
-            JPanel wrapper = new JPanel(new BorderLayout());
-            wrapper.setOpaque(false);
-            wrapper.setBorder(new EmptyBorder(4, 8, 4, 8));
-            wrapper.add(card);
-            return wrapper;
-        }
-
-        /** Small muted label for field captions. */
-        private static JLabel dimLabel(String text) {
-            JLabel l = new JLabel(text);
-            l.setForeground(COL_MUTED);
-            return l;
-        }
-
-        /** Small italic hint label. */
-        private static JLabel hintLabel(String text) {
-            JLabel l = new JLabel("<html><small><i>" + text + "</i></small></html>");
-            l.setForeground(COL_HINT);
-            return l;
-        }
-
-        /** Flat Adwaita-inspired button with rounded corners, no text shadows. */
-        private static void styleButton(JButton btn, Color bg, Color fg) {
-            btn.setForeground(fg);
-            btn.setContentAreaFilled(false);
-            btn.setOpaque(false);
-            btn.setBorderPainted(false);
-            btn.setFocusPainted(false);
-            btn.setBorder(new EmptyBorder(6, 14, 6, 14));
-            btn.setUI(new javax.swing.plaf.basic.BasicButtonUI() {
-                @Override
-                public void paint(Graphics g, JComponent c) {
-                    boolean enabled = c.isEnabled();
-                    Graphics2D g2 = (Graphics2D) g.create();
-                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    // Dim the fill when disabled so the button stays visible but looks inactive
-                    Color fill    = enabled ? bg    : new Color(bg.getRed(), bg.getGreen(), bg.getBlue(), 160);
-                    Color outline = enabled ? bg.darker() : fill.darker();
-                    g2.setColor(fill);
-                    g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), 10, 10);
-                    g2.setColor(outline);
-                    g2.drawRoundRect(0, 0, c.getWidth() - 1, c.getHeight() - 1, 10, 10);
-                    g2.dispose();
-                    super.paint(g, c);
-                }
-                @Override
-                protected void paintText(Graphics g, JComponent c, Rectangle textRect, String text) {
-                    // Plain text only — no shadow from GTK L&F
-                    boolean enabled = c.isEnabled();
-                    Graphics2D g2 = (Graphics2D) g.create();
-                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                    Color textColor = enabled ? fg : new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 100);
-                    g2.setColor(textColor);
-                    g2.setFont(c.getFont());
-                    javax.swing.plaf.basic.BasicGraphicsUtils.drawString(g2, text, -1,
-                            textRect.x, textRect.y + g2.getFontMetrics().getAscent());
-                    g2.dispose();
-                }
-            });
         }
 
         // ── Actions ───────────────────────────────────────────────────
