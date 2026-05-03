@@ -89,9 +89,9 @@ public class MessageHandler {
                     case "org.freedesktop.DBus.Error.InvalidArgs":
                     case "org.freedesktop.DBus.Error.Failed":
                         if (parameters.length == 1) {
-                            log.error(error + ": \"" + parameters[0] + "\"", new DBusException(error));
+                            log.error(error + ": \"" + parameters[0] + "\"");
                         } else {
-                            log.error(error + ": " + Arrays.deepToString(parameters), new DBusException(error));
+                            log.error(error + ": " + Arrays.deepToString(parameters));
                         }
                         return Optional.empty();
                     case "org.freedesktop.DBus.Local.Disconnected":
