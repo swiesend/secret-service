@@ -494,7 +494,7 @@ public class SecretServiceGuiTest {
             JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
             createRow.setOpaque(false);
             styleButton(btnCreate,      new Color(0x3584E4), Color.WHITE);
-            styleButton(btnClearCreate, new Color(0xDEDDDA), new Color(0x2E3436));
+            styleButton(btnClearCreate, COL_BTN_SEC, COL_BTN_SEC_FG);
             createRow.add(btnCreate);
             createRow.add(btnClearCreate);
             createInner.add(createRow, gbc);
@@ -542,7 +542,7 @@ public class SecretServiceGuiTest {
 
             listInner.add(searchPanel, BorderLayout.NORTH);
             listInner.add(listScroll, BorderLayout.CENTER);
-            styleButton(btnList, new Color(0xDEDDDA), new Color(0x2E3436));
+            styleButton(btnList, COL_BTN_SEC, COL_BTN_SEC_FG);
             listInner.add(btnList, BorderLayout.SOUTH);
             splitPane.setLeftComponent(card("Items (select to inspect)", listInner));
 
@@ -594,8 +594,8 @@ public class SecretServiceGuiTest {
                     new EmptyBorder(2, 8, 2, 8)));
             styleButton(btnDeleteItem,       new Color(0xE01B24), Color.WHITE);
             styleButton(btnDeleteCollection, new Color(0xE01B24), Color.WHITE);
-            styleButton(btnKillKeyring,      new Color(0xDEDDDA), new Color(0x2E3436));
-            styleButton(btnStartKeyring,     new Color(0xDEDDDA), new Color(0x2E3436));
+            styleButton(btnKillKeyring,      COL_BTN_SEC, COL_BTN_SEC_FG);
+            styleButton(btnStartKeyring,     COL_BTN_SEC, COL_BTN_SEC_FG);
             dangerPanel.add(btnDeleteItem);
             dangerPanel.add(btnDeleteCollection);
             dangerPanel.add(btnKillKeyring);
@@ -663,7 +663,7 @@ public class SecretServiceGuiTest {
             JScrollPane scroll = new JScrollPane(logArea);
             scroll.setPreferredSize(new Dimension(0, 160));
             inner.add(scroll, BorderLayout.CENTER);
-            styleButton(btnClearLog, new Color(0xDEDDDA), new Color(0x2E3436));
+            styleButton(btnClearLog, COL_BTN_SEC, COL_BTN_SEC_FG);
             inner.add(btnClearLog, BorderLayout.SOUTH);
             return card("Log", inner);
         }
@@ -724,7 +724,7 @@ public class SecretServiceGuiTest {
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     // Dim the fill when disabled so the button stays visible but looks inactive
-                    Color fill    = enabled ? bg    : new Color(bg.getRed(), bg.getGreen(), bg.getBlue(), 80);
+                    Color fill    = enabled ? bg    : new Color(bg.getRed(), bg.getGreen(), bg.getBlue(), 160);
                     Color outline = enabled ? bg.darker() : fill.darker();
                     g2.setColor(fill);
                     g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), 10, 10);
