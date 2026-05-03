@@ -156,8 +156,8 @@ public class SecretServiceGuiTest {
         SecretServiceFrame.COL_DANGER    = dark ? new Color(0x3D0A0A)  : new Color(0xFFF0EE);
         SecretServiceFrame.COL_DANGER_B  = dark ? new Color(0x6B1A1A)  : new Color(0xF5C2C7);
         // Secondary button: clearly visible against the background in both modes
-        SecretServiceFrame.COL_BTN_SEC    = new Color(0x6B6865);
-        SecretServiceFrame.COL_BTN_SEC_FG = new Color(0xEBEBEB);
+        SecretServiceFrame.COL_BTN_SEC    = new Color(0x3584E4);
+        SecretServiceFrame.COL_BTN_SEC_FG = Color.WHITE;
     }
 
     /** Relative luminance (sRGB) – used for dark-mode detection. */
@@ -182,8 +182,8 @@ public class SecretServiceGuiTest {
         static Color COL_HINT      = new Color(0x9A9996);
         static Color COL_DANGER    = new Color(0xFFF0EE);
         static Color COL_DANGER_B  = new Color(0xF5C2C7);
-        static Color COL_BTN_SEC   = new Color(0x6B6865);
-        static Color COL_BTN_SEC_FG = new Color(0xEBEBEB);
+        static Color COL_BTN_SEC   = new Color(0x3584E4);
+        static Color COL_BTN_SEC_FG = Color.WHITE;
 
         // Collection panel
         private final ButtonGroup collectionGroup = new ButtonGroup();
@@ -290,7 +290,36 @@ public class SecretServiceGuiTest {
 
         // ── Layout ────────────────────────────────────────────────────
 
+        /** Re-applies current palette to all instance-field components that persist across buildUi() calls. */
+        private void reapplyThemeToComponents() {
+            Color text = COL_TEXT;
+            // Labels
+            lblDbusConnected.setForeground(text);
+            lblDbusAvailable.setForeground(text);
+            lblProvider.setForeground(text);
+            lblDetailPath.setForeground(text);
+            lblDetailLabel.setForeground(text);
+            lblDetailSecret.setForeground(text);
+            // Interactive controls
+            rbDefault.setForeground(text);
+            rbTest.setForeground(text);
+            cbAutoSync.setForeground(text);
+            tfCollectionLabel.setForeground(text);
+            tfCollectionId.setForeground(text);
+            pfCollectionPassword.setForeground(text);
+            tfLabel.setForeground(text);
+            tfSecret.setForeground(text);
+            tfAttributeKey.setForeground(text);
+            tfAttributeValue.setForeground(text);
+            tfSearch.setForeground(text);
+        }
+
         private void buildUi() {
+            // Re-apply theme colours to instance-field components that survive across
+            // buildUi() calls. Without this they keep whatever foreground the previous
+            // L&F injected and don't pick up the new UIManager values automatically.
+            reapplyThemeToComponents();
+
             JTabbedPane tabs = new JTabbedPane();
             tabs.setBorder(new EmptyBorder(0, 0, 0, 0));
 
@@ -351,10 +380,12 @@ public class SecretServiceGuiTest {
                                : rbLight.isSelected() ? ThemeMode.LIGHT
                                : ThemeMode.SYSTEM;
                 applyGnomeTheme(mode);
-                // Rebuild UI so every component picks up the new colours
+                // Rebuild UI so every component picks up the new colours.
+                // updateComponentTreeUI must NOT be called after buildUi() as it
+                // would replace the custom BasicButtonUI set by styleButton() with
+                // the L&F default, stripping button colours.
                 getContentPane().removeAll();
                 buildUi();
-                SwingUtilities.updateComponentTreeUI(SecretServiceFrame.this);
                 revalidate();
                 repaint();
                 // Restore View tab selection
