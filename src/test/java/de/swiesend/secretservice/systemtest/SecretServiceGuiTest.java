@@ -2,6 +2,7 @@ package de.swiesend.secretservice.systemtest;
 
 import de.swiesend.secretservice.ProviderDetector;
 import de.swiesend.secretservice.functional.SecretService;
+import de.swiesend.secretservice.functional.SearchMode;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
@@ -80,16 +81,16 @@ public class SecretServiceGuiTest {
         private final JRadioButton rbDefault = new JRadioButton("Default collection");
         private final JRadioButton rbTest = new JRadioButton("Custom collection", true);
         /** Human-readable label used when creating a collection (gnome-keyring) or for display. */
-        private final JTextField tfCollectionLabel = new JTextField("test", 14);
+        private final JTextField tfCollectionLabel = new JTextField(14);
         /** D-Bus collection id (last path segment, e.g. "test"). Used by collectionById(). */
         private final JTextField tfCollectionId = new JTextField("test", 14);
-        private final JPasswordField pfCollectionPassword = new JPasswordField("test", 14);
+        private final JPasswordField pfCollectionPassword = new JPasswordField(14);
 
         // Create-item panel
         private final JTextField tfLabel = new JTextField(20);
         private final JTextField tfSecret = new JTextField(20);
-        private final JTextField tfAttrKey = new JTextField(10);
-        private final JTextField tfAttrValue = new JTextField(10);
+        private final JTextField tfAttributeKey = new JTextField(10);
+        private final JTextField tfAttributeValue = new JTextField(10);
 
         // Items list
         private final DefaultListModel<String> itemsModel = new DefaultListModel<>();
@@ -97,17 +98,18 @@ public class SecretServiceGuiTest {
 
         // Search bar (items panel)
         private final JTextField tfSearch = new JTextField(14);
-        private final JComboBox<String> cmbSearchMode = new JComboBox<>(new String[]{"By Name", "By Attr Key", "By Attr Value"});
+        private final JComboBox<String> cmbSearchMode = new JComboBox<>(new String[]{"By Name", "By Attribute Key", "By Attribute Value", "By Object ID", "By Object Path"});
+        private final JComboBox<Integer> cmbMaxDistance = new JComboBox<>(new Integer[]{0, 1, 2, 3});
         private final JButton btnSearch = new JButton("Search");
 
         // Item detail panel (shown on selection)
         private final JLabel lblDetailPath = new JLabel(" ");
         private final JLabel lblDetailLabel = new JLabel(" ");
         private final JLabel lblDetailSecret = new JLabel("********");
-        private final DefaultTableModel attrsTableModel = new DefaultTableModel(new String[]{"Key", "Value"}, 0) {
+        private final DefaultTableModel attributesTableModel = new DefaultTableModel(new String[]{"Key", "Value"}, 0) {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
-        private final JTable attrsTable = new JTable(attrsTableModel);
+        private final JTable attributesTable = new JTable(attributesTableModel);
 
         // Log area
         private final JTextArea logArea = new JTextArea(12, 50);
@@ -274,8 +276,10 @@ public class SecretServiceGuiTest {
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
             panel.add(pfCollectionPassword, gbc);
 
-            JLabel hintId = new JLabel("<html><small><i>ID = D-Bus path segment (e.g. \"test\"). Used when opening an existing database by id.</i></small></html>");
-            JLabel hintLabel = new JLabel("<html><small><i>Label = human-readable name (e.g. \"Test\"). Used when creating a new collection.</i></small></html>");
+            JLabel hintId = new JLabel("<html><small><i>ID = D-Bus path segment (e.g. \"test\"). Used when opening an existing collection by id."
+                    + " In KeePassXC this is the name of the exposed group.</i></small></html>");
+            JLabel hintLabel = new JLabel("<html><small><i>Label = human-readable name (e.g. \"Test\"). Used when creating a new collection."
+                    + " In KeePassXC this is the database name.</i></small></html>");
             gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.WEST;
             panel.add(hintLabel, gbc);
             gbc.gridy = 4;
@@ -307,13 +311,13 @@ public class SecretServiceGuiTest {
 
             gbc.gridwidth = 1;
             gbc.gridx = 0; gbc.gridy = 2; gbc.anchor = GridBagConstraints.EAST;
-            createPanel.add(new JLabel("Attr key:"), gbc);
+            createPanel.add(new JLabel("Attribute key:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            createPanel.add(tfAttrKey, gbc);
+            createPanel.add(tfAttributeKey, gbc);
             gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
             createPanel.add(new JLabel("value:"), gbc);
             gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            createPanel.add(tfAttrValue, gbc);
+            createPanel.add(tfAttributeValue, gbc);
 
             gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.CENTER;
             JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
@@ -337,8 +341,22 @@ public class SecretServiceGuiTest {
             // Search bar
             JPanel searchPanel = new JPanel(new BorderLayout(4, 2));
             JPanel searchFields = new JPanel(new BorderLayout(4, 0));
+            cmbMaxDistance.setSelectedItem(1);
+            cmbMaxDistance.setToolTipText("<html>Fuzzy search tolerance (Levenshtein distance):<br>"
+                    + "<b>0</b> – substring match only (fastest, exact)<br>"
+                    + "<b>1</b> – tolerates 1 typo / transposition<br>"
+                    + "<b>2</b> – tolerates 2 edits<br>"
+                    + "<b>3</b> – very loose matching</html>");
+            JLabel lblDistance = new JLabel("~");
+            lblDistance.setToolTipText("Fuzzy distance: 0 = exact substring, 1-3 = tolerate typos");
+            JPanel modeAndDistance = new JPanel(new BorderLayout(2, 0));
+            modeAndDistance.add(cmbSearchMode, BorderLayout.CENTER);
+            JPanel distancePanel = new JPanel(new BorderLayout(2, 0));
+            distancePanel.add(lblDistance, BorderLayout.WEST);
+            distancePanel.add(cmbMaxDistance, BorderLayout.CENTER);
+            modeAndDistance.add(distancePanel, BorderLayout.EAST);
             searchFields.add(tfSearch, BorderLayout.CENTER);
-            searchFields.add(cmbSearchMode, BorderLayout.EAST);
+            searchFields.add(modeAndDistance, BorderLayout.EAST);
             searchPanel.add(searchFields, BorderLayout.CENTER);
             searchPanel.add(btnSearch, BorderLayout.EAST);
 
@@ -356,7 +374,6 @@ public class SecretServiceGuiTest {
             dg.gridx = 0; dg.gridy = 0; dg.anchor = GridBagConstraints.EAST;
             detailPanel.add(new JLabel("Path:"), dg);
             dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            lblDetailPath.setFont(lblDetailPath.getFont().deriveFont(Font.PLAIN));
             detailPanel.add(lblDetailPath, dg);
 
             dg.weightx = 0;
@@ -379,10 +396,10 @@ public class SecretServiceGuiTest {
 
             dg.gridx = 0; dg.gridy = 4; dg.gridwidth = 2; dg.weighty = 1.0;
             dg.fill = GridBagConstraints.BOTH;
-            JScrollPane attrsScroll = new JScrollPane(attrsTable);
-            attrsScroll.setPreferredSize(new Dimension(0, 80));
-            attrsTable.setFillsViewportHeight(true);
-            detailPanel.add(attrsScroll, dg);
+            JScrollPane attributesScroll = new JScrollPane(attributesTable);
+            attributesScroll.setPreferredSize(new Dimension(0, 80));
+            attributesTable.setFillsViewportHeight(true);
+            detailPanel.add(attributesScroll, dg);
 
             splitPane.setRightComponent(detailPanel);
             panel.add(splitPane, BorderLayout.CENTER);
@@ -465,8 +482,8 @@ public class SecretServiceGuiTest {
             btnClearCreate.addActionListener(e -> {
                 tfLabel.setText("");
                 tfSecret.setText("");
-                tfAttrKey.setText("");
-                tfAttrValue.setText("");
+                tfAttributeKey.setText("");
+                tfAttributeValue.setText("");
             });
             btnRead.addActionListener(e -> doRevealSecret());
             btnDeleteItem.addActionListener(e -> doDeleteItem());
@@ -487,8 +504,8 @@ public class SecretServiceGuiTest {
         private void setItemControlsEnabled(boolean enabled) {
             tfLabel.setEnabled(enabled);
             tfSecret.setEnabled(enabled);
-            tfAttrKey.setEnabled(enabled);
-            tfAttrValue.setEnabled(enabled);
+            tfAttributeKey.setEnabled(enabled);
+            tfAttributeValue.setEnabled(enabled);
             btnCreate.setEnabled(enabled);
             btnClearCreate.setEnabled(enabled);
             btnRead.setEnabled(enabled);
@@ -497,6 +514,7 @@ public class SecretServiceGuiTest {
             btnSearch.setEnabled(enabled);
             tfSearch.setEnabled(enabled);
             cmbSearchMode.setEnabled(enabled);
+            cmbMaxDistance.setEnabled(enabled);
             btnDeleteCollection.setEnabled(enabled);
             itemsList.setEnabled(enabled);
             btnDisconnect.setEnabled(enabled);
@@ -665,7 +683,7 @@ public class SecretServiceGuiTest {
             lblDetailPath.setText(" ");
             lblDetailLabel.setText(" ");
             lblDetailSecret.setText("********");
-            attrsTableModel.setRowCount(0);
+            attributesTableModel.setRowCount(0);
         }
 
         private void doShowItemDetail() {
@@ -674,21 +692,29 @@ public class SecretServiceGuiTest {
                 clearDetail();
                 return;
             }
-            try {
-                String itemLabel = collection.getItemLabel(selected).orElse("<unknown>");
-                Optional<Map<String, String>> maybeAttrs = collection.getAttributes(selected);
+            doShowItemDetailForPath(selected);
+        }
 
-                lblDetailPath.setText(selected);
+        private void doShowItemDetailForPath(String path) {
+            if (path == null || path.isBlank() || collection == null) {
+                clearDetail();
+                return;
+            }
+            try {
+                String itemLabel = collection.getItemLabel(path).orElse("<unknown>");
+                Optional<Map<String, String>> maybeAttrs = collection.getAttributes(path);
+
+                lblDetailPath.setText(path);
                 lblDetailLabel.setText(itemLabel);
                 lblDetailSecret.setText("********");  // hidden until Read Secret
 
-                attrsTableModel.setRowCount(0);
+                attributesTableModel.setRowCount(0);
                 maybeAttrs.ifPresent(attrs ->
                     attrs.entrySet().stream()
                             .sorted(Map.Entry.comparingByKey())
-                            .forEach(entry -> attrsTableModel.addRow(
+                            .forEach(entry -> attributesTableModel.addRow(
                                     new Object[]{entry.getKey(), entry.getValue()})));
-                log("Selected item: %s (%s)", itemLabel, selected);
+                log("Selected item: %s (%s)", itemLabel, path);
             } catch (Exception ex) {
                 log("DETAIL FAILED: %s", exceptionDetail(ex));
                 clearDetail();
@@ -697,21 +723,21 @@ public class SecretServiceGuiTest {
 
         private void doRevealSecret() {
             if (!requireConnected()) return;
-            String selected = itemsList.getSelectedValue();
-            if (selected == null) {
-                log("Select an item from the list first.");
+            String path = lblDetailPath.getText().trim();
+            if (path.isEmpty() || path.equals(" ")) {
+                log("Select an item first.");
                 return;
             }
             try {
-                Optional<char[]> maybeSecret = collection.getSecret(selected);
+                Optional<char[]> maybeSecret = collection.getSecret(path);
                 if (maybeSecret.isPresent()) {
                     char[] secret = maybeSecret.get();
                     lblDetailSecret.setText(new String(secret));
                     Arrays.fill(secret, '\0');
-                    log("Secret revealed for: %s", selected);
+                    log("Secret revealed for: %s", path);
                 } else {
                     lblDetailSecret.setText("<empty>");
-                    log("Secret is empty for: %s", selected);
+                    log("Secret is empty for: %s", path);
                 }
             } catch (Exception ex) {
                 log("READ SECRET FAILED: %s", exceptionDetail(ex));
@@ -748,9 +774,9 @@ public class SecretServiceGuiTest {
 
         private void doDeleteItem() {
             if (!requireConnected()) return;
-            String selected = itemsList.getSelectedValue();
-            if (selected == null) {
-                log("Select an item from the list first.");
+            String selected = lblDetailPath.getText().trim();
+            if (selected.isEmpty() || selected.equals(" ")) {
+                log("Select an item first.");
                 return;
             }
             String itemLabel = collection.getItemLabel(selected).orElse("<unknown>");
@@ -799,54 +825,18 @@ public class SecretServiceGuiTest {
             String query = tfSearch.getText().trim();
             String mode  = (String) cmbSearchMode.getSelectedItem();
             try {
-                // Load all item paths first
-                Optional<List<String>> maybeAll = collection.getItems(Map.of());
-                if (maybeAll.isEmpty()) {
-                    itemsModel.clear();
-                    log("Search: no items found.");
-                    return;
-                }
-                List<String> all = maybeAll.get();
-
-                List<String> results;
-                if (query.isEmpty()) {
-                    results = all;
-                } else {
-                    String lq = query.toLowerCase(Locale.ROOT);
-                    results = switch (mode) {
-                        case "By Name" -> {
-                            List<String> matched = new ArrayList<>();
-                            for (String path : all) {
-                                String lbl = collection.getItemLabel(path).orElse("").toLowerCase(Locale.ROOT);
-                                if (lbl.contains(lq)) matched.add(path);
-                            }
-                            yield matched;
-                        }
-                        case "By Attr Key" -> {
-                            List<String> matched = new ArrayList<>();
-                            for (String path : all) {
-                                Map<String, String> attrs = collection.getAttributes(path).orElse(Map.of());
-                                boolean hit = attrs.keySet().stream().anyMatch(k -> k.toLowerCase(Locale.ROOT).contains(lq));
-                                if (hit) matched.add(path);
-                            }
-                            yield matched;
-                        }
-                        case "By Attr Value" -> {
-                            List<String> matched = new ArrayList<>();
-                            for (String path : all) {
-                                Map<String, String> attrs = collection.getAttributes(path).orElse(Map.of());
-                                boolean hit = attrs.values().stream().anyMatch(v -> v.toLowerCase(Locale.ROOT).contains(lq));
-                                if (hit) matched.add(path);
-                            }
-                            yield matched;
-                        }
-                        default -> all;
-                    };
-                }
-
+                SearchMode searchMode = switch (mode) {
+                    case "By Attribute Key"   -> SearchMode.BY_ATTRIBUTE_KEY;
+                    case "By Attribute Value" -> SearchMode.BY_ATTRIBUTE_VALUE;
+                    case "By Object ID"       -> SearchMode.BY_OBJECT_ID;
+                    case "By Object Path"     -> SearchMode.BY_OBJECT_PATH;
+                    default                   -> SearchMode.BY_NAME;
+                };
+                List<String> results = collection.search(query, searchMode, (Integer) cmbMaxDistance.getSelectedItem());
+                int total = collection.getItems(Map.of()).map(List::size).orElse(0);
                 itemsModel.clear();
                 results.forEach(itemsModel::addElement);
-                log("Search [%s] \"%s\": %d / %d item(s) matched.", mode, query, results.size(), all.size());
+                log("Search [%s] \"%s\": %d / %d item(s) matched.", mode, query, results.size(), total);
             } catch (Exception ex) {
                 log("SEARCH FAILED: %s", exceptionDetail(ex));
             }
@@ -911,8 +901,8 @@ public class SecretServiceGuiTest {
         // ── Helpers ───────────────────────────────────────────────────
 
         private Map<String, String> buildAttributes() {
-            String key = tfAttrKey.getText().trim();
-            String value = tfAttrValue.getText().trim();
+            String key = tfAttributeKey.getText().trim();
+            String value = tfAttributeValue.getText().trim();
             if (!key.isEmpty() && !value.isEmpty()) {
                 return Map.of(key, value);
             }
