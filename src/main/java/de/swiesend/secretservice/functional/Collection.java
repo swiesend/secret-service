@@ -15,6 +15,9 @@ import java.time.Duration;
 import java.util.*;
 import java.util.function.Function;
 
+// Note: de.swiesend.secretservice.interfaces.Prompt.Completed is referenced fully-qualified
+// below to avoid a name clash with the low-level Prompt class in this package.
+
 import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 
 /**
@@ -133,6 +136,37 @@ public class Collection implements CollectionInterface {
         c.label = Optional.ofNullable(label);
         c.id = c.collection.getId();
         return Optional.of(c);
+    }
+
+    /**
+     * Open a collection by its collection id (not label). This opens the collection
+     * directly using the known object path for the collection id and does not try
+     * to create it.
+     */
+    public static Optional<CollectionInterface> openById(String id, Optional<SessionInterface> maybeSession) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("The collection id must not be null or blank.");
+        }
+        Objects.requireNonNull(maybeSession, "maybeSession must not be null; use Optional.empty() instead");
+        Collection c = new Collection();
+        if (maybeSession.isEmpty()) {
+            c.clearSessionAtClose = true;
+        }
+        if (!c.init(maybeSession)) {
+            return Optional.empty();
+        }
+
+        // construct object path from id and wrap low-level collection
+        try {
+            c.collection = new de.swiesend.secretservice.Collection(id, c.connection);
+            c.path = c.collection.getPath();
+            c.label = c.collection.getLabel();
+            c.id = id;
+            return Optional.of(c);
+        } catch (Exception e) {
+            log.error("Could not open collection by id {}: {}", id, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private boolean init(Optional<SessionInterface> maybeSession) {
@@ -325,43 +359,97 @@ public class Collection implements CollectionInterface {
             log.error("The label of the item may not be null.");
             return Optional.empty();
         }
-
         if (collection == null || session.getEncryptedSession() == null) {
-            log.error("Not collection or session");
+            log.error("No collection or session.");
             return Optional.empty();
         }
 
         unlock();
 
-        Optional<String> result = session
-                .getEncryptedSession()
-                .encrypt(secret)
-                .flatMap(secInst -> {
-                    try (secInst) { // auto-close
-                        final Map<String, Variant> properties = Item.createProperties(label, attributes);
-                        return collection
-                                .createItem(properties, secInst, false)
-                                .flatMap(pair -> Optional.ofNullable(pair.a)
-                                        .map(item -> {
-                                            if ("/".equals(item.getPath())) { // prompt required
-                                                de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
-                                                if (completed.dismissed) {
-                                                    return item;
-                                                } else {
-                                                    return collection
-                                                            .getSignalHandler()
-                                                            .getLastHandledSignal(de.swiesend.secretservice.Collection.ItemCreated.class, collection.getObjectPath())
-                                                            .item;
-                                                }
-                                            } else {
-                                                return item;
-                                            }
-                                        })
-                                        .map(DBusPath::getPath)
-                                );
-                    }
-                });
-        return result;
+        Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
+        if (encrypted == null) {
+            log.error("Could not encrypt secret for item \"{}\".", label);
+            return Optional.empty();
+        }
+
+        try (encrypted) {
+            Map<String, Variant> properties = Item.createProperties(label, attributes);
+            Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
+            if (pair == null || pair.a == null) {
+                log.error("createItem D-Bus call returned no result for label \"{}\".", label);
+                return Optional.empty();
+            }
+
+            // No prompt needed — item was created directly
+            if (!"/".equals(pair.a.getPath())) {
+                return Optional.of(pair.a.getPath());
+            }
+
+            // Prompt required (e.g. KeePassXC per-item unlock)
+            de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
+            if (completed == null || completed.dismissed) {
+                log.warn("Prompt was dismissed or timed out for item \"{}\".", label);
+                return Optional.empty();
+            }
+
+            // KeePassXC returns the new item path directly in the prompt result
+            String fromResult = extractItemPathFromPromptResult(completed);
+            if (fromResult != null) {
+                return Optional.of(fromResult);
+            }
+
+            // Fallback: wait for the ItemCreated signal scoped to this collection (gnome-keyring)
+            de.swiesend.secretservice.Collection.ItemCreated sig = collection
+                    .getSignalHandler()
+                    .await(de.swiesend.secretservice.Collection.ItemCreated.class,
+                            collection.getObjectPath(), () -> null, Duration.ofSeconds(5));
+            if (sig != null && sig.item != null) {
+                return Optional.of(sig.item.getPath());
+            }
+
+            log.warn("Did not observe ItemCreated signal for collection {} after prompt.", collection.getObjectPath());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Extracts a created item path from a {@link de.swiesend.secretservice.interfaces.Prompt.Completed} result.
+     * <p>
+     * KeePassXC returns the new item's DBus path inside the prompt result, either as a plain
+     * {@link DBusPath}, a {@code List<DBusPath>}, or a nested {@code List<List<DBusPath>>}.
+     *
+     * @return the item path string, or {@code null} if none could be extracted
+     */
+    private String extractItemPathFromPromptResult(de.swiesend.secretservice.interfaces.Prompt.Completed completed) {
+        if (completed.result == null) return null;
+        Object rv = completed.result.getValue();
+        if (rv == null) return null;
+        try {
+            if (rv instanceof List<?> list) {
+                for (Object o : list) {
+                    String path = pathFromObject(o);
+                    if (path != null) return path;
+                }
+            } else {
+                return pathFromObject(rv);
+            }
+        } catch (Exception e) {
+            log.debug("Could not extract item path from prompt result: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /** Unwraps a DBusPath, String, or nested List thereof into a path string. */
+    private static String pathFromObject(Object o) {
+        if (o instanceof DBusPath p)  return p.getPath();
+        if (o instanceof String s)    return s;
+        if (o instanceof List<?> inner) {
+            for (Object elem : inner) {
+                if (elem instanceof DBusPath p) return p.getPath();
+                if (elem instanceof String s)   return s;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -744,6 +832,35 @@ public class Collection implements CollectionInterface {
         }
 
         return labels;
+    }
+
+    /**
+     * Resolve the DBus object path (collection id) for a given display label.
+     * Returns empty if no collection with the given label exists.
+     */
+    public Optional<String> getCollectionIdForLabel(String label) {
+        if (label == null) return Optional.empty();
+        Map<DBusPath, String> labels = getLabels();
+        return labels.entrySet().stream()
+                .filter(e -> label.equals(e.getValue()))
+                .map(e -> e.getKey().getPath())
+                .findFirst();
+    }
+
+    /**
+     * Detects the currently active Secret Service provider and returns its display name.
+     */
+    @Override
+    public String getProvider() {
+        return detectProvider().displayName;
+    }
+
+    /**
+     * Detects the currently active Secret Service provider as a typed enum constant.
+     */
+    @Override
+    public de.swiesend.secretservice.ProviderDetector.Provider detectProvider() {
+        return de.swiesend.secretservice.ProviderDetector.detectProvider(this.connection);
     }
 
     private boolean existsLabel(String label) {

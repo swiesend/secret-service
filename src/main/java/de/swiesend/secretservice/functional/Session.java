@@ -82,6 +82,15 @@ public class Session implements SessionInterface {
     }
 
     @Override
+    public Optional<CollectionInterface> collectionById(String id) {
+        return Collection.openById(id, Optional.of(this))
+                .map(collection -> {
+                    this.collections.add(collection);
+                    return collection;
+                });
+    }
+
+    @Override
     public Optional<CollectionInterface> defaultCollection() {
         return Collection.openDefault(Optional.of(this))
                 .map(collection -> {
