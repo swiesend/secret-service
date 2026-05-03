@@ -156,8 +156,8 @@ public class SecretServiceGuiTest {
         SecretServiceFrame.COL_DANGER    = dark ? new Color(0x3D0A0A)  : new Color(0xFFF0EE);
         SecretServiceFrame.COL_DANGER_B  = dark ? new Color(0x6B1A1A)  : new Color(0xF5C2C7);
         // Secondary button: clearly visible against the background in both modes
-        SecretServiceFrame.COL_BTN_SEC    = dark ? new Color(0x6B6865)  : new Color(0xB0AEA9);
-        SecretServiceFrame.COL_BTN_SEC_FG = dark ? new Color(0xEBEBEB)  : new Color(0x2E3436);
+        SecretServiceFrame.COL_BTN_SEC    = new Color(0x6B6865);
+        SecretServiceFrame.COL_BTN_SEC_FG = new Color(0xEBEBEB);
     }
 
     /** Relative luminance (sRGB) – used for dark-mode detection. */
@@ -182,8 +182,8 @@ public class SecretServiceGuiTest {
         static Color COL_HINT      = new Color(0x9A9996);
         static Color COL_DANGER    = new Color(0xFFF0EE);
         static Color COL_DANGER_B  = new Color(0xF5C2C7);
-        static Color COL_BTN_SEC   = new Color(0xB0AEA9);
-        static Color COL_BTN_SEC_FG = new Color(0x2E3436);
+        static Color COL_BTN_SEC   = new Color(0x6B6865);
+        static Color COL_BTN_SEC_FG = new Color(0xEBEBEB);
 
         // Collection panel
         private final ButtonGroup collectionGroup = new ButtonGroup();
