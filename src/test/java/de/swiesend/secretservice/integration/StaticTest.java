@@ -63,4 +63,61 @@ public class StaticTest {
         assertFalse(Utils.isNullOrEmpty(nonEmptyArrayOfObj));
     }
 
+    // ── levenshtein ───────────────────────────────────────────────
+
+    @Test
+    public void levenshteinIdentical() {
+        assertEquals(0, Utils.levenshtein("hello", "hello"));
+    }
+
+    @Test
+    public void levenshteinEmptyStrings() {
+        assertEquals(0, Utils.levenshtein("", ""));
+        assertEquals(3, Utils.levenshtein("", "abc"));
+        assertEquals(3, Utils.levenshtein("abc", ""));
+    }
+
+    @Test
+    public void levenshteinSingleEdit() {
+        assertEquals(1, Utils.levenshtein("hello", "helo"));   // deletion
+        assertEquals(1, Utils.levenshtein("helo", "hello"));   // insertion
+        assertEquals(1, Utils.levenshtein("hello", "hfllo"));  // substitution
+    }
+
+    @Test
+    public void levenshteinKnownDistances() {
+        assertEquals(3, Utils.levenshtein("kitten", "sitting"));
+        assertEquals(2, Utils.levenshtein("abc", "a11"));
+    }
+
+    // ── minSubstringDistance ──────────────────────────────────────
+
+    @Test
+    public void minSubstringDistanceExactSubstring() {
+        // "11" appears verbatim in the UUID — distance must be 0
+        assertEquals(0, Utils.minSubstringDistance("39f8313ff957497788c8e2f360c5bb11", "11"));
+    }
+
+    @Test
+    public void minSubstringDistanceFuzzyMatch() {
+        // "a11" is 1 edit away from "b11" which appears in the UUID
+        assertTrue(Utils.minSubstringDistance("39f8313ff957497788c8e2f360c5bb11", "a11") <= 2);
+    }
+
+    @Test
+    public void minSubstringDistanceLongerText() {
+        assertEquals(0, Utils.minSubstringDistance("/org/freedesktop/secrets/collection/test/39f8313ff957497788c8e2f360c5bb11", "11"));
+    }
+
+    @Test
+    public void minSubstringDistanceNoMatch() {
+        // query far from anything in text
+        assertTrue(Utils.minSubstringDistance("abc", "xyz") > 0);
+    }
+
+    @Test
+    public void minSubstringDistanceEmptyQuery() {
+        assertEquals(0, Utils.minSubstringDistance("anything", ""));
+    }
+
 }
