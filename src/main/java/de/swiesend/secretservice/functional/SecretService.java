@@ -65,6 +65,18 @@ public class SecretService implements ServiceInterface {
     }
 
     @Override
+    public String getProvider() {
+        return detectProvider().displayName;
+    }
+
+    @Override
+    public de.swiesend.secretservice.ProviderDetector.Provider detectProvider() {
+        return maybeSystem
+                .map(s -> de.swiesend.secretservice.ProviderDetector.detectProvider(s.getConnection()))
+                .orElse(de.swiesend.secretservice.ProviderDetector.Provider.UNAVAILABLE);
+    }
+
+    @Override
     public Optional<SessionInterface> openSession() {
         Optional<SessionInterface> session = Session
                 .open(this)

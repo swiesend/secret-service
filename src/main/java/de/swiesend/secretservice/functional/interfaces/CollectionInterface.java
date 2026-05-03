@@ -163,4 +163,20 @@ public interface CollectionInterface extends AutoCloseable {
 
     boolean enablePrompt();
 
+    /**
+     * Detects the currently active Secret Service provider and returns its display name.
+     *
+     * @return display name such as {@code "KeePassXC"}, {@code "gnome-keyring"},
+     *         {@code "unknown"}, or {@code "N/A"}
+     * @see de.swiesend.secretservice.ProviderDetector#detect(org.freedesktop.dbus.connections.impl.DBusConnection)
+     */
+    String getProvider();
+
+    /**
+     * Detects the currently active Secret Service provider as a typed enum constant.
+     *
+     * @return the detected {@link de.swiesend.secretservice.ProviderDetector.Provider}
+     */
+    de.swiesend.secretservice.ProviderDetector.Provider detectProvider();
+
 }
