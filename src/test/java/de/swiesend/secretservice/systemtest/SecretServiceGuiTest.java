@@ -147,14 +147,17 @@ public class SecretServiceGuiTest {
         UIManager.put("TableHeader.foreground",    muted);
 
         // Store derived colors for component helpers
-        SecretServiceFrame.COL_CARD     = card;
-        SecretServiceFrame.COL_BORDER   = border;
-        SecretServiceFrame.COL_MUTED    = muted;
-        SecretServiceFrame.COL_TEXT     = text;
-        SecretServiceFrame.COL_BG       = bg;
-        SecretServiceFrame.COL_HINT     = dark ? new Color(0x808080) : new Color(0x9A9996);
-        SecretServiceFrame.COL_DANGER   = dark ? new Color(0x3D0A0A) : new Color(0xFFF0EE);
-        SecretServiceFrame.COL_DANGER_B = dark ? new Color(0x6B1A1A) : new Color(0xF5C2C7);
+        SecretServiceFrame.COL_CARD      = card;
+        SecretServiceFrame.COL_BORDER    = border;
+        SecretServiceFrame.COL_MUTED     = muted;
+        SecretServiceFrame.COL_TEXT      = text;
+        SecretServiceFrame.COL_BG        = bg;
+        SecretServiceFrame.COL_HINT      = dark ? new Color(0x808080)  : new Color(0x9A9996);
+        SecretServiceFrame.COL_DANGER    = dark ? new Color(0x3D0A0A)  : new Color(0xFFF0EE);
+        SecretServiceFrame.COL_DANGER_B  = dark ? new Color(0x6B1A1A)  : new Color(0xF5C2C7);
+        // Secondary button: clearly visible against the background in both modes
+        SecretServiceFrame.COL_BTN_SEC    = dark ? new Color(0x6B6865)  : new Color(0xB0AEA9);
+        SecretServiceFrame.COL_BTN_SEC_FG = dark ? new Color(0xEBEBEB)  : new Color(0x2E3436);
     }
 
     /** Relative luminance (sRGB) – used for dark-mode detection. */
@@ -170,15 +173,17 @@ public class SecretServiceGuiTest {
         private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
         // Theme — set by applyGnomeTheme() before the frame is constructed
-        static boolean isDark     = false;
-        static Color COL_CARD     = Color.WHITE;
-        static Color COL_BORDER   = new Color(0xDEDDDA);
-        static Color COL_MUTED    = new Color(0x77767B);
-        static Color COL_TEXT     = new Color(0x2E3436);
-        static Color COL_BG       = new Color(0xF6F5F4);
-        static Color COL_HINT     = new Color(0x9A9996);
-        static Color COL_DANGER   = new Color(0xFFF0EE);
-        static Color COL_DANGER_B = new Color(0xF5C2C7);
+        static boolean isDark      = false;
+        static Color COL_CARD      = Color.WHITE;
+        static Color COL_BORDER    = new Color(0xDEDDDA);
+        static Color COL_MUTED     = new Color(0x77767B);
+        static Color COL_TEXT      = new Color(0x2E3436);
+        static Color COL_BG        = new Color(0xF6F5F4);
+        static Color COL_HINT      = new Color(0x9A9996);
+        static Color COL_DANGER    = new Color(0xFFF0EE);
+        static Color COL_DANGER_B  = new Color(0xF5C2C7);
+        static Color COL_BTN_SEC   = new Color(0xB0AEA9);
+        static Color COL_BTN_SEC_FG = new Color(0x2E3436);
 
         // Collection panel
         private final ButtonGroup collectionGroup = new ButtonGroup();
@@ -291,10 +296,10 @@ public class SecretServiceGuiTest {
 
             // ── Main tab ──
             JPanel mainTab = new JPanel(new BorderLayout(0, 0));
-            mainTab.setBackground(new Color(0xF6F5F4));
+            mainTab.setBackground(COL_BG);
 
             JPanel topPanel = new JPanel(new BorderLayout(0, 0));
-            topPanel.setBackground(new Color(0xF6F5F4));
+            topPanel.setBackground(COL_BG);
             topPanel.add(buildSystemPanel(), BorderLayout.NORTH);
             topPanel.add(buildCollectionPanel(), BorderLayout.SOUTH);
             mainTab.add(topPanel, BorderLayout.NORTH);
@@ -375,7 +380,7 @@ public class SecretServiceGuiTest {
             JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
             btnRow.setOpaque(false);
             styleButton(btnConnect,    new Color(0x3584E4), Color.WHITE);
-            styleButton(btnDisconnect, new Color(0xDEDDDA), new Color(0x2E3436));
+            styleButton(btnDisconnect, COL_BTN_SEC, COL_BTN_SEC_FG);
             btnRow.add(lblConnectionStatus);
             btnRow.add(btnConnect);
             btnRow.add(btnDisconnect);
@@ -457,7 +462,7 @@ public class SecretServiceGuiTest {
 
         private JPanel buildCenterPanel() {
             JPanel panel = new JPanel(new BorderLayout(0, 0));
-            panel.setBackground(new Color(0xF6F5F4));
+            panel.setBackground(COL_BG);
 
             // ── Create-item fields ──────────────────────────────────
             JPanel createInner = new JPanel(new GridBagLayout());
@@ -604,7 +609,7 @@ public class SecretServiceGuiTest {
 
         private JPanel buildDebugTab() {
             JPanel panel = new JPanel(new BorderLayout(0, 0));
-            panel.setBackground(new Color(isDark ? 0x242424 : 0xF6F5F4));
+            panel.setBackground(COL_BG);
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
 
             // Four sections stacked vertically, each stretching to fill equal share of height.
@@ -715,11 +720,15 @@ public class SecretServiceGuiTest {
             btn.setUI(new javax.swing.plaf.basic.BasicButtonUI() {
                 @Override
                 public void paint(Graphics g, JComponent c) {
+                    boolean enabled = c.isEnabled();
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    g2.setColor(bg);
+                    // Dim the fill when disabled so the button stays visible but looks inactive
+                    Color fill    = enabled ? bg    : new Color(bg.getRed(), bg.getGreen(), bg.getBlue(), 80);
+                    Color outline = enabled ? bg.darker() : fill.darker();
+                    g2.setColor(fill);
                     g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), 10, 10);
-                    g2.setColor(bg.darker());
+                    g2.setColor(outline);
                     g2.drawRoundRect(0, 0, c.getWidth() - 1, c.getHeight() - 1, 10, 10);
                     g2.dispose();
                     super.paint(g, c);
@@ -727,9 +736,11 @@ public class SecretServiceGuiTest {
                 @Override
                 protected void paintText(Graphics g, JComponent c, Rectangle textRect, String text) {
                     // Plain text only — no shadow from GTK L&F
+                    boolean enabled = c.isEnabled();
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                    g2.setColor(fg);
+                    Color textColor = enabled ? fg : new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 100);
+                    g2.setColor(textColor);
                     g2.setFont(c.getFont());
                     javax.swing.plaf.basic.BasicGraphicsUtils.drawString(g2, text, -1,
                             textRect.x, textRect.y + g2.getFontMetrics().getAscent());
