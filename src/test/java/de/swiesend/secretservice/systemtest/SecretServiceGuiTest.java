@@ -69,8 +69,14 @@ public class SecretServiceGuiTest {
 
     /** Apply an Adwaita-inspired flat theme to the Swing UIManager. */
     private static void applyGnomeTheme() {
-        // Prefer GTK look-and-feel on Linux (it inherits the system dark/light preference).
-        // Do NOT return early — we still need to detect dark-mode and apply overrides.
+        applyGnomeTheme(ThemeMode.SYSTEM);
+    }
+
+    enum ThemeMode { SYSTEM, LIGHT, DARK }
+
+    /** Apply theme for the given mode. SYSTEM auto-detects from the GTK L&F. */
+    static void applyGnomeTheme(ThemeMode mode) {
+        // Load GTK / system L&F once so we can read its defaults for SYSTEM detection.
         try {
             boolean found = false;
             for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
@@ -83,13 +89,21 @@ public class SecretServiceGuiTest {
             if (!found) UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception ignored) {}
 
-        // Detect dark mode from the luminance of the Panel background the L&F just set.
-        Color panelBg = UIManager.getColor("Panel.background");
-        SecretServiceFrame.isDark = panelBg != null && luminance(panelBg) < 0.4;
+        // Resolve actual dark/light
+        boolean dark;
+        if (mode == ThemeMode.DARK) {
+            dark = true;
+        } else if (mode == ThemeMode.LIGHT) {
+            dark = false;
+        } else { // SYSTEM — detect from L&F Panel background luminance
+            Color panelBg = UIManager.getColor("Panel.background");
+            dark = panelBg != null && luminance(panelBg) < 0.4;
+        }
+        SecretServiceFrame.isDark = dark;
 
         // Adwaita palette overrides — light or dark variant
         Color bg, card, text, muted, accent, border;
-        if (SecretServiceFrame.isDark) {
+        if (dark) {
             bg     = new Color(0x242424);
             card   = new Color(0x2D2D2D);
             text   = new Color(0xEBEBEB);
@@ -108,27 +122,39 @@ public class SecretServiceGuiTest {
         UIManager.put("ScrollPane.background",     bg);
         UIManager.put("Viewport.background",       card);
         UIManager.put("Table.background",          card);
+        UIManager.put("Table.foreground",          text);
         UIManager.put("Table.gridColor",           border);
         UIManager.put("List.background",           card);
+        UIManager.put("List.foreground",           text);
         UIManager.put("TextArea.background",       card);
+        UIManager.put("TextArea.foreground",       text);
         UIManager.put("TextField.background",      card);
+        UIManager.put("TextField.foreground",      text);
         UIManager.put("PasswordField.background",  card);
+        UIManager.put("PasswordField.foreground",  text);
         UIManager.put("ComboBox.background",       card);
+        UIManager.put("ComboBox.foreground",       text);
         UIManager.put("Label.foreground",          text);
+        UIManager.put("CheckBox.foreground",       text);
+        UIManager.put("RadioButton.foreground",    text);
         UIManager.put("Button.focus",              new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 80));
         UIManager.put("TabbedPane.background",     bg);
+        UIManager.put("TabbedPane.foreground",     text);
         UIManager.put("TabbedPane.selected",       card);
         UIManager.put("SplitPane.background",      bg);
         UIManager.put("TitledBorder.titleColor",   muted);
+        UIManager.put("TableHeader.background",    bg);
+        UIManager.put("TableHeader.foreground",    muted);
 
-        // Store derived colors for helpers
+        // Store derived colors for component helpers
         SecretServiceFrame.COL_CARD     = card;
         SecretServiceFrame.COL_BORDER   = border;
         SecretServiceFrame.COL_MUTED    = muted;
         SecretServiceFrame.COL_TEXT     = text;
-        SecretServiceFrame.COL_HINT     = SecretServiceFrame.isDark ? new Color(0x808080) : new Color(0x9A9996);
-        SecretServiceFrame.COL_DANGER   = SecretServiceFrame.isDark ? new Color(0x3D0A0A) : new Color(0xFFF0EE);
-        SecretServiceFrame.COL_DANGER_B = SecretServiceFrame.isDark ? new Color(0x6B1A1A) : new Color(0xF5C2C7);
+        SecretServiceFrame.COL_BG       = bg;
+        SecretServiceFrame.COL_HINT     = dark ? new Color(0x808080) : new Color(0x9A9996);
+        SecretServiceFrame.COL_DANGER   = dark ? new Color(0x3D0A0A) : new Color(0xFFF0EE);
+        SecretServiceFrame.COL_DANGER_B = dark ? new Color(0x6B1A1A) : new Color(0xF5C2C7);
     }
 
     /** Relative luminance (sRGB) – used for dark-mode detection. */
@@ -144,13 +170,14 @@ public class SecretServiceGuiTest {
         private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
         // Theme — set by applyGnomeTheme() before the frame is constructed
-        static boolean isDark    = false;
-        static Color COL_CARD    = Color.WHITE;
-        static Color COL_BORDER  = new Color(0xDEDDDA);
-        static Color COL_MUTED   = new Color(0x77767B);
-        static Color COL_TEXT    = new Color(0x2E3436);
-        static Color COL_HINT    = new Color(0x9A9996);
-        static Color COL_DANGER  = new Color(0xFFF0EE);
+        static boolean isDark     = false;
+        static Color COL_CARD     = Color.WHITE;
+        static Color COL_BORDER   = new Color(0xDEDDDA);
+        static Color COL_MUTED    = new Color(0x77767B);
+        static Color COL_TEXT     = new Color(0x2E3436);
+        static Color COL_BG       = new Color(0xF6F5F4);
+        static Color COL_HINT     = new Color(0x9A9996);
+        static Color COL_DANGER   = new Color(0xFFF0EE);
         static Color COL_DANGER_B = new Color(0xF5C2C7);
 
         // Collection panel
@@ -278,7 +305,64 @@ public class SecretServiceGuiTest {
             // ── Debug tab ──
             tabs.addTab("Debug", buildDebugTab());
 
+            // ── View tab ──
+            tabs.addTab("View", buildViewTab(tabs));
+
             setContentPane(tabs);
+        }
+
+        private JPanel buildViewTab(JTabbedPane tabs) {
+            JPanel inner = new JPanel(new GridBagLayout());
+            inner.setOpaque(false);
+            GridBagConstraints gbc = gbc();
+
+            JLabel heading = new JLabel("Theme");
+            heading.setFont(heading.getFont().deriveFont(Font.BOLD, 14f));
+            heading.setForeground(COL_TEXT);
+            gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 1; gbc.anchor = GridBagConstraints.WEST;
+            inner.add(heading, gbc);
+
+            ButtonGroup themeGroup = new ButtonGroup();
+            JRadioButton rbSystem = new JRadioButton("System default", true);
+            JRadioButton rbLight  = new JRadioButton("Light");
+            JRadioButton rbDark   = new JRadioButton("Dark");
+            rbSystem.setOpaque(false); rbLight.setOpaque(false); rbDark.setOpaque(false);
+            themeGroup.add(rbSystem); themeGroup.add(rbLight); themeGroup.add(rbDark);
+
+            gbc.gridy = 1; inner.add(rbSystem, gbc);
+            gbc.gridy = 2; inner.add(rbLight,  gbc);
+            gbc.gridy = 3; inner.add(rbDark,   gbc);
+
+            JButton btnApply = new JButton("Apply");
+            styleButton(btnApply, new Color(0x3584E4), Color.WHITE);
+            gbc.gridy = 4; gbc.anchor = GridBagConstraints.WEST;
+            inner.add(btnApply, gbc);
+
+            JLabel hint = hintLabel("Restart is not required — the UI is rebuilt in-place.");
+            gbc.gridy = 5; inner.add(hint, gbc);
+
+            btnApply.addActionListener(e -> {
+                ThemeMode mode = rbDark.isSelected() ? ThemeMode.DARK
+                               : rbLight.isSelected() ? ThemeMode.LIGHT
+                               : ThemeMode.SYSTEM;
+                applyGnomeTheme(mode);
+                // Rebuild UI so every component picks up the new colours
+                getContentPane().removeAll();
+                buildUi();
+                SwingUtilities.updateComponentTreeUI(SecretServiceFrame.this);
+                revalidate();
+                repaint();
+                // Restore View tab selection
+                ((JTabbedPane) getContentPane()).setSelectedIndex(2);
+            });
+
+            JPanel viewPanel = new JPanel(new BorderLayout(0, 0));
+            viewPanel.setBackground(COL_BG);
+            JPanel wrapper = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            wrapper.setOpaque(false);
+            wrapper.add(card("Appearance", inner));
+            viewPanel.add(wrapper, BorderLayout.NORTH);
+            return viewPanel;
         }
 
         private JPanel buildSystemPanel() {
@@ -620,7 +704,7 @@ public class SecretServiceGuiTest {
             return l;
         }
 
-        /** Flat Adwaita-inspired button with rounded corners. */
+        /** Flat Adwaita-inspired button with rounded corners, no text shadows. */
         private static void styleButton(JButton btn, Color bg, Color fg) {
             btn.setForeground(fg);
             btn.setContentAreaFilled(false);
@@ -628,7 +712,6 @@ public class SecretServiceGuiTest {
             btn.setBorderPainted(false);
             btn.setFocusPainted(false);
             btn.setBorder(new EmptyBorder(6, 14, 6, 14));
-            // Paint rounded fill BEFORE the text so the label stays readable.
             btn.setUI(new javax.swing.plaf.basic.BasicButtonUI() {
                 @Override
                 public void paint(Graphics g, JComponent c) {
@@ -639,7 +722,18 @@ public class SecretServiceGuiTest {
                     g2.setColor(bg.darker());
                     g2.drawRoundRect(0, 0, c.getWidth() - 1, c.getHeight() - 1, 10, 10);
                     g2.dispose();
-                    super.paint(g, c); // draws text + icon on top
+                    super.paint(g, c);
+                }
+                @Override
+                protected void paintText(Graphics g, JComponent c, Rectangle textRect, String text) {
+                    // Plain text only — no shadow from GTK L&F
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                    g2.setColor(fg);
+                    g2.setFont(c.getFont());
+                    javax.swing.plaf.basic.BasicGraphicsUtils.drawString(g2, text, -1,
+                            textRect.x, textRect.y + g2.getFontMetrics().getAscent());
+                    g2.dispose();
                 }
             });
         }
