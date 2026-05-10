@@ -53,11 +53,11 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
  * }
  * }</pre>
  *
- * @deprecated since 2.1.0, for removal in 3.0. Use
+ * @deprecated since 3.0, for removal in 4.0. Use
  *             {@link de.swiesend.secretservice.functional.SecretService#create()} and the
  *             {@link de.swiesend.secretservice.functional.interfaces.CollectionInterface} instead.
  */
-@Deprecated(since = "2.1.0", forRemoval = true)
+@Deprecated(since = "3.0", forRemoval = true)
 public final class SimpleCollection extends de.swiesend.secretservice.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
@@ -73,10 +73,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * Opens the default collection.
      *
      * @throws IOException Could not communicate properly with the DBus. Check the logs.
-    * @deprecated since 2.1.0, for removal in 3.0. Use
+    * @deprecated since 3.0, for removal in 4.0. Use
      *             {@link de.swiesend.secretservice.functional.Collection#openDefault} instead.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "3.0", forRemoval = true)
     public SimpleCollection() throws IOException {
         try {
             init();
@@ -103,10 +103,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      *                 as the <code>id</code> is inferred by the given label.
      * @param password Password of the collection
      * @throws IOException Could not communicate properly with the DBus. Check the logs.
-    * @deprecated since 2.1.0, for removal in 3.0. Use
+    * @deprecated since 3.0, for removal in 4.0. Use
      *             {@link de.swiesend.secretservice.functional.Collection#open} instead.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "3.0", forRemoval = true)
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
             init();
@@ -126,7 +126,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @return a new DBusConnection or null
      * @deprecated see class-level deprecation notice.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "3.0", forRemoval = true)
     private static DBusConnection getConnection() {
         try {
             return DBusConnectionBuilder.forSessionBus().withShared(false).build();
@@ -146,7 +146,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @return true if connected to the D-Bus, otherwise false
      * @deprecated see class-level deprecation notice.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isConnected() {
         if (connection != null) {
             return connection.isConnected();
@@ -164,7 +164,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @return true if the secret service is available, otherwise false and will log an error message.
      * @deprecated see class-level deprecation notice.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
@@ -218,7 +218,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @return true if the secret service provider is gnome keyring, otherwise false and will log a warning message.
      * @deprecated see class-level deprecation notice.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isGnomeKeyringAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
@@ -252,7 +252,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      *
      * @deprecated see class-level deprecation notice.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "3.0", forRemoval = true)
     synchronized public static boolean disconnect() {
         try {
             if (connection != null && connection.isConnected()) {
