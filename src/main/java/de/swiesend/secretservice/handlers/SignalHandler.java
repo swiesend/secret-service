@@ -59,6 +59,7 @@ public class SignalHandler implements DBusSigHandler {
             } catch (ClassCastException e) {
                 log.error("Could not cast a signal: ", e);
             }
+
         }
     }
 
