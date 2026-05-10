@@ -11,30 +11,30 @@ import java.util.Map;
 /**
  * Base interface for the legacy simple API.
  *
- * @deprecated since 2.0, for removal in 3.0. Use the functional API via
+ * @deprecated since 2.1.0, for removal in 3.0. Use the functional API via
  *             {@link de.swiesend.secretservice.functional.SecretService#create()} instead.
  */
-@Deprecated(since = "2.0", forRemoval = true)
+@Deprecated(since = "2.1.0", forRemoval = true)
 public abstract class SimpleCollection implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
 
     /** @deprecated see class-level deprecation notice. */
-    @Deprecated(since = "2.0", forRemoval = true)
+    @Deprecated(since = "2.1.0", forRemoval = true)
     public static boolean isAvailable() {
         log.warn("Do not call the interface's method, but the implementation.");
         return false;
     }
 
     /** @deprecated see class-level deprecation notice. */
-    @Deprecated(since = "2.0", forRemoval = true)
+    @Deprecated(since = "2.1.0", forRemoval = true)
     public static boolean isConnected() {
         log.warn("Do not call the interface's method, but the implementation.");
         return false;
     }
 
     /** @deprecated see class-level deprecation notice. */
-    @Deprecated(since = "2.0", forRemoval = true)
+    @Deprecated(since = "2.1.0", forRemoval = true)
     synchronized public static boolean disconnect() {
         log.warn("Do not call the interface's method, but the implementation.");
         return false; }
