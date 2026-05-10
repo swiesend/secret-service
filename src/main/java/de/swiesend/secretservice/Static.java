@@ -228,6 +228,45 @@ public class Static {
             throw new IllegalStateException(
                     "Unexpected D-Bus byte array representation: " + value.getClass().getName());
         }
+
+        /**
+         * Classic iterative Levenshtein distance between two strings.
+         */
+        public static int levenshtein(String a, String b) {
+            int m = a.length(), n = b.length();
+            int[] prev = new int[n + 1], curr = new int[n + 1];
+            for (int j = 0; j <= n; j++) prev[j] = j;
+            for (int i = 1; i <= m; i++) {
+                curr[0] = i;
+                for (int j = 1; j <= n; j++) {
+                    int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                    curr[j] = Math.min(Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+                }
+                int[] tmp = prev; prev = curr; curr = tmp;
+            }
+            return prev[n];
+        }
+
+        /**
+         * Minimum Levenshtein distance between {@code query} and any substring of {@code text}
+         * whose length is within {@code maxDistance} of {@code query.length()}.
+         * Returns 0 when {@code query} appears verbatim inside {@code text}.
+         */
+        public static int minSubstringDistance(String text, String query) {
+            if (query.isEmpty()) return 0;
+            if (text.isEmpty()) return query.length();
+            int q = query.length();
+            int min = Integer.MAX_VALUE;
+            // slide windows of length [max(1, q-q) … q+q] to tolerate insertions/deletions
+            for (int len = Math.max(1, q - q); len <= Math.min(text.length(), q + q); len++) {
+                for (int start = 0; start + len <= text.length(); start++) {
+                    int d = levenshtein(text.substring(start, start + len), query);
+                    if (d < min) min = d;
+                    if (min == 0) return 0;
+                }
+            }
+            return min;
+        }
     }
 
     /**

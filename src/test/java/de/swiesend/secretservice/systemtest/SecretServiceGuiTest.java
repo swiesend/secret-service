@@ -1,6 +1,8 @@
 package de.swiesend.secretservice.systemtest;
 
+import de.swiesend.secretservice.ProviderDetector;
 import de.swiesend.secretservice.functional.SecretService;
+import de.swiesend.secretservice.functional.SearchMode;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
@@ -13,7 +15,6 @@ import de.swiesend.secretservice.interfaces.Service.CollectionChanged;
 import de.swiesend.secretservice.interfaces.Service.CollectionCreated;
 import de.swiesend.secretservice.interfaces.Service.CollectionDeleted;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
-import org.freedesktop.dbus.interfaces.DBus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -79,27 +80,36 @@ public class SecretServiceGuiTest {
         private final ButtonGroup collectionGroup = new ButtonGroup();
         private final JRadioButton rbDefault = new JRadioButton("Default collection");
         private final JRadioButton rbTest = new JRadioButton("Custom collection", true);
-        private final JTextField tfCollectionLabel = new JTextField("test", 14);
-        private final JPasswordField pfCollectionPassword = new JPasswordField("test", 14);
+        /** Human-readable label used when creating a collection (gnome-keyring) or for display. */
+        private final JTextField tfCollectionLabel = new JTextField(14);
+        /** D-Bus collection id (last path segment, e.g. "test"). Used by collectionById(). */
+        private final JTextField tfCollectionId = new JTextField("test", 14);
+        private final JPasswordField pfCollectionPassword = new JPasswordField(14);
 
         // Create-item panel
         private final JTextField tfLabel = new JTextField(20);
         private final JTextField tfSecret = new JTextField(20);
-        private final JTextField tfAttrKey = new JTextField(10);
-        private final JTextField tfAttrValue = new JTextField(10);
+        private final JTextField tfAttributeKey = new JTextField(10);
+        private final JTextField tfAttributeValue = new JTextField(10);
 
         // Items list
         private final DefaultListModel<String> itemsModel = new DefaultListModel<>();
         private final JList<String> itemsList = new JList<>(itemsModel);
 
+        // Search bar (items panel)
+        private final JTextField tfSearch = new JTextField(14);
+        private final JComboBox<String> cmbSearchMode = new JComboBox<>(new String[]{"By Name", "By Attribute Key", "By Attribute Value", "By Object ID", "By Object Path"});
+        private final JComboBox<Integer> cmbMaxDistance = new JComboBox<>(new Integer[]{0, 1, 2, 3});
+        private final JButton btnSearch = new JButton("Search");
+
         // Item detail panel (shown on selection)
         private final JLabel lblDetailPath = new JLabel(" ");
         private final JLabel lblDetailLabel = new JLabel(" ");
         private final JLabel lblDetailSecret = new JLabel("********");
-        private final DefaultTableModel attrsTableModel = new DefaultTableModel(new String[]{"Key", "Value"}, 0) {
+        private final DefaultTableModel attributesTableModel = new DefaultTableModel(new String[]{"Key", "Value"}, 0) {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
-        private final JTable attrsTable = new JTable(attrsTableModel);
+        private final JTable attributesTable = new JTable(attributesTableModel);
 
         // Log area
         private final JTextArea logArea = new JTextArea(12, 50);
@@ -111,8 +121,10 @@ public class SecretServiceGuiTest {
         private final JButton btnClearCreate = new JButton("Clear");
         private final JButton btnRead = new JButton("Read Secret");
         private final JButton btnDeleteItem = new JButton("Delete Item");
-        private final JButton btnList = new JButton("List Items");
+        private final JButton btnList = new JButton("List All");
         private final JButton btnDeleteCollection = new JButton("Delete Collection");
+        private final JButton btnKillKeyring = new JButton("Kill Keyring");
+        private final JButton btnStartKeyring = new JButton("Start Keyring");
         private final JButton btnClearLog = new JButton("Clear Log");
 
         // Debug tab — state tables
@@ -236,10 +248,12 @@ public class SecretServiceGuiTest {
 
             rbDefault.addActionListener(e -> {
                 tfCollectionLabel.setEnabled(false);
+                tfCollectionId.setEnabled(false);
                 pfCollectionPassword.setEnabled(false);
             });
             rbTest.addActionListener(e -> {
                 tfCollectionLabel.setEnabled(true);
+                tfCollectionId.setEnabled(true);
                 pfCollectionPassword.setEnabled(true);
             });
 
@@ -252,11 +266,25 @@ public class SecretServiceGuiTest {
             panel.add(new JLabel("Label:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
             panel.add(tfCollectionLabel, gbc);
+            gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
+            panel.add(new JLabel("ID:"), gbc);
+            gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
+            panel.add(tfCollectionId, gbc);
 
             gbc.gridx = 0; gbc.gridy = 2; gbc.anchor = GridBagConstraints.EAST;
             panel.add(new JLabel("Password:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
             panel.add(pfCollectionPassword, gbc);
+
+            JLabel hintId = new JLabel("<html><small><i>ID = D-Bus path segment (e.g. \"test\"). Used when opening an existing collection by id."
+                    + " In KeePassXC this is the name of the exposed group.</i></small></html>");
+            JLabel hintLabel = new JLabel("<html><small><i>Label = human-readable name (e.g. \"Test\"). Used when creating a new collection."
+                    + " In KeePassXC this is the database name.</i></small></html>");
+            gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.WEST;
+            panel.add(hintLabel, gbc);
+            gbc.gridy = 4;
+            panel.add(hintId, gbc);
+            gbc.gridwidth = 1;
 
             return panel;
         }
@@ -283,13 +311,13 @@ public class SecretServiceGuiTest {
 
             gbc.gridwidth = 1;
             gbc.gridx = 0; gbc.gridy = 2; gbc.anchor = GridBagConstraints.EAST;
-            createPanel.add(new JLabel("Attr key:"), gbc);
+            createPanel.add(new JLabel("Attribute key:"), gbc);
             gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            createPanel.add(tfAttrKey, gbc);
+            createPanel.add(tfAttributeKey, gbc);
             gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
             createPanel.add(new JLabel("value:"), gbc);
             gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            createPanel.add(tfAttrValue, gbc);
+            createPanel.add(tfAttributeValue, gbc);
 
             gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.CENTER;
             JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
@@ -309,6 +337,30 @@ public class SecretServiceGuiTest {
             itemsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
             JScrollPane listScroll = new JScrollPane(itemsList);
             listScroll.setPreferredSize(new Dimension(260, 160));
+
+            // Search bar
+            JPanel searchPanel = new JPanel(new BorderLayout(4, 2));
+            JPanel searchFields = new JPanel(new BorderLayout(4, 0));
+            cmbMaxDistance.setSelectedItem(1);
+            cmbMaxDistance.setToolTipText("<html>Fuzzy search tolerance (Levenshtein distance):<br>"
+                    + "<b>0</b> – substring match only (fastest, exact)<br>"
+                    + "<b>1</b> – tolerates 1 typo / transposition<br>"
+                    + "<b>2</b> – tolerates 2 edits<br>"
+                    + "<b>3</b> – very loose matching</html>");
+            JLabel lblDistance = new JLabel("~");
+            lblDistance.setToolTipText("Fuzzy distance: 0 = exact substring, 1-3 = tolerate typos");
+            JPanel modeAndDistance = new JPanel(new BorderLayout(2, 0));
+            modeAndDistance.add(cmbSearchMode, BorderLayout.CENTER);
+            JPanel distancePanel = new JPanel(new BorderLayout(2, 0));
+            distancePanel.add(lblDistance, BorderLayout.WEST);
+            distancePanel.add(cmbMaxDistance, BorderLayout.CENTER);
+            modeAndDistance.add(distancePanel, BorderLayout.EAST);
+            searchFields.add(tfSearch, BorderLayout.CENTER);
+            searchFields.add(modeAndDistance, BorderLayout.EAST);
+            searchPanel.add(searchFields, BorderLayout.CENTER);
+            searchPanel.add(btnSearch, BorderLayout.EAST);
+
+            listPanel.add(searchPanel, BorderLayout.NORTH);
             listPanel.add(listScroll, BorderLayout.CENTER);
             listPanel.add(btnList, BorderLayout.SOUTH);
             splitPane.setLeftComponent(listPanel);
@@ -322,7 +374,6 @@ public class SecretServiceGuiTest {
             dg.gridx = 0; dg.gridy = 0; dg.anchor = GridBagConstraints.EAST;
             detailPanel.add(new JLabel("Path:"), dg);
             dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            lblDetailPath.setFont(lblDetailPath.getFont().deriveFont(Font.PLAIN));
             detailPanel.add(lblDetailPath, dg);
 
             dg.weightx = 0;
@@ -345,10 +396,10 @@ public class SecretServiceGuiTest {
 
             dg.gridx = 0; dg.gridy = 4; dg.gridwidth = 2; dg.weighty = 1.0;
             dg.fill = GridBagConstraints.BOTH;
-            JScrollPane attrsScroll = new JScrollPane(attrsTable);
-            attrsScroll.setPreferredSize(new Dimension(0, 80));
-            attrsTable.setFillsViewportHeight(true);
-            detailPanel.add(attrsScroll, dg);
+            JScrollPane attributesScroll = new JScrollPane(attributesTable);
+            attributesScroll.setPreferredSize(new Dimension(0, 80));
+            attributesTable.setFillsViewportHeight(true);
+            detailPanel.add(attributesScroll, dg);
 
             splitPane.setRightComponent(detailPanel);
             panel.add(splitPane, BorderLayout.CENTER);
@@ -363,6 +414,8 @@ public class SecretServiceGuiTest {
             btnDeleteCollection.setForeground(Color.RED);
             dangerPanel.add(btnDeleteItem);
             dangerPanel.add(btnDeleteCollection);
+            dangerPanel.add(btnKillKeyring);
+            dangerPanel.add(btnStartKeyring);
             panel.add(dangerPanel, BorderLayout.SOUTH);
 
             return panel;
@@ -374,8 +427,8 @@ public class SecretServiceGuiTest {
             JPanel panel = new JPanel(new BorderLayout(8, 8));
             panel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-            // Four state sections in a 2×2 grid
-            JPanel grid = new JPanel(new GridLayout(2, 2, 8, 8));
+            // Four state sections stacked vertically
+            JPanel grid = new JPanel(new GridLayout(4, 1, 8, 8));
             grid.add(buildDebugSection("System", debugSystemModel));
             grid.add(buildDebugSection("Service", debugServiceModel));
             grid.add(buildDebugSection("Session", debugSessionModel));
@@ -429,13 +482,18 @@ public class SecretServiceGuiTest {
             btnClearCreate.addActionListener(e -> {
                 tfLabel.setText("");
                 tfSecret.setText("");
-                tfAttrKey.setText("");
-                tfAttrValue.setText("");
+                tfAttributeKey.setText("");
+                tfAttributeValue.setText("");
             });
             btnRead.addActionListener(e -> doRevealSecret());
             btnDeleteItem.addActionListener(e -> doDeleteItem());
             btnList.addActionListener(e -> doListItems());
+            btnSearch.addActionListener(e -> doSearch());
+            // Allow pressing Enter in the search field to trigger search
+            tfSearch.addActionListener(e -> doSearch());
             btnDeleteCollection.addActionListener(e -> doDeleteCollection());
+            btnKillKeyring.addActionListener(e -> killKeyring());
+            btnStartKeyring.addActionListener(e -> startKeyring());
             btnClearLog.addActionListener(e -> logArea.setText(""));
             itemsList.addListSelectionListener(e -> {
                 if (!e.getValueIsAdjusting()) doShowItemDetail();
@@ -446,21 +504,27 @@ public class SecretServiceGuiTest {
         private void setItemControlsEnabled(boolean enabled) {
             tfLabel.setEnabled(enabled);
             tfSecret.setEnabled(enabled);
-            tfAttrKey.setEnabled(enabled);
-            tfAttrValue.setEnabled(enabled);
+            tfAttributeKey.setEnabled(enabled);
+            tfAttributeValue.setEnabled(enabled);
             btnCreate.setEnabled(enabled);
             btnClearCreate.setEnabled(enabled);
             btnRead.setEnabled(enabled);
             btnDeleteItem.setEnabled(enabled);
             btnList.setEnabled(enabled);
+            btnSearch.setEnabled(enabled);
+            tfSearch.setEnabled(enabled);
+            cmbSearchMode.setEnabled(enabled);
+            cmbMaxDistance.setEnabled(enabled);
             btnDeleteCollection.setEnabled(enabled);
             itemsList.setEnabled(enabled);
             btnDisconnect.setEnabled(enabled);
             btnConnect.setEnabled(!enabled);
             rbDefault.setEnabled(!enabled);
             rbTest.setEnabled(!enabled);
-            tfCollectionLabel.setEnabled(!enabled && rbTest.isSelected());
-            pfCollectionPassword.setEnabled(!enabled && rbTest.isSelected());
+            boolean customEditable = !enabled && rbTest.isSelected();
+            tfCollectionLabel.setEnabled(customEditable);
+            tfCollectionId.setEnabled(customEditable);
+            pfCollectionPassword.setEnabled(customEditable);
         }
 
         // ── Connect / Disconnect ──────────────────────────────────────
@@ -503,15 +567,24 @@ public class SecretServiceGuiTest {
                 if (rbDefault.isSelected()) {
                     maybeColl = session.defaultCollection();
                 } else {
+                    String id    = tfCollectionId.getText().trim();
                     String label = tfCollectionLabel.getText().trim();
-                    if (label.isEmpty()) {
-                        log("ERROR: Collection label must not be empty.");
+                    if (id.isEmpty() && label.isEmpty()) {
+                        log("ERROR: Collection ID or Label must not be empty.");
                         closeServiceQuietly();
                         return;
                     }
-                    char[] pw = pfCollectionPassword.getPassword();
-                    maybeColl = session.collection(label, Optional.of(new String(pw)));
-                    Arrays.fill(pw, '\0');
+                    if (!id.isEmpty()) {
+                        // Open existing collection by D-Bus id (e.g. KeePassXC or gnome-keyring)
+                        log("Opening collection by id: %s", id);
+                        maybeColl = session.collectionById(id);
+                    } else {
+                        // Create / open by label + password (gnome-keyring)
+                        log("Opening collection by label: %s", label);
+                        char[] pw = pfCollectionPassword.getPassword();
+                        maybeColl = session.collection(label, Optional.of(new String(pw)));
+                        Arrays.fill(pw, '\0');
+                    }
                 }
                 if (maybeColl.isEmpty()) {
                     log("ERROR: Could not open collection.");
@@ -520,7 +593,13 @@ public class SecretServiceGuiTest {
                 }
                 collection = maybeColl.get();
                 String collName = collection.getLabel().orElse("?");
-                log("Connected to collection \"%s\" (id: %s).", collName, collection.getId().orElse("?"));
+                String collId   = collection.getId().orElse("?");
+                log("Connected to collection label=\"%s\" id=\"%s\".", collName, collId);
+                // Reflect resolved label and id back into the fields
+                SwingUtilities.invokeLater(() -> {
+                    if (!collName.equals("?")) tfCollectionLabel.setText(collName);
+                    if (!collId.equals("?"))   tfCollectionId.setText(collId);
+                });
 
                 boolean locked = collection.isLocked();
                 if (!locked) wasUnlockedOnce = true;
@@ -604,7 +683,7 @@ public class SecretServiceGuiTest {
             lblDetailPath.setText(" ");
             lblDetailLabel.setText(" ");
             lblDetailSecret.setText("********");
-            attrsTableModel.setRowCount(0);
+            attributesTableModel.setRowCount(0);
         }
 
         private void doShowItemDetail() {
@@ -613,21 +692,29 @@ public class SecretServiceGuiTest {
                 clearDetail();
                 return;
             }
-            try {
-                String itemLabel = collection.getItemLabel(selected).orElse("<unknown>");
-                Optional<Map<String, String>> maybeAttrs = collection.getAttributes(selected);
+            doShowItemDetailForPath(selected);
+        }
 
-                lblDetailPath.setText(selected);
+        private void doShowItemDetailForPath(String path) {
+            if (path == null || path.isBlank() || collection == null) {
+                clearDetail();
+                return;
+            }
+            try {
+                String itemLabel = collection.getItemLabel(path).orElse("<unknown>");
+                Optional<Map<String, String>> maybeAttrs = collection.getAttributes(path);
+
+                lblDetailPath.setText(path);
                 lblDetailLabel.setText(itemLabel);
                 lblDetailSecret.setText("********");  // hidden until Read Secret
 
-                attrsTableModel.setRowCount(0);
+                attributesTableModel.setRowCount(0);
                 maybeAttrs.ifPresent(attrs ->
                     attrs.entrySet().stream()
                             .sorted(Map.Entry.comparingByKey())
-                            .forEach(entry -> attrsTableModel.addRow(
+                            .forEach(entry -> attributesTableModel.addRow(
                                     new Object[]{entry.getKey(), entry.getValue()})));
-                log("Selected item: %s (%s)", itemLabel, selected);
+                log("Selected item: %s (%s)", itemLabel, path);
             } catch (Exception ex) {
                 log("DETAIL FAILED: %s", exceptionDetail(ex));
                 clearDetail();
@@ -636,21 +723,21 @@ public class SecretServiceGuiTest {
 
         private void doRevealSecret() {
             if (!requireConnected()) return;
-            String selected = itemsList.getSelectedValue();
-            if (selected == null) {
-                log("Select an item from the list first.");
+            String path = lblDetailPath.getText().trim();
+            if (path.isEmpty() || path.equals(" ")) {
+                log("Select an item first.");
                 return;
             }
             try {
-                Optional<char[]> maybeSecret = collection.getSecret(selected);
+                Optional<char[]> maybeSecret = collection.getSecret(path);
                 if (maybeSecret.isPresent()) {
                     char[] secret = maybeSecret.get();
                     lblDetailSecret.setText(new String(secret));
                     Arrays.fill(secret, '\0');
-                    log("Secret revealed for: %s", selected);
+                    log("Secret revealed for: %s", path);
                 } else {
                     lblDetailSecret.setText("<empty>");
-                    log("Secret is empty for: %s", selected);
+                    log("Secret is empty for: %s", path);
                 }
             } catch (Exception ex) {
                 log("READ SECRET FAILED: %s", exceptionDetail(ex));
@@ -687,9 +774,9 @@ public class SecretServiceGuiTest {
 
         private void doDeleteItem() {
             if (!requireConnected()) return;
-            String selected = itemsList.getSelectedValue();
-            if (selected == null) {
-                log("Select an item from the list first.");
+            String selected = lblDetailPath.getText().trim();
+            if (selected.isEmpty() || selected.equals(" ")) {
+                log("Select an item first.");
                 return;
             }
             String itemLabel = collection.getItemLabel(selected).orElse("<unknown>");
@@ -717,7 +804,6 @@ public class SecretServiceGuiTest {
         private void doListItems() {
             if (!requireConnected()) return;
             try {
-                // Always list all items in the collection (empty map = no filter)
                 Optional<List<String>> maybeItems = collection.getItems(Map.of());
                 itemsModel.clear();
                 if (maybeItems.isPresent()) {
@@ -731,6 +817,28 @@ public class SecretServiceGuiTest {
                 }
             } catch (Exception ex) {
                 log("LIST FAILED: %s", exceptionDetail(ex));
+            }
+        }
+
+        private void doSearch() {
+            if (!requireConnected()) return;
+            String query = tfSearch.getText().trim();
+            String mode  = (String) cmbSearchMode.getSelectedItem();
+            try {
+                SearchMode searchMode = switch (mode) {
+                    case "By Attribute Key"   -> SearchMode.BY_ATTRIBUTE_KEY;
+                    case "By Attribute Value" -> SearchMode.BY_ATTRIBUTE_VALUE;
+                    case "By Object ID"       -> SearchMode.BY_OBJECT_ID;
+                    case "By Object Path"     -> SearchMode.BY_OBJECT_PATH;
+                    default                   -> SearchMode.BY_NAME;
+                };
+                List<String> results = collection.search(query, searchMode, (Integer) cmbMaxDistance.getSelectedItem());
+                int total = collection.getItems(Map.of()).map(List::size).orElse(0);
+                itemsModel.clear();
+                results.forEach(itemsModel::addElement);
+                log("Search [%s] \"%s\": %d / %d item(s) matched.", mode, query, results.size(), total);
+            } catch (Exception ex) {
+                log("SEARCH FAILED: %s", exceptionDetail(ex));
             }
         }
 
@@ -756,11 +864,45 @@ public class SecretServiceGuiTest {
             }
         }
 
+        private void killKeyring() {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Kill the gnome-keyring process? This may affect the desktop session.\n\nProceed?",
+                    "Kill Keyring", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (confirm != JOptionPane.YES_OPTION) return;
+            try {
+                ProcessBuilder pb = new ProcessBuilder("pkill", "-f", "gnome-keyring-daemon");
+                Process p = pb.start();
+                int rc = p.waitFor();
+                log("killKeyring(): pkill returned %d", rc);
+            } catch (Exception ex) {
+                log("KILL KEYRING FAILED: %s", exceptionDetail(ex));
+            }
+        }
+
+        private void startKeyring() {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Start the gnome-keyring-daemon for the current user?\n\nProceed?",
+                    "Start Keyring", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (confirm != JOptionPane.YES_OPTION) return;
+            try {
+                ProcessBuilder pb = new ProcessBuilder("gnome-keyring-daemon", "--start", "--components=secrets,pkcs11,ssh");
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+                java.io.InputStream is = p.getInputStream();
+                java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\\A");
+                String out = s.hasNext() ? s.next() : "";
+                int rc = p.waitFor();
+                log("startKeyring(): exit=%d output=%s", rc, out.trim());
+            } catch (Exception ex) {
+                log("START KEYRING FAILED: %s", exceptionDetail(ex));
+            }
+        }
+
         // ── Helpers ───────────────────────────────────────────────────
 
         private Map<String, String> buildAttributes() {
-            String key = tfAttrKey.getText().trim();
-            String value = tfAttrValue.getText().trim();
+            String key = tfAttributeKey.getText().trim();
+            String value = tfAttributeValue.getText().trim();
             if (!key.isEmpty() && !value.isEmpty()) {
                 return Map.of(key, value);
             }
@@ -768,13 +910,16 @@ public class SecretServiceGuiTest {
         }
 
         private String getCollectionDisplayName() {
+            if (rbDefault.isSelected()) return "Default";
             if (collection != null) {
-                return collection.getLabel().orElse(rbDefault.isSelected() ? "Default" : tfCollectionLabel.getText().trim());
+                String lbl = collection.getLabel().orElse(tfCollectionLabel.getText().trim());
+                String id  = collection.getId().orElse(tfCollectionId.getText().trim());
+                return lbl.equals(id) ? lbl : lbl + " [" + id + "]";
             }
-            if (rbDefault.isSelected()) {
-                return "Default";
-            }
-            return tfCollectionLabel.getText().trim();
+            String lbl = tfCollectionLabel.getText().trim();
+            String id  = tfCollectionId.getText().trim();
+            if (!lbl.isEmpty() && !id.isEmpty() && !lbl.equals(id)) return lbl + " [" + id + "]";
+            return !id.isEmpty() ? id : lbl;
         }
 
         private boolean requireConnected() {
@@ -839,28 +984,11 @@ public class SecretServiceGuiTest {
             }
         }
 
-        /**
-         * Detect the secret service provider by querying well-known D-Bus names.
-         */
+        /** Delegate to {@link ProviderDetector} via the functional API. */
         private String detectProvider() {
-            if (system == null || !system.isConnected()) return "N/A";
-            try {
-                DBusConnection conn = system.getConnection();
-                DBus bus = conn.getRemoteObject(
-                        "org.freedesktop.DBus", "/org/freedesktop/DBus", DBus.class);
-                Set<String> names = new HashSet<>();
-                names.addAll(Arrays.asList(bus.ListNames()));
-                names.addAll(Arrays.asList(bus.ListActivatableNames()));
-
-                if (names.contains("org.gnome.keyring")) return "gnome-keyring";
-                if (names.contains("org.keepassxc.KeePassXC")) return "KeePassXC";
-                if (names.contains("org.kde.kwalletd6")) return "KWallet";
-                if (names.contains("org.kde.kwalletd5")) return "KWallet";
-                if (names.contains("org.freedesktop.secrets")) return "unknown";
-                return "N/A";
-            } catch (Exception e) {
-                return "N/A";
-            }
+            if (service != null) return service.getProvider();
+            if (system != null && system.isConnected()) return ProviderDetector.detect(system.getConnection());
+            return "N/A";
         }
 
         private static void resetStatusLabel(JLabel label) {

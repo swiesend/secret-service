@@ -1,5 +1,6 @@
 package de.swiesend.secretservice.functional.interfaces;
 
+import de.swiesend.secretservice.functional.SearchMode;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,6 +57,26 @@ public interface CollectionInterface extends AutoCloseable {
     Optional<Map<String, String>> getAttributes(String objectPath);
 
     Optional<List<String>> getItems(Map<String, String> attributes);
+
+    /**
+     * Search all items using substring matching against the given mode.
+     *
+     * @param query case-insensitive substring to search for; empty string returns all items
+     * @param mode  which field to match against
+     * @return unmodifiable list of matching D-Bus object paths (never null)
+     */
+    List<String> search(String query, SearchMode mode);
+
+    /**
+     * Search all items using fuzzy (Levenshtein) matching against the given mode.
+     * Falls back to substring matching when {@code maxDistance} is 0.
+     *
+     * @param query       case-insensitive query string
+     * @param mode        which field to match against
+     * @param maxDistance maximum edit distance to consider a match
+     * @return unmodifiable list of matching D-Bus object paths (never null)
+     */
+    List<String> search(String query, SearchMode mode, int maxDistance);
 
     Optional<String> getItemLabel(String objectPath);
 
@@ -162,5 +183,21 @@ public interface CollectionInterface extends AutoCloseable {
     boolean disablePrompt();
 
     boolean enablePrompt();
+
+    /**
+     * Detects the currently active Secret Service provider and returns its display name.
+     *
+     * @return display name such as {@code "KeePassXC"}, {@code "gnome-keyring"},
+     *         {@code "unknown"}, or {@code "N/A"}
+     * @see de.swiesend.secretservice.ProviderDetector#detect(org.freedesktop.dbus.connections.impl.DBusConnection)
+     */
+    String getProvider();
+
+    /**
+     * Detects the currently active Secret Service provider as a typed enum constant.
+     *
+     * @return the detected {@link de.swiesend.secretservice.ProviderDetector.Provider}
+     */
+    de.swiesend.secretservice.ProviderDetector.Provider detectProvider();
 
 }
