@@ -1,64 +1,88 @@
 package de.swiesend.secretservice.simple;
 
 import de.swiesend.secretservice.*;
+import de.swiesend.secretservice.functional.SecretService;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
+import de.swiesend.secretservice.functional.interfaces.SessionInterface;
+import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import de.swiesend.secretservice.gnome.keyring.InternalUnsupportedGuiltRiddenInterface;
-import de.swiesend.secretservice.interfaces.Prompt.Completed;
-import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.freedesktop.dbus.interfaces.DBus;
-import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import java.io.IOException;
-import java.security.AccessControlException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.spec.InvalidKeySpecException;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.RejectedExecutionException;
 
 import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 
+/**
+ * High-level API for storing secrets in the user's keyring.
+ *
+ * <p><strong>Deprecated.</strong> This class preserves the original 1.x API surface
+ * (static shared D-Bus connection, {@code null} returns, checked exceptions) for backward
+ * compatibility only. It will be removed in version 3.0.</p>
+ *
+ * <p><strong>Migration:</strong> Replace usages with the functional API.</p>
+ *
+ * <p>Simple example — let the collection manage its own session:</p>
+ * <pre>{@code
+ * Collection.openDefault().ifPresentOrElse(collection -> {
+ *     collection.createItem("My label", "s3cr3t", Map.of());
+ * }, () -> log.error("Could not open the default collection."));
+ * }</pre>
+ *
+ * <p>Full example — manage the connection lifecycle explicitly:</p>
+ * <pre>{@code
+ * try (var system = de.swiesend.secretservice.functional.System.connect()) {
+ *     SecretService.create(Optional.of(system)).ifPresentOrElse(service -> {
+ *         service.openSession().ifPresentOrElse(session -> {
+ *             Collection.openDefault(Optional.of(session)).ifPresentOrElse(collection -> {
+ *                 collection.createItem("My label", "s3cr3t", Map.of());
+ *             }, () -> log.error("Could not open the default collection."));
+ *         }, () -> log.error("Could not open an encrypted session."));
+ *     }, () -> log.error("Could not connect to the secret service."));
+ * }
+ * }</pre>
+ *
+ * @deprecated since 3.0, for removal in 4.0. Use
+ *             {@link de.swiesend.secretservice.functional.SecretService#create()} and the
+ *             {@link de.swiesend.secretservice.functional.interfaces.CollectionInterface} instead.
+ */
+@Deprecated(since = "3.0", forRemoval = true)
 public final class SimpleCollection extends de.swiesend.secretservice.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
-    private static DBusConnection connection = getConnection();
+    private static final DBusConnection connection = getConnection();
     private static final Thread shutdownHook = setupShutdownHook();
-    private TransportEncryption transport = null;
-    private Service service = null;
-    private Session session = null;
-    private Prompt prompt = null;
-    private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
-    private Collection collection;
-    private Secret encrypted = null;
+
+    private ServiceInterface service = null;
+    private SessionInterface session = null;
+    private CollectionInterface delegate = null;
     private Duration timeout = DEFAULT_PROMPT_TIMEOUT;
-    private Boolean isUnlockedOnceWithUserPermission = false;
 
     /**
-     * The default collection.
+     * Opens the default collection.
      *
      * @throws IOException Could not communicate properly with the DBus. Check the logs.
+    * @deprecated since 3.0, for removal in 4.0. Use
+     *             {@link de.swiesend.secretservice.functional.Collection#openDefault} instead.
      */
+    @Deprecated(since = "3.0", forRemoval = true)
     public SimpleCollection() throws IOException {
         try {
             init();
-            ObjectPath path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-            collection = new Collection(path, service);
+            delegate = de.swiesend.secretservice.functional.Collection
+                    .openDefault(Optional.of(session))
+                    .orElseThrow(() -> new IOException("Could not open the default collection."));
         } catch (RuntimeException e) {
             throw new IOException("Could not initialize the secret service.", e);
         }
@@ -79,53 +103,18 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      *                 as the <code>id</code> is inferred by the given label.
      * @param password Password of the collection
      * @throws IOException Could not communicate properly with the DBus. Check the logs.
+    * @deprecated since 3.0, for removal in 4.0. Use
+     *             {@link de.swiesend.secretservice.functional.Collection#open} instead.
      */
+    @Deprecated(since = "3.0", forRemoval = true)
     public SimpleCollection(String label, CharSequence password) throws IOException {
         try {
             init();
-            if (password != null) {
-                try {
-                    encrypted = transport.encrypt(password);
-                } catch (NoSuchAlgorithmException |
-                         NoSuchPaddingException |
-                         InvalidAlgorithmParameterException |
-                         InvalidKeyException |
-                         BadPaddingException |
-                         IllegalBlockSizeException e) {
-                    log.error("Could not establish transport encryption.", e);
-                }
-            }
-            if (exists(label)) {
-                ObjectPath path = getCollectionPath(label);
-                collection = new Collection(path, service);
-            } else {
-                DBusPath path = null;
-                Map<String, Variant> properties = Collection.createProperties(label);
-
-                if (password == null) {
-                    Pair<ObjectPath, ObjectPath> response = service.createCollection(properties);
-                    if (!"/".equals(response.a.getPath())) {
-                        path = response.a;
-                    }
-                    performPrompt(response.b);
-                } else if (encrypted != null && withoutPrompt != null) {
-                    path = withoutPrompt.createWithMasterPassword(properties, encrypted);
-                }
-
-                if (path == null) {
-                    try {
-                        Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
-                    } catch (InterruptedException e) {
-                        log.error("Unexpected interrupt while waiting for a CollectionCreated signal.", e);
-                    }
-                    Service.CollectionCreated cc = service.getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class);
-                    path = cc.collection;
-                }
-
-                if (path == null) throw new IOException("Could not acquire a path for the prompt.");
-
-                collection = new Collection(path, service);
-            }
+            Optional<CharSequence> maybePassword = Optional.ofNullable(password);
+            delegate = de.swiesend.secretservice.functional.Collection
+                    .open(label, maybePassword, Optional.of(session))
+                    .orElseThrow(() -> new IOException(
+                            String.format("Could not acquire collection with name %s", label)));
         } catch (RuntimeException e) {
             throw new IOException("Could not initialize the secret service.", e);
         }
@@ -135,7 +124,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * Try to get a new DBus connection.
      *
      * @return a new DBusConnection or null
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "3.0", forRemoval = true)
     private static DBusConnection getConnection() {
         try {
             return DBusConnectionBuilder.forSessionBus().withShared(false).build();
@@ -153,7 +144,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * Checks the D-Bus connection status.
      *
      * @return true if connected to the D-Bus, otherwise false
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isConnected() {
         if (connection != null) {
             return connection.isConnected();
@@ -169,7 +162,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * <code>org.gnome.keyring</code>
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
@@ -177,11 +172,23 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
-                List<String> names = Arrays.asList(bus.ListNames());
-                if (!(names.containsAll(Arrays.asList(
-                        Static.DBus.Service.DBUS,
-                        Static.Service.SECRETS)))) {
+
+                // Check both running services and activatable services.
+                // A service is available if it appears in either list.
+                Set<String> available = new HashSet<>();
+                available.addAll(Arrays.asList(bus.ListNames()));
+                available.addAll(Arrays.asList(bus.ListActivatableNames()));
+
+                // Required: org.freedesktop.DBus, org.freedesktop.secrets
+                if (!available.contains(Static.DBus.Service.DBUS) || !available.contains(Static.Service.SECRETS)) {
+                    log.error("Missing required D-Bus service. Available: " + available);
                     return false;
+                }
+
+                // Optional: org.gnome.keyring
+                if (!available.contains(de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
+                    log.warn("Proceeding without optional D-Bus service: " +
+                            de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING);
                 }
 
                 // The following calls intent to open a session without actually generating a session.
@@ -189,16 +196,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 // algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
                 // "org.freedesktop.DBus.Error.ServiceUnknown <: org.freedesktop.dbus.exceptions.DBusException"
                 TransportEncryption transport = new TransportEncryption(connection);
-                transport.initialize();
-                boolean isSessionSupported = transport.openSession();
+                Optional<TransportEncryption.OpenedSession> opened = transport.initialize().flatMap(init -> init.openSession());
+                boolean isSessionSupported = opened.isPresent();
                 transport.close();
 
                 return isSessionSupported;
             } catch (DBusException | ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
-                return false;
-            } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
-                log.error("The secret service could not be initialized as the service does not provide the expected transport encryption algorithm.", e);
                 return false;
             }
         } else {
@@ -212,7 +216,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * <code>org.gnome.keyring</code>
      *
      * @return true if the secret service provider is gnome keyring, otherwise false and will log a warning message.
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isGnomeKeyringAvailable() {
         if (connection != null && connection.isConnected()) {
             try {
@@ -220,9 +226,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                         Static.DBus.Service.DBUS,
                         Static.DBus.ObjectPaths.DBUS,
                         DBus.class);
-                List<String> names = Arrays.asList(bus.ListNames());
-                if (!(names.contains(
-                        de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING))) {
+
+                // Check both running and activatable services
+                Set<String> available = new HashSet<>();
+                available.addAll(Arrays.asList(bus.ListNames()));
+                available.addAll(Arrays.asList(bus.ListActivatableNames()));
+                if (!available.contains(
+                        de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
                     return false;
                 }
             } catch (DBusException | ExceptionInInitializerError e) {
@@ -239,7 +249,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
     /**
      * Close the DBus connection immediately. Waits for the DBus connection to close within 2 seconds.
+     *
+     * @deprecated see class-level deprecation notice.
      */
+    @Deprecated(since = "3.0", forRemoval = true)
     synchronized public static boolean disconnect() {
         try {
             if (connection != null && connection.isConnected()) {
@@ -277,113 +290,32 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
     private void init() throws IOException {
         if (!isAvailable()) throw new IOException("The secret service is not available.");
+        // Wrap the static connection so the functional layer shares it rather than
+        // opening its own. The wrapped SystemInterface does not own the connection,
+        // so the static disconnect()/shutdown-hook lifecycle remains in control.
+        SystemInterface system = de.swiesend.secretservice.functional.System.wrap(connection);
+        ServiceInterface createdService = SecretService.create(Optional.of(system))
+                .orElseThrow(() -> new IOException("Could not create the secret service."));
+        SessionInterface openedSession;
         try {
-            transport = new TransportEncryption(connection);
-            transport.initialize();
-            transport.openSession();
-            transport.generateSessionKey();
-            service = transport.getService();
-            session = service.getSession();
-            prompt = new Prompt(service);
-            if (isGnomeKeyringAvailable()) {
-                withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(service);
+            openedSession = createdService.openSession()
+                    .orElseThrow(() -> new IOException("Could not open an encrypted session."));
+        } catch (RuntimeException | IOException e) {
+            try {
+                createdService.close();
+            } catch (Exception closeException) {
+                log.warn("Failed to close secret service after session initialization failure.", closeException);
             }
-        } catch (NoSuchAlgorithmException |
-                 InvalidAlgorithmParameterException |
-                 InvalidKeySpecException |
-                 InvalidKeyException |
-                 DBusException e) {
-            throw new IOException("Could not initiate transport encryption.", e);
+            throw e;
         }
-    }
-
-    private Map<ObjectPath, String> getLabels() {
-        List<ObjectPath> collections = service.getCollections();
-
-        Map<ObjectPath, String> labels = new HashMap();
-        for (ObjectPath path : collections) {
-            Collection c = new Collection(path, service, null);
-            labels.put(path, c.getLabel());
-        }
-
-        return labels;
-    }
-
-    private boolean exists(String label) {
-        Map<ObjectPath, String> labels = getLabels();
-        return labels.containsValue(label);
-    }
-
-    private ObjectPath getCollectionPath(String label) {
-        Map<ObjectPath, String> labels = getLabels();
-
-        ObjectPath path = null;
-        for (Map.Entry<ObjectPath, String> entry : labels.entrySet()) {
-            ObjectPath p = entry.getKey();
-            String l = entry.getValue();
-            if (label.equals(l)) {
-                path = p;
-                break;
-            }
-        }
-        return path;
-    }
-
-    private boolean isDefault() {
-        if (connection != null && connection.isConnected()) {
-            List<String> defaults = Arrays.asList(null, "login", "session", "default");
-            return defaults.contains(collection.getId());
-        } else {
-            log.error("No D-Bus connection: Cannot check if the collection is the default collection.");
-            return false;
-        }
-    }
-
-    private void performPrompt(ObjectPath path) {
-        if (!("/".equals(path.getPath()))) {
-            prompt.await(path, timeout);
-        }
-    }
-
-    private Item getItem(String path) {
-        if (path != null) {
-            return new Item(Static.Convert.toObjectPath(path), service);
-        } else {
-            return null;
-        }
-    }
-
-    private List<ObjectPath> lockable() {
-        return Arrays.asList(collection.getPath());
+        service = createdService;
+        session = openedSession;
+        service.setTimeout(timeout);
     }
 
     @Override
     public void lock() {
-        if (collection != null && !collection.isLocked()) {
-            service.lock(lockable());
-            log.info("Locked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
-            try {
-                Thread.currentThread().sleep(DEFAULT_DELAY_MILLIS);
-            } catch (InterruptedException e) {
-                log.error("Unexpected interrupt while waiting for a collection to lock.", e);
-            }
-        }
-    }
-
-    private void unlock() {
-        if (collection != null && collection.isLocked()) {
-            if (withoutPrompt != null && encrypted != null) {
-                withoutPrompt.unlockWithMasterPassword(collection.getPath(), encrypted);
-                log.debug("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
-            } else {
-                Pair<List<ObjectPath>, ObjectPath> response = service.unlock(lockable());
-                performPrompt(response.b);
-                if (!collection.isLocked()) {
-                    isUnlockedOnceWithUserPermission = true;
-                    log.info("Unlocked collection: " + collection.getLabel() + " (" + collection.getObjectPath() + ")");
-                }
-            }
-        }
+        delegate.lock();
     }
 
     /**
@@ -402,14 +334,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * <p>
      * {@link SimpleCollection#deleteItems(List)}
      *
-     * @throws AccessControlException if the user does not provide the correct credentials.
+     * @throws SecurityException if the user does not provide the correct credentials.
      */
     @Override
-    public void unlockWithUserPermission() throws AccessControlException {
-        if (!isUnlockedOnceWithUserPermission && isDefault()) lock();
-        unlock();
-        if (collection.isLocked()) {
-            throw new AccessControlException("The collection was not unlocked with user permission.");
+    public void unlockWithUserPermission() throws SecurityException {
+        if (!delegate.unlockWithUserPermission()) {
+            throw new SecurityException("The collection was not unlocked with user permission.");
         }
     }
 
@@ -418,21 +348,23 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public void clear() {
-        if (transport != null) {
-            transport.clear();
-        }
-        if (encrypted != null) {
-            encrypted.clear();
-        }
+        delegate.clear();
     }
 
     @Override
     public void close() {
-        clear();
-        log.debug("Cleared secrets properly.");
-        if (session != null) {
-            session.close();
-            log.debug("Closed session properly.");
+        try {
+            delegate.close();
+            log.debug("Closed delegate collection properly.");
+        } catch (Exception e) {
+            log.error("Failed to close delegate collection.", e);
+        } finally {
+            try {
+                service.close();
+                log.debug("Closed secret service properly.");
+            } catch (Exception e) {
+                log.error("Failed to close secret service.", e);
+            }
         }
     }
 
@@ -440,12 +372,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * Delete this collection.
      */
     @Override
-    public void delete() throws AccessControlException {
-        if (!isDefault()) {
-            ObjectPath promptPath = collection.delete();
-            performPrompt(promptPath);
-        } else {
-            throw new AccessControlException("Default collections may not be deleted with the simple API.");
+    public void delete() throws SecurityException {
+        if (!delegate.delete()) {
+            throw new SecurityException("Default collections may not be deleted with the simple API.");
         }
     }
 
@@ -460,45 +389,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public String createItem(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
-
-        if (Static.isNullOrEmpty(password)) {
+        if (Static.Utils.isNullOrEmpty(password)) {
             throw new IllegalArgumentException("The password may not be null or empty.");
         }
         if (label == null) {
             throw new IllegalArgumentException("The label of the item may not be null.");
         }
-
-        if (collection == null || transport == null) return null;
-
-        unlock();
-
-        DBusPath item = null;
-        final Map<String, Variant> properties = Item.createProperties(label, attributes);
-        try (final Secret secret = transport.encrypt(password)) {
-            Pair<ObjectPath, ObjectPath> response = collection.createItem(properties, secret, false);
-            if (response == null) return null;
-            item = response.a;
-            if ("/".equals(item.getPath())) {
-                Completed completed = prompt.await(response.b);
-                if (!completed.dismissed) {
-                    Collection.ItemCreated ic = collection.getSignalHandler().getLastHandledSignal(Collection.ItemCreated.class);
-                    item = ic.item;
-                }
-            }
-        } catch (NoSuchAlgorithmException |
-                 NoSuchPaddingException |
-                 InvalidAlgorithmParameterException |
-                 InvalidKeyException |
-                 BadPaddingException |
-                 IllegalBlockSizeException e) {
-            log.error("Could not encrypt the secret.", e);
-        }
-
-        if (null != item) {
-            return item.getPath();
-        } else {
-            return null;
-        }
+        return delegate.createItem(label, password, attributes).orElse(null);
     }
 
     /**
@@ -525,33 +422,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
-
-        if (Static.isNullOrEmpty(objectPath)) {
+        if (Static.Utils.isNullOrEmpty(objectPath)) {
             throw new IllegalArgumentException("The object path of the item may not be null or empty.");
         }
-
-        unlock();
-
-        Item item = getItem(objectPath);
-
-        if (label != null) {
-            item.setLabel(label);
-        }
-
-        if (attributes != null) {
-            item.setAttributes(attributes);
-        }
-
-        if (password != null) try (Secret secret = transport.encrypt(password)) {
-            item.setSecret(secret);
-        } catch (NoSuchAlgorithmException |
-                 NoSuchPaddingException |
-                 InvalidAlgorithmParameterException |
-                 InvalidKeyException |
-                 BadPaddingException |
-                 IllegalBlockSizeException e) {
-            log.error("Could not encrypt the secret.", e);
-        }
+        delegate.updateItem(objectPath, label, password, attributes);
     }
 
     /**
@@ -562,9 +436,8 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public String getLabel(String objectPath) {
-        if (Static.isNullOrEmpty(objectPath)) return null;
-        unlock();
-        return getItem(objectPath).getLabel();
+        if (Static.Utils.isNullOrEmpty(objectPath)) return null;
+        return delegate.getItemLabel(objectPath).orElse(null);
     }
 
     /**
@@ -577,9 +450,8 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public Map<String, String> getAttributes(String objectPath) {
-        if (Static.isNullOrEmpty(objectPath)) return null;
-        unlock();
-        return getItem(objectPath).getAttributes();
+        if (Static.Utils.isNullOrEmpty(objectPath)) return null;
+        return delegate.getAttributes(objectPath).orElse(null);
     }
 
     /**
@@ -591,15 +463,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public List<String> getItems(Map<String, String> attributes) {
         if (attributes == null) return null;
-        unlock();
-
-        List<ObjectPath> objects = collection.searchItems(attributes);
-
-        if (objects != null && !objects.isEmpty()) {
-            return Static.Convert.toStrings(objects);
-        } else {
-            return null;
-        }
+        return delegate.getItems(attributes).orElse(null);
     }
 
     /**
@@ -610,23 +474,8 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public char[] getSecret(String objectPath) {
-        if (Static.isNullOrEmpty(objectPath)) return null;
-        unlock();
-
-        final Item item = getItem(objectPath);
-
-        char[] decrypted = null;
-        try (final Secret secret = item.getSecret(session.getPath())) {
-            decrypted = transport.decrypt(secret);
-        } catch (NoSuchPaddingException |
-                 NoSuchAlgorithmException |
-                 InvalidAlgorithmParameterException |
-                 InvalidKeyException |
-                 BadPaddingException |
-                 IllegalBlockSizeException e) {
-            log.error("Could not decrypt the secret.", e);
-        }
-        return decrypted;
+        if (Static.Utils.isNullOrEmpty(objectPath)) return null;
+        return delegate.getSecret(objectPath).orElse(null);
     }
 
     /**
@@ -639,19 +488,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @return Mapping of DBus object paths and plain chars or null
      */
     @Override
-    public Map<String, char[]> getSecrets() throws AccessControlException {
+    public Map<String, char[]> getSecrets() throws SecurityException {
         unlockWithUserPermission();
 
-        List<ObjectPath> items = collection.getItems();
-        if (items == null) return null;
-
-        Map<String, char[]> passwords = new HashMap();
-        for (ObjectPath item : items) {
-            String path = item.getPath();
-            passwords.put(path, getSecret(path));
-        }
-
-        return passwords;
+        return delegate.getSecrets().orElse(null);
     }
 
     /**
@@ -664,14 +504,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @param objectPath The DBus object path of the item
      */
     @Override
-    public void deleteItem(String objectPath) throws AccessControlException {
-        if (Static.isNullOrEmpty(objectPath)) throw new AccessControlException("Cannot delete an unspecified item.");
-
-        unlockWithUserPermission();
-
-        Item item = getItem(objectPath);
-        ObjectPath promptPath = item.delete();
-        performPrompt(promptPath);
+    public void deleteItem(String objectPath) throws SecurityException {
+        if (Static.Utils.isNullOrEmpty(objectPath)) throw new SecurityException("Cannot delete an unspecified item.");
+        if (!delegate.deleteItem(objectPath)) {
+            throw new SecurityException("Failed to delete item. User permission may be denied or the collection may be locked.");
+        }
     }
 
     /**
@@ -684,10 +521,15 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      * @param objectPaths The DBus object paths of the items
      */
     @Override
-    public void deleteItems(List<String> objectPaths) throws AccessControlException {
+    public void deleteItems(List<String> objectPaths) throws SecurityException {
+        if (objectPaths == null || objectPaths.isEmpty()) {
+            throw new SecurityException("Cannot delete unspecified items.");
+        }
+
         unlockWithUserPermission();
-        for (String item : objectPaths) {
-            deleteItem(item);
+
+        if (!delegate.deleteItems(objectPaths)) {
+            throw new SecurityException("Failed to delete one or more specified items.");
         }
     }
 
@@ -699,16 +541,14 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public void setTimeout(Duration timeout) {
         this.timeout = timeout;
+        if (service != null) {
+            service.setTimeout(timeout);
+        }
     }
 
     @Override
     public boolean isLocked() {
-        if (connection != null && connection.isConnected()) {
-            return collection.isLocked();
-        } else {
-            log.error("No D-Bus connection: Cannot check if the collection is locked.");
-            return true;
-        }
+        return delegate.isLocked();
     }
 
 }

@@ -9,7 +9,9 @@ public interface Session extends DBusInterface {
 
     /**
      * Close this session.
+     *
+     * @return true if closed else false
      */
-    abstract public void close();
+    boolean close();
 
 }

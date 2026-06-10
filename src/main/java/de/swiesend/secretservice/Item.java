@@ -1,6 +1,6 @@
 package de.swiesend.secretservice;
 
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.handlers.Messaging;
@@ -19,7 +19,7 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
         this.id = itemID;
     }
 
-    public Item(ObjectPath item, Service service) {
+    public Item(DBusPath item, Service service) {
         super(service.getConnection(), null,
                 Static.Service.SECRETS,
                 item.getPath(),
@@ -73,7 +73,7 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
      *      {@link de.swiesend.secretservice.interfaces.Service#createCollection(Map properties, String alias)}<br>
      */
     public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
-        Map<String, Variant> properties = new HashMap();
+        Map<String, Variant> properties = new HashMap<>();
         properties.put(LABEL, new Variant(label));
         if (attributes != null) {
             properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));
@@ -82,21 +82,25 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
     }
 
     @Override
-    public ObjectPath delete() {
-        Object[] response = send("Delete", "");
-        if (response == null) return null;
-        ObjectPath prompt = (ObjectPath) response[0];
-        return prompt;
+    public Optional<DBusPath> delete() {
+        Object[] response = send("Delete", "").orElse(null);
+        if (Static.Utils.isNullOrEmpty(response)) return Optional.empty();
+        try {
+            DBusPath prompt = (DBusPath) response[0];
+            return Optional.of(prompt);
+        } catch (ClassCastException e) {
+            return Optional.empty();
+        }
     }
 
     @Override
-    public Secret getSecret(ObjectPath session) {
-        Object[] response = send("GetSecret", "o", session);
-        if (response == null) return null;
+    public Optional<Secret> getSecret(DBusPath session) {
+        Object[] response = send("GetSecret", "o", session).orElse(null);
+        if (Static.Utils.isNullOrEmpty(response)) return Optional.empty();
         try {
             Object[] inner = (Object[]) response[0];
 
-            ObjectPath session_path = (ObjectPath) inner[0];
+            DBusPath session_path = (DBusPath) inner[0];
             byte[] parameters = Static.Convert.toByteArray((ArrayList<Byte>) inner[1]);
             byte[] value = Static.Convert.toByteArray((ArrayList<Byte>) inner[2]);
             String contentType = (String) inner[3];
@@ -110,67 +114,62 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
                 secret = new Secret(session_path, parameters, value, contentType);
             }
 
-            return secret;
+            return Optional.of(secret);
         } catch (ClassCastException | IndexOutOfBoundsException e) {
-            return null;
+            return Optional.empty();
         }
     }
 
     @Override
-    public void setSecret(Secret secret) {
-        send("SetSecret", "(oayays)", secret);
+    public boolean setSecret(Secret secret) {
+        return send("SetSecret", "(oayays)", secret).isPresent();
     }
 
     @Override
     public boolean isLocked() {
-        Variant response = getProperty("Locked");
-        if (response == null) return true;
-        return (boolean) response.getValue();
+        Optional<Boolean> response = getProperty("Locked").map(variant ->
+                variant == null ? false : (boolean) variant.getValue());
+        return response.isPresent() ? response.get() : false;
     }
 
     @Override
-    public Map<String, String> getAttributes() {
-        Variant response = getProperty("Attributes");
-        if (response == null) return null;
-        return (Map<String, String>) response.getValue();
+    public Optional<Map<String, String>> getAttributes() {
+        return getProperty("Attributes").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((Map<String, String>) variant.getValue()));
     }
 
     @Override
-    public void setAttributes(Map<String, String> attributes) {
-        setProperty("Attributes", new Variant(attributes, "a{ss}"));
+    public boolean setAttributes(Map<String, String> attributes) {
+        return setProperty("Attributes", new Variant(attributes, "a{ss}"));
     }
 
     @Override
-    public String getLabel() {
-        Variant response = getProperty("Label");
-        if (response == null) return null;
-        return (String) response.getValue();
+    public Optional<String> getLabel() {
+        return getProperty("Label").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((String) variant.getValue()));
     }
 
     @Override
-    public void setLabel(String label) {
-        setProperty("Label", new Variant(label));
+    public boolean setLabel(String label) {
+        return setProperty("Label", new Variant(label));
     }
 
     @Override
-    public String getType() {
-        Variant response = getProperty("Type");
-        if (response == null) return null;
-        return (String) response.getValue();
+    public Optional<String> getType() {
+        return getProperty("Type").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((String) variant.getValue()));
     }
 
     @Override
-    public UInt64 created() {
-        Variant response = getProperty("Created");
-        if (response == null) return null;
-        return (UInt64) response.getValue();
+    public Optional<UInt64> created() {
+        return getProperty("Created").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((UInt64) variant.getValue()));
     }
 
     @Override
-    public UInt64 modified() {
-        Variant response = getProperty("Modified");
-        if (response == null) return null;
-        return (UInt64) response.getValue();
+    public Optional<UInt64> modified() {
+        return getProperty("Modified").flatMap(variant ->
+                variant == null ? Optional.empty() : Optional.ofNullable((UInt64) variant.getValue()));
     }
 
     @Override

@@ -1,18 +1,19 @@
 package de.swiesend.secretservice.handlers;
 
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.Static;
 
 import java.util.List;
+import java.util.Optional;
 
 public abstract class Messaging {
 
     protected DBusConnection connection;
     protected MessageHandler msg;
-    protected SignalHandler sh = SignalHandler.getInstance();
+    protected SignalHandler sh = new SignalHandler();
     protected String serviceName;
     protected String objectPath;
     protected String interfaceName;
@@ -20,33 +21,33 @@ public abstract class Messaging {
     public Messaging(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                      String serviceName, String objectPath, String interfaceName) {
         this.connection = connection;
-        this.msg = new MessageHandler(connection);
+        this.msg = new MessageHandler(connection, true);
         if (signals != null) {
-            this.sh.connect(connection, signals);
+            this.sh.connect(connection, signals, objectPath);
         }
         this.serviceName = serviceName;
         this.objectPath = objectPath;
         this.interfaceName = interfaceName;
     }
 
-    protected Object[] send(String method) {
+    protected Optional<Object[]> send(String method) {
         return msg.send(serviceName, objectPath, interfaceName, method, "");
     }
 
-    protected Object[] send(String method, String signature, Object... arguments) {
+    protected Optional<Object[]> send(String method, String signature, Object... arguments) {
         return msg.send(serviceName, objectPath, interfaceName, method, signature, arguments);
     }
 
-    protected Variant getProperty(String property) {
+    protected Optional<Variant> getProperty(String property) {
         return msg.getProperty(serviceName, objectPath, interfaceName, property);
     }
 
-    protected Variant getAllProperties() {
+    protected Optional<Variant> getAllProperties() {
         return msg.getAllProperties(serviceName, objectPath, interfaceName);
     }
 
-    protected void setProperty(String property, Variant value) {
-        msg.setProperty(serviceName, objectPath, interfaceName, property, value);
+    protected boolean setProperty(String property, Variant value) {
+        return msg.setProperty(serviceName, objectPath, interfaceName, property, value);
     }
 
     public String getServiceName() {
@@ -57,7 +58,7 @@ public abstract class Messaging {
         return objectPath;
     }
 
-    public ObjectPath getPath() {
+    public DBusPath getPath() {
         return Static.Convert.toObjectPath(objectPath);
     }
 

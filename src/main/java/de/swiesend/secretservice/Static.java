@@ -1,24 +1,16 @@
 package de.swiesend.secretservice;
 
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.ObjectPath;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class Static {
 
     public static final Duration DEFAULT_PROMPT_TIMEOUT = Duration.ofSeconds(120);
-
-    public static boolean isNullOrEmpty(final CharSequence cs) {
-        return cs == null || cs.toString().trim().isEmpty();
-    }
-
-    public static boolean isNullOrEmpty(final String s) {
-        return s == null || s.trim().isEmpty();
-    }
 
     public static class DBus {
 
@@ -177,26 +169,104 @@ public class Static {
             return new String(bytes, StandardCharsets.UTF_8);
         }
 
-        public static ObjectPath toObjectPath(String path) {
-            return new ObjectPath("", path);
+        public static DBusPath toObjectPath(String path) {
+            return new DBusPath(path);
         }
 
-        public static List<String> toStrings(List<ObjectPath> paths) {
-            ArrayList<String> ps = new ArrayList();
-            for (ObjectPath p : paths) {
+        public static Optional<DBusPath> toObjectPath(Object obj) {
+            try {
+                return Optional.of((DBusPath) obj);
+            } catch (ClassCastException e) {
+                return Optional.empty();
+            }
+        }
+
+        public static List<String> toStrings(List<DBusPath> paths) {
+            ArrayList<String> ps = new ArrayList<>();
+            for (DBusPath p : paths) {
                 ps.add(p.getPath());
             }
             return ps;
         }
 
-        public static List<DBusPath> toDBusPaths(List<ObjectPath> paths) {
-            ArrayList<DBusPath> ps = new ArrayList();
-            for (ObjectPath p : paths) {
-                ps.add(p);
-            }
-            return ps;
+    }
+
+    public static class Utils {
+        public static boolean isNullOrEmpty(final CharSequence cs) {
+            return cs == null || cs.toString().trim().isEmpty();
         }
 
+        public static boolean isNullOrEmpty(final byte[] bytes) {
+            return bytes == null || bytes.toString().trim().isEmpty();
+        }
+
+        public static boolean isNullOrEmpty(final String s) {
+            return s == null || s.trim().isEmpty();
+        }
+
+        public static boolean isNullOrEmpty(Object[] objects) {
+            return objects == null || objects.length == 0;
+        }
+
+        // dbus-java 5.1.0+ may unmarshal `ay` as either byte[] or List<Byte>; normalize to byte[].
+        @SuppressWarnings("unchecked")
+        public static byte[] toByteArray(Object value) {
+            if (value == null) {
+                throw new IllegalStateException("Unexpected D-Bus byte array representation: null");
+            }
+            if (value instanceof byte[]) {
+                return (byte[]) value;
+            }
+            if (value instanceof List) {
+                List<Byte> byteList = (List<Byte>) value;
+                byte[] result = new byte[byteList.size()];
+                for (int i = 0; i < byteList.size(); i++) {
+                    result[i] = byteList.get(i);
+                }
+                return result;
+            }
+            throw new IllegalStateException(
+                    "Unexpected D-Bus byte array representation: " + value.getClass().getName());
+        }
+
+        /**
+         * Classic iterative Levenshtein distance between two strings.
+         */
+        public static int levenshtein(String a, String b) {
+            int m = a.length(), n = b.length();
+            int[] prev = new int[n + 1], curr = new int[n + 1];
+            for (int j = 0; j <= n; j++) prev[j] = j;
+            for (int i = 1; i <= m; i++) {
+                curr[0] = i;
+                for (int j = 1; j <= n; j++) {
+                    int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                    curr[j] = Math.min(Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+                }
+                int[] tmp = prev; prev = curr; curr = tmp;
+            }
+            return prev[n];
+        }
+
+        /**
+         * Minimum Levenshtein distance between {@code query} and any substring of {@code text}
+         * whose length is within {@code maxDistance} of {@code query.length()}.
+         * Returns 0 when {@code query} appears verbatim inside {@code text}.
+         */
+        public static int minSubstringDistance(String text, String query) {
+            if (query.isEmpty()) return 0;
+            if (text.isEmpty()) return query.length();
+            int q = query.length();
+            int min = Integer.MAX_VALUE;
+            // slide windows of length [max(1, q-q) … q+q] to tolerate insertions/deletions
+            for (int len = Math.max(1, q - q); len <= Math.min(text.length(), q + q); len++) {
+                for (int start = 0; start + len <= text.length(); start++) {
+                    int d = levenshtein(text.substring(start, start + len), query);
+                    if (d < min) min = d;
+                    if (min == 0) return 0;
+                }
+            }
+            return min;
+        }
     }
 
     /**

@@ -2,9 +2,9 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/de.swiesend/secret-service.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22de.swiesend%22%20AND%20a:%22secret-service%22)
 
-A Java library for storing secrets in a keyring over the D-Bus.
+A _Java_ library for storing secrets in a keyring over the _DBus_.
 
-The library is conforming to the freedesktop.org
+The library is conform to the freedesktop.org
 [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with Gnome linux systems.
 
 The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon).
@@ -19,13 +19,53 @@ For KDE systems there is the [`kdewallet`](https://github.com/purejava/kdewallet
 
 ### CVE-2018-19358 (Vulnerability)
 
-There is a current investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked). Available D-Bus protection mechanisms (involving the busconfig and policy XML elements) are not used by default. The Secret Service API was never designed with a secure retrieval mechanism.
+There is an investigation on the behaviour of the Secret Service API, as other applications can easily read __any__ secret, if the keyring is unlocked (if a user is logged in, then the `login`/`default` collection is unlocked).
+Available D-Bus protection mechanisms (involving the `busconfig` and `policy XML elements) are not used by default. But D-Bus protection mechanisms are not sufficient to protect against malicious attackers, because applications could identify themselves as different applications with various mechanisms.
+The Secret Service API was never designed with a secure retrieval mechanism, as this problem is mainly a design problem in the Linux desktop itself, which does not provide _Sandboxing_ (like Flatpak, sandbox, containers) for applications by default.
 
-* [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358) Base Score: __[7.8 HIGH]__, CVSS:3.0
+The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.org/Projects/GnomeKeyring/SecurityFAQ), [SecurityPhilosophy](https://wiki.gnome.org/Projects/GnomeKeyring/SecurityPhilosophy) and [disputed](https://gitlab.gnome.org/GNOME/gnome-keyring/-/issues/5) because the behavior represents a design decision.
+
+| Publisher | Url                                                                                                                                             | Base Score       | Vector | Published | Last Update | Status      |
+|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|------------------|--------|-----------|-------------|-------------|
+| NVD NIST  | [CVE-2018-19358](https://nvd.nist.gov/vuln/detail/CVE-2018-19358)                                                                               | __[7.8 HIGH]__   | CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H | 2018-11-18 | 2020-08-24 | active      |
+| Cisco  | [GNOME Keyring Secret Service API Login Credentials Retrieval Vulnerability](https://tools.cisco.com/security/center/viewAlert.x?alertId=59179) | __[5.5 MEDIUM]__ | CVSS:3.0 |  |  | unpublished |
+| Red Hat | [CVE-2018-19358](https://access.redhat.com/security/cve/cve-2018-19358)                                                                         | __[4.3 MEDIUM]__ | CVSS:3.0/AV:P/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N | 2018-07-06 | 2023-04-06 | Red Hat Product Security determined that this flaw was not a security vulnerability, but a design problem in the Linux desktop |
+| Suse | related issue [CVE-2008-7320](https://www.suse.com/security/cve/CVE-2008-7320.html)                                                             | [2.1 LOW]        | CVSS:2.0/AV:L/AC:L/Au:N/C:P/I:N/A:N | 2018-11-09 | 2023-07-03 | Resolved |
+
+**Mitigation**
+
+**Not recommended**
+- Storing secrets in the `login`/`default` keyring, when there are potentially malicious applications installed by the user. This is often the case in not well maintained desktop environment.
+- Implementing a `busconfig` for the D-Bus that enforces restrictions on the Secret Service API of the host system, knowing that these can be mitigated by providing a false sender/window/process id or dbus address.
+
+**Recommended**
+- [`easy`] Storing secrets in a non-default collection that is always locked. This is a compromise that is useful when the user is willing to be prompted for the collection password, when accessing a secret. One can lock the collection after retrieval, so that the secrets are only exposed for a brief moment.
+- [`easy`] Using [KeePassXC](https://keepassxc.org/) as provider. The KeePassXC implementation of the Secret Service API mitigates unauthorized retrievals by providing several access control mechanisms.
+  - [`easy`] Always locked collection: One can lock the collection after retrieval, so that the secrets are only exposed for a brief moment.
+- [`easy`] Storing secrets in a file with proper permissions instead of using the Secret Service API.
+  - [`moderate`] There are projects like [SOPS](https://github.com/getsops/sops) for secret-management to encrypt and edit files. But again oneself has to store the encryption keys securely.
+  - [`easy`/`moderate`] Using disk encryption like [LUKS](https://gitlab.com/cryptsetup/cryptsetup) does not help against malicious applications, but at least against several scenarios with physical access. 
+- [`moderate`/`advanced`] Deliver your application in a secure sandbox.
+
+**KeePassXC**
+
+Notification:
+  - Show notification when passwords are retrieved by clients
+
+Access Control:
+  - Confirm when passwords are retrieved by clients.
+  - Confirm when clients request entry deletion.
+  - Prompt to unlock database before searching.
+  - Management of an exposed database group, instead of the whole database.
+  - Prohibiting the deletion of the database. Only entries can be deleted, but are moved to the "Recycle Bin" group by default.
+
+Authorization:
+  - Showing connected applications by PID and DBus Address.
+  - Using a keyfile that has to be present when accessing the collection.
 
 ## Usage
 
-The library provides a simplified high-level API, which sends only transport encrypted secrets over the D-Bus.
+The library provides two API layers, both using transport-encrypted secrets over the D-Bus.
 
 ### Dependency
 
@@ -35,7 +75,7 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>2.0.1-alpha</version>
+    <version>3.0.0-beta</version>
     <exclusions>
         <exclusion>
             <groupId>org.slf4j</groupId>
@@ -45,101 +85,147 @@ Add the `secret-service` as dependency to your project. You may want to exclude 
 </dependency>
 ```
 
-### High-Level API
+### Functional API (Recommended)
+
+The functional API uses instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle management.
+
+#### Basic Usage
 
 ```java
-public class Example {
+try (ServiceInterface service = SecretService.create()
+        .orElseThrow(() -> new IOException("Secret service not available"))) {
+    CollectionInterface collection = service
+            .openSession()
+            .flatMap(session -> session.collection("My Collection", Optional.empty()))
+            .orElseThrow(() -> new IOException("Could not open collection"));
 
-    @Test
-    @DisplayName("Create a password in the user's default collection (/org/freedesktop/secrets/aliases/default).")
-    public void createPasswordInDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection()) {
-            String item = collection.createItem("My Item", "secret");
+    // Store a secret
+    String item = collection.createItem("My Item", "secret")
+            .orElseThrow(() -> new IOException("Could not create item"));
 
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
+    // Retrieve a secret safely using the callback API
+    // The char[] is automatically zeroed after the callback returns.
+    collection.withSecret(item, secret -> {
+        // Use the secret here — it never escapes this scope.
+        return Arrays.equals(secret, "secret".toCharArray());
+    });
 
-            collection.deleteItem(item);
-        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
-    }
-
-    @Test
-    @DisplayName("Create a password in a non-default collection (/org/freedesktop/secrets/collection/xxx).")
-    public void createPasswordInNonDefaultCollection() throws IOException, AccessControlException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-            String item = collection.createItem("My Item", "secret");
-
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
-
-            collection.deleteItem(item);
-            collection.delete();
-        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
-    }
-
-    @Test
-    @DisplayName("Create a password with additional attributes.")
-    public void createPasswordWithAttributes() throws IOException, AccessControlException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-            // define unique attributes
-            Map<String, String> attributes = new HashMap();
-            attributes.put("uuid", "42");
-
-            // create and forget
-            collection.createItem("My Item", "secret", attributes);
-
-            // find by attributes
-            List<String> items = collection.getItems(attributes);
-            assertEquals(1, items.size());
-            String item = items.get(0);
-
-            char[] actual = collection.getSecret(item);
-            assertEquals("secret", new String(actual));
-            assertEquals("My Item", collection.getLabel(item));
-            assertEquals("42", collection.getAttributes(item).get("uuid"));
-
-            collection.deleteItem(item);
-            collection.delete();
-        } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
-    }
-
-    // The D-Bus connection gets closed at the end of the static lifetime of `SimpleCollection` by a shutdown hook.
-
+    // Clean up
+    collection.deleteItem(item);
+    collection.delete();
 }
 ```
 
-__Closing the D-Bus connection:__
+#### Secure Secret Access with Callbacks
 
-The D-Bus connection is closed eventually at end of the static lifetime of `SimpleCollection` with a shutdown hook and not by auto-close. One can also close the D-Bus connection manually by calling `SimpleCollection.disconnect()`, but once disconnected it is not possible to reconnect.
+The `withSecret()` and `withSecrets()` methods guarantee that decrypted secrets are zeroed from memory after the callback returns (or throws). This prevents sensitive data from lingering on the heap.
 
-__SimpleCollection-Interface:__
+```java
+try (ServiceInterface service = SecretService.create()
+        .orElseThrow(() -> new IOException("Secret service not available"))) {
+    CollectionInterface collection = service
+            .openSession()
+            .flatMap(session -> session.collection("My Collection", Optional.of("collection-password")))
+            .orElseThrow(() -> new IOException("Could not open collection"));
 
-For Further methods and attributes checkout the [SimpleCollection-Interface](src/main/java/org/freedesktop/secret/simple/interfaces/SimpleCollection.java).
+    Map<String, String> attributes = Map.of("application", "my-app", "uuid", "42");
+    String item = collection.createItem("API Key", "my-secret-api-key", attributes)
+            .orElseThrow(() -> new IOException("Could not create item"));
+
+    // Hash a secret without exposing it — only the hash escapes the callback.
+    MessageDigest md = MessageDigest.getInstance("SHA-256");
+    Optional<byte[]> hash = collection.withSecret(item, secret -> {
+        ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(secret));
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        try {
+            return md.digest(bytes);
+        } finally {
+            Arrays.fill(bytes, (byte) 0);
+            if (encoded.hasArray()) Arrays.fill(encoded.array(), (byte) 0);
+        }
+    });
+
+    // Compare a secret against user input — only a boolean escapes.
+    Optional<Boolean> matches = collection.withSecret(item, secret -> {
+        return Arrays.equals(secret, userInput);
+    });
+
+    collection.deleteItem(item);
+    collection.delete();
+}
+```
+
+#### Standalone Collection (No Manual Session Management)
+
+```java
+// Opens its own D-Bus connection, session, and encryption — all cleaned up on close().
+try (CollectionInterface collection = Collection.open("My Collection")
+        .orElseThrow(() -> new IOException("Could not open collection"))) {
+    String item = collection.createItem("My Item", "secret", Map.of("key", "value"))
+            .orElseThrow(() -> new IOException("Could not create item"));
+
+    // Find items by attributes
+    List<String> found = collection.getItems(Map.of("key", "value")).orElse(List.of());
+
+    collection.deleteItem(item);
+    collection.delete();
+}
+```
+
+### SimpleCollection API (Legacy)
+
+The `SimpleCollection` API preserves the original 1.x interface for backward compatibility. It uses a static shared D-Bus connection with a JVM shutdown hook.
+
+New code should prefer the functional API above.
+
+```java
+try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
+    // define unique attributes
+    Map<String, String> attributes = new HashMap<>();
+    attributes.put("uuid", "42");
+
+    // create and forget
+    collection.createItem("My Item", "secret", attributes);
+
+    // find by attributes
+    List<String> items = collection.getItems(attributes);
+    String item = items.get(0);
+
+    char[] actual = collection.getSecret(item);
+    assertEquals("secret", new String(actual));
+    Arrays.fill(actual, '\0'); // caller must clear manually
+
+    collection.deleteItem(item);
+    collection.delete();
+}
+// The D-Bus connection is closed at JVM shutdown, not by close().
+// Call SimpleCollection.disconnect() to close it manually.
+```
 
 __Transport Encryption:__
 
-For the details of the transport encryption see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
-[Transport Encryption Example](src/test/java/org/freedesktop/secret/integration/IntegrationTest.java)
+Both APIs use transport encryption (DH key exchange + AES-128-CBC) automatically.
+For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
+[Transport Encryption Example](src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
 
 ### Low-Level API
 
 The low-level API gives access to all defined D-Bus `Methods`, `Properties` and `Signals` of the Secret Service interface:
 
-* [Service](src/main/java/org/freedesktop/secret/Service.java)
-* [Collection](src/main/java/org/freedesktop/secret/Collection.java)
-* [Item](src/main/java/org/freedesktop/secret/Item.java)
-* [Session](src/main/java/org/freedesktop/secret/Session.java)
-* [Prompt](src/main/java/org/freedesktop/secret/Prompt.java)
+* [Service](src/main/java/de/swiesend/secretservice/Service.java)
+* [Collection](src/main/java/de/swiesend/secretservice/Collection.java)
+* [Item](src/main/java/de/swiesend/secretservice/Item.java)
+* [Session](src/main/java/de/swiesend/secretservice/Session.java)
+* [Prompt](src/main/java/de/swiesend/secretservice/Prompt.java)
 
 For the usage of the low-level API see the tests:
 
-* [ServiceTest](src/test/java/org/freedesktop/secret/ServiceTest.java)
-* [CollectionTest](src/test/java/org/freedesktop/secret/CollectionTest.java)
-* [ItemTest](src/test/java/org/freedesktop/secret/ItemTest.java)
-* [SessionTest](src/test/java/org/freedesktop/secret/SessionTest.java)
-* [PromptTest](src/test/java/org/freedesktop/secret/PromptTest.java)
+* [ServiceTest](src/test/java/de/swiesend/secretservice/integration/ServiceTest.java)
+* [CollectionTest](src/test/java/de/swiesend/secretservice/integration/CollectionTest.java)
+* [ItemTest](src/test/java/de/swiesend/secretservice/integration/ItemTest.java)
+* [SessionTest](src/test/java/de/swiesend/secretservice/integration/SessionTest.java)
+* [PromptTest](src/test/java/de/swiesend/secretservice/integration/PromptTest.java)
 
 #### D-Bus Interfaces
 

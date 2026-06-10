@@ -3,7 +3,7 @@ package de.swiesend.secretservice.integration;
 import de.swiesend.secretservice.Collection;
 import de.swiesend.secretservice.Pair;
 import de.swiesend.secretservice.Static;
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.messages.DBusSignal;
 import de.swiesend.secretservice.handlers.SignalHandler;
 import de.swiesend.secretservice.interfaces.Prompt;
@@ -41,18 +41,18 @@ public class PromptTest {
     @Test
     @Disabled
     public void prompt() {
-        ObjectPath defaultCollection = Static.Convert.toObjectPath(DEFAULT_COLLECTION);
-        ArrayList<ObjectPath> cs = new ArrayList();
+        DBusPath defaultCollection = Static.Convert.toObjectPath(DEFAULT_COLLECTION);
+        ArrayList<DBusPath> cs = new ArrayList<>();
         cs.add(defaultCollection);
 
         log.info("lock default collection");
-        Pair<List<ObjectPath>, ObjectPath> locked = context.service.lock(cs);
+        Pair<List<DBusPath>, DBusPath> locked = context.service.lock(cs).get();
         log.info(locked.toString());
 
         log.info("unlock default collection");
-        Pair<List<ObjectPath>, ObjectPath> unlocked = context.service.unlock(cs);
+        Pair<List<DBusPath>, DBusPath> unlocked = context.service.unlock(cs).get();
         log.info(unlocked.toString());
-        ObjectPath prompt = unlocked.b;
+        DBusPath prompt = unlocked.b;
 
         Prompt.Completed completed = context.prompt.await(prompt, DEFAULT_PROMPT_TIMEOUT);
         assertNotNull(completed);
@@ -61,22 +61,22 @@ public class PromptTest {
     @Test
     @Disabled("Depends on timing and default collection lock.")
     public void dismissPrompt() throws InterruptedException {
-        List<ObjectPath> cs = Arrays.asList(context.collection.getPath());
+        List<DBusPath> cs = Arrays.asList(context.collection.getPath());
         context.service.lock(cs);
-        SignalHandler handler = context.service.getSignalHandler();
-        Collection defaultCollection = new Collection("login", context.service);
+        SignalHandler handler = context.prompt.getSignalHandler();
+        Collection defaultCollection = new Collection("login", context.service.getConnection());
         boolean expected = defaultCollection.isLocked();
-        Thread.currentThread().sleep(500L);
+        Thread.sleep(500L);
 
-        Pair<List<ObjectPath>, ObjectPath> response = context.service.unlock(cs);
-        ObjectPath prompt = response.b;
+        Pair<List<DBusPath>, DBusPath> response = context.service.unlock(cs).get();
+        DBusPath prompt = response.b;
         assertDoesNotThrow(() ->context.prompt.prompt(prompt)); // Should not throw NoSuchObject
         DBusSignal signal = handler.getLastHandledSignal();
-        Thread.currentThread().sleep(500L);
+        Thread.sleep(500L);
         assertFalse(signal instanceof Prompt.Completed);
 
         context.prompt.dismiss();
-        Thread.currentThread().sleep(500L); // await signal
+        Thread.sleep(500L); // await signal
         Prompt.Completed completed = handler.getLastHandledSignal(Prompt.Completed.class, prompt.getPath());
         assertNotNull(completed);
         assertEquals(expected, completed.dismissed);

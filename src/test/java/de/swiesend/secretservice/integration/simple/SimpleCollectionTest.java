@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.security.AccessControlException;
 import java.time.Duration;
 import java.util.*;
 
@@ -20,7 +19,7 @@ public class SimpleCollectionTest {
     @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
     public void deleteDefaultCollection() throws IOException {
         SimpleCollection defaultCollection = new SimpleCollection();
-        assertThrows(AccessControlException.class, defaultCollection::delete);
+        assertThrows(SecurityException.class, defaultCollection::delete);
     }
 
     @Test
@@ -36,7 +35,9 @@ public class SimpleCollectionTest {
 
         String item = collection.createItem("item", "sécrèt");
         assertEquals("item", collection.getLabel(item));
-        assertEquals("sécrèt", new String(collection.getSecret(item)));
+        char[] secret = collection.getSecret(item);
+        assertArrayEquals("sécrèt".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
         Map<String, String> actualAttributes = collection.getAttributes(item);
         if (actualAttributes.containsKey("xdg:schema")) {
             assertEquals("org.freedesktop.Secret.Generic", collection.getAttributes(item).get("xdg:schema"));
@@ -54,12 +55,14 @@ public class SimpleCollectionTest {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
 
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("uuid", UUID.randomUUID().toString());
 
         String item = collection.createItem("item", "secret", attributes);
         assertEquals("item", collection.getLabel(item));
-        assertEquals("secret", new String(collection.getSecret(item)));
+        char[] secret = collection.getSecret(item);
+        assertArrayEquals("secret".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
         Map<String, String> actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -75,7 +78,7 @@ public class SimpleCollectionTest {
     public void updatePassword() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
 
         // create password
         attributes.put("uuid", UUID.randomUUID().toString());
@@ -83,7 +86,9 @@ public class SimpleCollectionTest {
 
         String item = collection.createItem("item", "secret", attributes);
         assertEquals("item", collection.getLabel(item));
-        assertEquals("secret", new String(collection.getSecret(item)));
+        char[] secret = collection.getSecret(item);
+        assertArrayEquals("secret".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
         Map<String, String> actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -95,7 +100,9 @@ public class SimpleCollectionTest {
         log.info("attributes: " + attributes);
         collection.updateItem(item, "updated item", "updated secret", attributes);
         assertEquals("updated item", collection.getLabel(item));
-        assertEquals("updated secret", new String(collection.getSecret(item)));
+        char[] updatedSecret = collection.getSecret(item);
+        assertArrayEquals("updated secret".toCharArray(), updatedSecret);
+        Arrays.fill(updatedSecret, '\0');
         actualAttributes = collection.getAttributes(item);
         assertEquals(attributes.get("uuid"), actualAttributes.get("uuid"));
         if (actualAttributes.containsKey("xdg:schema")) {
@@ -113,7 +120,7 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         // create password
-        Map<String, String> attributes = new HashMap();
+        Map<String, String> attributes = new HashMap<>();
         attributes.put("uuid", UUID.randomUUID().toString());
         log.info("attributes: " + attributes);
         String item = collection.createItem("item", "secret", attributes);
@@ -136,7 +143,8 @@ public class SimpleCollectionTest {
 
         // test
         char[] password = collection.getSecret(item);
-        assertEquals("secret", new String(password));
+        assertArrayEquals("secret".toCharArray(), password);
+        Arrays.fill(password, '\0');
 
         // after
         collection.deleteItem(item);
@@ -150,7 +158,8 @@ public class SimpleCollectionTest {
 
         // test
         char[] password = collection.getSecret(itemID);
-        assertEquals("secret", new String(password));
+        assertArrayEquals("secret".toCharArray(), password);
+        Arrays.fill(password, '\0');
 
         // after
         collection.deleteItem(itemID);
@@ -168,7 +177,8 @@ public class SimpleCollectionTest {
         SimpleCollection collection = new SimpleCollection("test", "test");
 
         char[] password = collection.getSecret(itemID);
-        assertEquals("secret", new String(password));
+        assertArrayEquals("secret".toCharArray(), password);
+        Arrays.fill(password, '\0');
 
         // after
         collection.deleteItem(itemID);
@@ -232,8 +242,8 @@ public class SimpleCollectionTest {
         try {
             @SuppressWarnings("unused")
             Map<String, char[]> ignored = collection.getSecrets();
-        } catch (AccessControlException e) {
-            log.info("Expected AccessControlException:", e);
+        } catch (SecurityException e) {
+            log.info("Expected SecurityException:", e);
         }
 
         // clean within 120 seconds
@@ -241,8 +251,8 @@ public class SimpleCollectionTest {
         collection.setTimeout(longish);
         try {
             collection.deleteItem(item);
-        } catch (AccessControlException e) {
-            log.info("Unexpected AccessControlException:", e);
+        } catch (SecurityException e) {
+            log.info("Unexpected SecurityException:", e);
         }
     }
 
@@ -254,26 +264,80 @@ public class SimpleCollectionTest {
 
     @Test
     public void isLocked() throws IOException {
-        SimpleCollection collection = new SimpleCollection();
+        SimpleCollection collection = new SimpleCollection("test", "test");
         assertFalse(collection.isLocked());
+        collection.delete();
     }
 
     @Test
-    @Disabled
+    @Disabled("disconnect() affects the global static DBusConnection and cannot be undone within the static lifetime")
     public void disconnect() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
         assertTrue(collection.isConnected());
         assertTrue(SimpleCollection.isConnected());
-        // FIXME: in order to test this private method one needs to uncomment the `SimpleCollection.disconnect()`
-        //        statement. But this affects the global DBus-Connection and cannot be undo within in the static
-        //        lifetime. If one wants to run all tests together it is highly recommended remove all
-        //        `SimpleCollection.disconnect()` statements in order to avoid unexpected behavior.
-        // SimpleCollection.disconnect();
-        // assertFalse(collection.isConnected());
-        // assertFalse(org.freedesktop.secret.simple.SimpleCollection.isConnected());
 
         // always false, as static methods cannot override interfaces.
         assertFalse(de.swiesend.secretservice.simple.interfaces.SimpleCollection.isConnected());
+    }
+
+    @Test
+    @DisplayName("SimpleCollection.close() cleans up sessions but keeps the static D-Bus connection alive")
+    public void closeKeepsStaticConnection() throws IOException {
+        assertTrue(SimpleCollection.isConnected(), "Static connection should be alive before test");
+
+        SimpleCollection collection = new SimpleCollection("test", "test");
+        collection.close();
+
+        // The static D-Bus connection is wrapped (non-owning) by the functional layer,
+        // so closing the collection/service should NOT disconnect it.
+        assertTrue(SimpleCollection.isConnected(),
+                "Static D-Bus connection should remain alive after SimpleCollection.close()");
+        assertTrue(SimpleCollection.isAvailable(),
+                "Secret service should still be available after SimpleCollection.close()");
+    }
+
+    @Test
+    @DisplayName("SimpleCollection can be reopened after close — sessions are independent")
+    public void reopenAfterClose() throws IOException {
+        SimpleCollection first = new SimpleCollection("test", "test");
+        String item = first.createItem("reopen-test", "secret-value");
+        first.close();
+
+        // Open a new instance after closing the first — should work because the
+        // static D-Bus connection is still alive
+        SimpleCollection second = new SimpleCollection("test", "test");
+        char[] secret = second.getSecret(item);
+        assertArrayEquals("secret-value".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
+
+        second.deleteItem(item);
+        second.delete();
+        second.close();
+    }
+
+    @Test
+    @DisplayName("Multiple SimpleCollection instances share the same static D-Bus connection")
+    public void multipleInstancesShareConnection() throws IOException {
+        SimpleCollection col1 = new SimpleCollection("test", "test");
+        SimpleCollection col2 = new SimpleCollection("test", "test");
+
+        String item = col1.createItem("shared-test", "secret");
+        // col2 can see it because they share the same D-Bus connection
+        char[] secret = col2.getSecret(item);
+        assertArrayEquals("secret".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
+
+        col1.deleteItem(item);
+        col1.delete();
+
+        // Closing one doesn't affect the other's ability to operate
+        col1.close();
+        assertTrue(SimpleCollection.isConnected(),
+                "Static connection should survive closing one instance");
+
+        col2.close();
+        assertTrue(SimpleCollection.isConnected(),
+                "Static connection should survive closing all instances");
     }
 
 }

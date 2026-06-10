@@ -4,25 +4,37 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.security.AccessControlException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Base interface for the legacy simple API.
+ *
+ * @deprecated since 3.0, for removal in 4.0. Use the functional API via
+ *             {@link de.swiesend.secretservice.functional.SecretService#create()} instead.
+ */
+@Deprecated(since = "3.0", forRemoval = true)
 public abstract class SimpleCollection implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
 
+    /** @deprecated see class-level deprecation notice. */
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isAvailable() {
         log.warn("Do not call the interface's method, but the implementation.");
         return false;
     }
 
+    /** @deprecated see class-level deprecation notice. */
+    @Deprecated(since = "3.0", forRemoval = true)
     public static boolean isConnected() {
         log.warn("Do not call the interface's method, but the implementation.");
         return false;
     }
 
+    /** @deprecated see class-level deprecation notice. */
+    @Deprecated(since = "3.0", forRemoval = true)
     synchronized public static boolean disconnect() {
         log.warn("Do not call the interface's method, but the implementation.");
         return false; }
@@ -39,11 +51,11 @@ public abstract class SimpleCollection implements AutoCloseable {
 
     public abstract String createItem(String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException;
 
-    public abstract void delete() throws AccessControlException;
+    public abstract void delete() throws SecurityException;
 
-    public abstract void deleteItem(String objectPath) throws AccessControlException;
+    public abstract void deleteItem(String objectPath) throws SecurityException;
 
-    public abstract void deleteItems(List<String> objectPaths) throws AccessControlException;
+    public abstract void deleteItems(List<String> objectPaths) throws SecurityException;
 
     public abstract Map<String, String> getAttributes(String objectPath);
 
@@ -53,7 +65,7 @@ public abstract class SimpleCollection implements AutoCloseable {
 
     public abstract char[] getSecret(String objectPath);
 
-    public abstract Map<String, char[]> getSecrets() throws AccessControlException;
+    public abstract Map<String, char[]> getSecrets() throws SecurityException;
 
     public abstract Duration getTimeout();
 
@@ -63,7 +75,7 @@ public abstract class SimpleCollection implements AutoCloseable {
 
     public abstract void setTimeout(Duration timeout);
 
-    public abstract void unlockWithUserPermission() throws AccessControlException;
+    public abstract void unlockWithUserPermission() throws SecurityException;
 
     public abstract void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException;
 

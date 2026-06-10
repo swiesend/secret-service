@@ -1,0 +1,36 @@
+name: Regression Tests
+
+on:
+  push:
+    branches: [main, develop-2.x.x]
+  pull_request:
+    branches: [main, develop-2.x.x]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build test container
+        run: docker build -f .github/dbus-mock/Dockerfile -t secret-service-test .
+
+      - name: Run regression tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/workspace \
+            -v "$HOME/.m2/repository":/root/.m2/repository \
+            secret-service-test

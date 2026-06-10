@@ -8,5 +8,7 @@ module de.swiesend.secretservice {
     exports de.swiesend.secretservice;
     exports de.swiesend.secretservice.simple;
     exports de.swiesend.secretservice.interfaces;
+    exports de.swiesend.secretservice.functional;
+    exports de.swiesend.secretservice.functional.interfaces;
     exports de.swiesend.secretservice.gnome.keyring.interfaces;
 }
