@@ -57,9 +57,18 @@ public final class ProviderDetector {
                 "org.gnome.keyring.SystemPrompter"
         ),
 
-        /** KDE Wallet — either kwalletd5 or kwalletd6. */
+        /**
+         * KDE Wallet.  On modern Plasma the Secret Service API is served by the
+         * standalone {@code ksecretd} daemon (registering {@code org.kde.ksecretd}
+         * / {@code org.kde.secretservicecompat}), which runs as a <em>separate</em>
+         * process from {@code kwalletd5}/{@code kwalletd6}.  All of these names are
+         * checked so detection works whether secrets come from ksecretd or, on
+         * older setups, directly from kwalletd.
+         */
         KWALLET(
                 "KWallet",
+                "org.kde.ksecretd",
+                "org.kde.secretservicecompat",
                 "org.kde.kwalletd6",
                 "org.kde.kwalletd5"
         ),
