@@ -3,6 +3,7 @@ package de.swiesend.secretservice.functional;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
+import de.swiesend.secretservice.functional.SearchMode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -417,5 +418,110 @@ class CollectionTest {
         collection.disablePrompt();
         assertTrue(!collection.unlockWithUserPermission());
         collection.enablePrompt();
+    }
+
+    // ── search ────────────────────────────────────────────────────
+
+    @Test
+    void searchByNameSubstring() {
+        String path = collection.createItem("apple-secret", "s").get();
+        List<String> results = collection.search("apple", SearchMode.BY_NAME);
+        assertTrue(results.contains(path), "Expected path in results for 'apple' substring");
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchByNameSubstringCaseInsensitive() {
+        String path = collection.createItem("MyBananaEntry", "s").get();
+        List<String> results = collection.search("banana", SearchMode.BY_NAME);
+        assertTrue(results.contains(path), "Expected case-insensitive match");
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchByNameNoMatch() {
+        String path = collection.createItem("orange-secret", "s").get();
+        List<String> results = collection.search("zzz-no-match", SearchMode.BY_NAME);
+        assertFalse(results.contains(path));
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchEmptyQueryReturnsAll() {
+        String p1 = collection.createItem("item-one", "1").get();
+        String p2 = collection.createItem("item-two", "2").get();
+        List<String> results = collection.search("", SearchMode.BY_NAME);
+        assertTrue(results.contains(p1));
+        assertTrue(results.contains(p2));
+        collection.deleteItem(p1);
+        collection.deleteItem(p2);
+    }
+
+    @Test
+    void searchByAttributeKey() {
+        String path = collection.createItem("attr-key-test", "s", Map.of("myapp-uuid", "1234")).get();
+        List<String> results = collection.search("myapp", SearchMode.BY_ATTRIBUTE_KEY);
+        assertTrue(results.contains(path));
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchByAttributeValue() {
+        String path = collection.createItem("attr-val-test", "s", Map.of("app", "my-application")).get();
+        List<String> results = collection.search("my-application", SearchMode.BY_ATTRIBUTE_VALUE);
+        assertTrue(results.contains(path));
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchByObjectPath() {
+        String path = collection.createItem("path-test", "s").get();
+        // Last segment is the object id; search the full path
+        String segment = path.substring(path.lastIndexOf('/') + 1);
+        List<String> results = collection.search(segment, SearchMode.BY_OBJECT_PATH);
+        assertTrue(results.contains(path));
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchByObjectId() {
+        String path = collection.createItem("id-test", "s").get();
+        String id = path.substring(path.lastIndexOf('/') + 1);
+        // Search using the last few chars of the id
+        String suffix = id.substring(Math.max(0, id.length() - 4));
+        List<String> results = collection.search(suffix, SearchMode.BY_OBJECT_ID);
+        assertTrue(results.contains(path));
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchFuzzyByNameFindsTypo() {
+        String path = collection.createItem("grapefrut", "s").get(); // missing 'i'
+        List<String> results = collection.search("grapefruit", SearchMode.BY_NAME, 2);
+        assertTrue(results.contains(path), "Fuzzy search should match 1-edit-away label");
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchFuzzyByObjectIdSuffix() {
+        String path = collection.createItem("fuzzy-id-item", "s").get();
+        String id = path.substring(path.lastIndexOf('/') + 1);
+        // Take last 4 chars and introduce 1 typo
+        String suffix = id.substring(Math.max(0, id.length() - 4));
+        char[] chars = suffix.toCharArray();
+        chars[0] = (chars[0] == 'a') ? 'b' : 'a'; // flip one character
+        String fuzzyQuery = new String(chars);
+        List<String> results = collection.search(fuzzyQuery, SearchMode.BY_OBJECT_ID, 2);
+        assertTrue(results.contains(path), "Fuzzy search with maxDistance=2 should tolerate 1 typo");
+        collection.deleteItem(path);
+    }
+
+    @Test
+    void searchFuzzyMaxDistanceZeroFallsBackToSubstring() {
+        String path = collection.createItem("mango-item", "s").get();
+        List<String> resultsSubstring = collection.search("mango", SearchMode.BY_NAME, 0);
+        List<String> resultsDirect   = collection.search("mango", SearchMode.BY_NAME);
+        assertEquals(resultsDirect.contains(path), resultsSubstring.contains(path));
+        collection.deleteItem(path);
     }
 }

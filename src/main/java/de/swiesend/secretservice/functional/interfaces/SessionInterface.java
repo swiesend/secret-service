@@ -10,6 +10,8 @@ public interface SessionInterface extends AutoCloseable {
 
     Optional<CollectionInterface> collection(String label, Optional<CharSequence> maybePassword);
 
+    Optional<CollectionInterface> collectionById(String id);
+
     Optional<CollectionInterface> defaultCollection();
 
     TransportEncryption.EncryptedSession getEncryptedSession();
