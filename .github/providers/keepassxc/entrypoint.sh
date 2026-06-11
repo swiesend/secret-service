@@ -17,16 +17,17 @@ mkdir -p "$HOME"
 printf '%s\n%s\n' "$PW" "$PW" | keepassxc-cli db-create "$DB" --set-password >/dev/null 2>&1 || true
 printf '%s\n' "$PW" | keepassxc-cli add "$DB" --username it --password-prompt "test/seed" >/dev/null 2>&1 || true
 
-# Enable Secret Service integration in the KeePassXC config.
+# Enable Secret Service integration (KeePassXC calls it "FdoSecrets").
 mkdir -p "$HOME/.config/keepassxc"
 cat > "$HOME/.config/keepassxc/keepassxc.ini" << 'KPXCINI'
 [General]
 ConfigVersion=2
 
-[SecretService]
+[FdoSecrets]
 Enabled=true
 ShowNotification=false
 ConfirmAccessItem=false
+ConfirmDeleteItem=false
 KPXCINI
 
 # Launch KeePassXC unlocked against the database; it then exposes the Secret Service.

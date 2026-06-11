@@ -30,7 +30,10 @@ KWALLETRC
 kwalletd5 >/tmp/kwalletd5.log 2>&1 &
 
 # Best-effort: create/open the default wallet so a collection is exposed.
-( qdbus org.kde.kwalletd5 /modules/kwalletd5 org.kde.KWallet.open kdewallet 0 secret-service-it \
+# int open(QString wallet, qlonglong wId, QString appid)
+( dbus-send --session --dest=org.kde.kwalletd5 --type=method_call --print-reply \
+    /modules/kwalletd5 org.kde.KWallet.open \
+    string:kdewallet int64:0 string:secret-service-it \
     >/dev/null 2>&1 || true ) &
 
 if ! wait_for_secrets 45; then
