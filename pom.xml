@@ -145,10 +145,6 @@
                         <artifactId>maven-surefire-plugin</artifactId>
                         <configuration combine.self="override">
                             <groups>system-test</groups>
-                            <argLine>
-                                --add-modules java.desktop
-                                --add-reads de.swiesend.secretservice=java.desktop
-                            </argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -274,7 +270,6 @@
                     <release>17</release>
                     <source>17</source>
                     <target>17</target>
-                    <testCompilerArgument>--add-modules=java.desktop</testCompilerArgument>
                 </configuration>
             </plugin>
             <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-source-plugin -->
@@ -345,10 +340,6 @@
                 <version>3.5.2</version>
                 <configuration>
                     <excludedGroups>system-test</excludedGroups>
-                    <argLine>
-                        --add-modules java.desktop
-                        --add-reads de.swiesend.secretservice=java.desktop
-                    </argLine>
                 </configuration>
                 <dependencies>
                     <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-engine -->

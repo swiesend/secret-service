@@ -1,0 +1,173 @@
+package de.swiesend.secretservice.systemtest;
+
+import de.swiesend.secretservice.ProviderDetector;
+import de.swiesend.secretservice.ProviderDetector.Provider;
+import de.swiesend.secretservice.functional.SearchMode;
+import de.swiesend.secretservice.functional.SecretService;
+import de.swiesend.secretservice.functional.System;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
+import de.swiesend.secretservice.functional.interfaces.SessionInterface;
+import de.swiesend.secretservice.functional.interfaces.SystemInterface;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Provider-agnostic system test. Exercises the full CRUD + search flow of the
+ * functional API against whichever provider currently serves
+ * {@code org.freedesktop.secrets}:
+ *
+ * <ul>
+ *   <li><b>gnome-keyring</b> — a {@code test} collection is created/opened by label.</li>
+ *   <li><b>KeePassXC</b> — requires a running instance with Secret Service integration
+ *       and a database exposing a group as collection id {@code test} (password {@code test}).</li>
+ *   <li><b>KWallet (ksecretd)</b> — requires the modern KDE Secret Service daemon with a
+ *       wallet/folder exposed as collection id {@code test}.</li>
+ * </ul>
+ *
+ * <p>The suite uses {@link Assumptions} to skip cleanly when no provider/collection is
+ * present, so it is safe to run anywhere. It is excluded from the default build; run with:
+ * <pre>{@code mvn test -Psystem-test}</pre>
+ */
+@Tag("system-test")
+public class ProviderSystemTest {
+
+    private static final Logger log = LoggerFactory.getLogger(ProviderSystemTest.class);
+
+    /** Collection id/label used across all providers. */
+    static final String COLLECTION = "test";
+    /** Password used when a provider lets us create/unlock the collection (gnome-keyring). */
+    static final String COLLECTION_PASSWORD = "test";
+
+    private SystemInterface system;
+    private ServiceInterface service;
+    private SessionInterface session;
+    private CollectionInterface collection;
+    /** Whether this test created the collection and may therefore delete it on teardown. */
+    private boolean ownsCollection;
+
+    @BeforeEach
+    void setUp() {
+        system = System.connect().orElse(null);
+        Assumptions.assumeTrue(system != null, "Could not connect to D-Bus");
+
+        Provider provider = ProviderDetector.detectProvider(system.getConnection());
+        log.info("Running provider system test against: {}", provider);
+        Assumptions.assumeTrue(provider != Provider.UNAVAILABLE,
+                "No Secret Service provider available on the session bus");
+
+        service = SecretService.create(Optional.of(system)).orElse(null);
+        Assumptions.assumeTrue(service != null, "SecretService not available");
+
+        session = service.openSession().orElse(null);
+        Assumptions.assumeTrue(session != null, "Could not open session");
+
+        collection = resolveTestCollection(session, provider);
+        Assumptions.assumeTrue(collection != null,
+                "Collection '" + COLLECTION + "' not available for provider " + provider);
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        if (collection != null) {
+            // Only delete the collection on providers where we created it (gnome-keyring).
+            // On KeePassXC/KWallet the collection is a pre-existing user database.
+            if (ownsCollection) {
+                collection.delete();
+            }
+            collection.close();
+        }
+        if (session != null) session.close();
+        if (service != null) service.close();
+    }
+
+    /**
+     * Resolves the shared {@code test} collection for the detected provider. gnome-keyring
+     * collections are created/opened by label+password; KeePassXC and KWallet expose an
+     * existing database/wallet that must be opened by its collection id.
+     */
+    private CollectionInterface resolveTestCollection(SessionInterface session, Provider provider) {
+        switch (provider) {
+            case GNOME_KEYRING:
+                CollectionInterface created =
+                        session.collection(COLLECTION, Optional.of(COLLECTION_PASSWORD)).orElse(null);
+                ownsCollection = created != null;
+                return created;
+            case KEEPASSXC:
+            case KWALLET:
+            default:
+                // Open a pre-existing collection by its D-Bus id (no creation, no deletion).
+                ownsCollection = false;
+                return session.collectionById(COLLECTION).orElse(null);
+        }
+    }
+
+    @Test
+    @DisplayName("create, read, search and delete an item against the live provider")
+    void crudRoundtrip() {
+        String label = "provider-system-item";
+        String secret = "s3cr3t-system";
+        Map<String, String> attributes = Map.of("application", "secret-service-it", "kind", "system-test");
+
+        // create
+        String itemPath = collection.createItem(label, secret, attributes).orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+
+        // read back the decrypted secret
+        char[] got = collection.getSecret(itemPath).orElse(null);
+        assertNotNull(got, "getSecret returned empty");
+        assertArrayEquals(secret.toCharArray(), got);
+        Arrays.fill(got, '\0');
+
+        // attributes round-trip
+        Map<String, String> storedAttrs = collection.getAttributes(itemPath).orElse(Map.of());
+        assertEquals("secret-service-it", storedAttrs.get("application"));
+
+        // the item is discoverable by name and by attribute value
+        List<String> byName = collection.search(label, SearchMode.BY_NAME);
+        assertTrue(byName.contains(itemPath), "item should be found by name");
+        List<String> byAttr = collection.search("secret-service-it", SearchMode.BY_ATTRIBUTE_VALUE);
+        assertTrue(byAttr.contains(itemPath), "item should be found by attribute value");
+
+        // delete
+        assertTrue(collection.deleteItem(itemPath), "could not delete created item");
+        assertFalse(collection.search(label, SearchMode.BY_NAME).contains(itemPath),
+                "item should be gone after deletion");
+    }
+
+    @Test
+    @DisplayName("withSecret zeroes the secret after the callback returns")
+    void withSecretClearsAfterCallback() {
+        String label = "provider-system-with-secret";
+        String secret = "callback-secret";
+        String itemPath = collection.createItem(label, secret).orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+
+        try {
+            char[][] captured = new char[1][];
+            Optional<Boolean> result = collection.withSecret(itemPath, chars -> {
+                captured[0] = chars; // capture the live reference; the library zeroes it afterwards
+                return Arrays.equals(secret.toCharArray(), chars);
+            });
+            assertEquals(Optional.of(Boolean.TRUE), result, "callback should observe the plaintext secret");
+            assertNotNull(captured[0]);
+            assertArrayEquals(new char[captured[0].length], captured[0],
+                    "secret char[] must be zeroed after withSecret returns");
+        } finally {
+            collection.deleteItem(itemPath);
+        }
+    }
+}

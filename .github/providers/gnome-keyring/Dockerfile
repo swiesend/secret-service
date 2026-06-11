@@ -8,9 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         maven \
     && rm -rf /var/lib/apt/lists/*
 
-COPY .github/dbus-mock/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY .github/providers/ /providers/
+RUN chmod +x /providers/dbus-up.sh /providers/gnome-keyring/entrypoint.sh
 
 WORKDIR /workspace
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/providers/gnome-keyring/entrypoint.sh"]

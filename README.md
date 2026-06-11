@@ -231,6 +231,37 @@ For the usage of the low-level API see the tests:
 
 The underlying introspected XML D-Bus interfaces are available as [resources](src/test/resources).
 
+## Testing & Tools
+
+All tests are integration tests that require a running session D-Bus and a Secret Service provider.
+
+```bash
+mvn test                                  # default suite (excludes @Tag("system-test"))
+mvn test -Psystem-test                    # provider-agnostic system suite (ProviderSystemTest)
+```
+
+The CI test environments live under [`.github/providers/`](.github/providers) — one container per
+provider (`gnome-keyring`, `kwallet`, `keepassxc`), each starting a path-based D-Bus via the shared
+`dbus-up.sh`. The default regression workflow runs against gnome-keyring; the
+[`system-tests`](.github/workflows/system-tests.yml) workflow runs the system suite across all three
+providers (the KWallet/KeePassXC legs are best-effort and non-blocking).
+
+```bash
+docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test .
+docker run --rm -v "$(pwd)":/workspace secret-service-test
+```
+
+### Standalone GUI
+
+A standalone Swing GUI for manually exercising the library against a live provider lives in the
+separate [`tools/gui`](tools/gui) project (kept out of the library jar and the test suite). Build the
+core, then launch it:
+
+```bash
+mvn -DskipTests -Dgpg.skip=true install   # install the core artifact locally
+mvn -f tools/gui/pom.xml exec:java         # launch the GUI
+```
+
 ## Contributing
 
 You are welcome to point out issues, file PRs and comment on the project.
