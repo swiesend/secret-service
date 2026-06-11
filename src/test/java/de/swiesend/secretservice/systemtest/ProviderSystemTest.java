@@ -95,24 +95,45 @@ public class ProviderSystemTest {
     }
 
     /**
-     * Resolves the shared {@code test} collection for the detected provider. gnome-keyring
-     * collections are created/opened by label+password; KeePassXC and KWallet expose an
-     * existing database/wallet that must be opened by its collection id.
+     * Resolves a usable collection for the detected provider. gnome-keyring collections are
+     * created/opened by label+password. KeePassXC and KWallet expose pre-existing
+     * databases/wallets: we use the {@code test} collection when present, otherwise the first
+     * exposed collection (e.g. KWallet's {@code kdewallet}), and return {@code null} when none
+     * exists so the suite skips rather than failing on a non-existent object path.
+     *
+     * <p>{@code collectionById()} returns a wrapper even for a non-existent path, so existence
+     * must be checked against the provider's real collection list.</p>
      */
     private CollectionInterface resolveTestCollection(SessionInterface session, Provider provider) {
-        switch (provider) {
-            case GNOME_KEYRING:
-                CollectionInterface created =
-                        session.collection(COLLECTION, Optional.of(COLLECTION_PASSWORD)).orElse(null);
-                ownsCollection = created != null;
-                return created;
-            case KEEPASSXC:
-            case KWALLET:
-            default:
-                // Open a pre-existing collection by its D-Bus id (no creation, no deletion).
-                ownsCollection = false;
-                return session.collectionById(COLLECTION).orElse(null);
+        if (provider == Provider.GNOME_KEYRING) {
+            CollectionInterface created =
+                    session.collection(COLLECTION, Optional.of(COLLECTION_PASSWORD)).orElse(null);
+            ownsCollection = created != null;
+            return created;
         }
+
+        List<String> existing = existingCollectionIds(session);
+        String target = existing.contains(COLLECTION)
+                ? COLLECTION
+                : (existing.isEmpty() ? null : existing.get(0));
+        if (target == null) {
+            log.info("Provider {} exposes no collection — skipping", provider);
+            return null;
+        }
+        log.info("Provider {} — using existing collection id '{}'", provider, target);
+        ownsCollection = false; // pre-existing user database/wallet: never delete it
+        return session.collectionById(target).orElse(null);
+    }
+
+    /** Last path segments of the collections actually exposed by the provider. */
+    private List<String> existingCollectionIds(SessionInterface session) {
+        return session.getService().getService().getCollections()
+                .orElse(List.of()).stream()
+                .map(p -> {
+                    String path = p.getPath();
+                    return path.substring(path.lastIndexOf('/') + 1);
+                })
+                .toList();
     }
 
     @Test
