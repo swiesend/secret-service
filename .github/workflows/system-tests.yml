@@ -1,0 +1,55 @@
+name: System Tests
+
+# Runs the provider-agnostic system test suite (@Tag("system-test")) against each
+# supported Secret Service provider. gnome-keyring is the reliable, blocking leg;
+# headless KWallet and KeePassXC bring-up is fragile, so those legs are
+# non-blocking (continue-on-error) and informative.
+
+on:
+  push:
+    branches: [main, develop-2.x.x]
+  pull_request:
+    branches: [main, develop-2.x.x]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  system-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider: gnome-keyring
+            experimental: false
+          - provider: kwallet
+            experimental: true
+          - provider: keepassxc
+            experimental: true
+    name: system-tests (${{ matrix.provider }})
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build ${{ matrix.provider }} container
+        run: docker build -f .github/providers/${{ matrix.provider }}/Dockerfile -t secret-service-${{ matrix.provider }} .
+
+      - name: Run system tests against ${{ matrix.provider }}
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/workspace \
+            -v "$HOME/.m2/repository":/root/.m2/repository \
+            secret-service-${{ matrix.provider }} \
+            mvn -B test -Psystem-test

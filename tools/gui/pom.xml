@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Standalone developer GUI for manually exercising the secret-service library
+      against a live provider (gnome-keyring, KeePassXC, KWallet).
+
+      This is an INDEPENDENT project, intentionally NOT wired into the root reactor:
+      the library build never references this tool, and the core jar stays free of
+      java.desktop. It depends on the published/installed core artifact.
+
+      Build the core first, then launch:
+        mvn -q -DskipTests install            # from repository root
+        mvn -f tools/gui/pom.xml exec:java    # launch the GUI
+    -->
+
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service-gui</artifactId>
+    <version>3.0.0-alpha</version>
+    <packaging>jar</packaging>
+
+    <name>secret-service-gui</name>
+    <description>Standalone Swing GUI for manual system testing of the secret-service library.</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>17</maven.compiler.release>
+        <java.version>17</java.version>
+        <secret-service.version>3.0.0-alpha</secret-service.version>
+        <slf4j.version>2.0.17</slf4j.version>
+        <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.swiesend</groupId>
+            <artifactId>secret-service</artifactId>
+            <version>${secret-service.version}</version>
+        </dependency>
+
+        <!-- Console logging when launched standalone -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.0</version>
+                <configuration>
+                    <release>17</release>
+                </configuration>
+            </plugin>
+            <!-- Launch with: mvn -f tools/gui/pom.xml exec:java -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-maven-plugin.version}</version>
+                <configuration>
+                    <mainClass>de.swiesend.secretservice.tools.gui.SecretServiceGui</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -136,13 +136,25 @@ All public API boundary methods validate parameters:
 
 ## Testing
 
-All tests are **integration tests** requiring a running D-Bus session bus and gnome-keyring. CI runs in a Docker container (`.github/dbus-mock/`) with a mock D-Bus + gnome-keyring-daemon.
+All tests are **integration tests** requiring a running D-Bus session bus and a Secret Service
+provider. CI runs in per-provider Docker containers under `.github/providers/` (each starts a
+path-based D-Bus via the shared `dbus-up.sh`, then its provider daemon).
 
 ```bash
-docker build -f .github/dbus-mock/Dockerfile -t secret-service-test .
+# Default regression run (gnome-keyring), mirrors regression-tests.yml
+docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test .
 docker run --rm -v "$(pwd)":/workspace secret-service-test
 ```
 
+- Tests tagged `@Tag("system-test")` are excluded from the default `mvn test` and run via the
+  `system-test` profile (`mvn test -Psystem-test`). `ProviderSystemTest` is provider-agnostic and
+  runs against whichever provider serves `org.freedesktop.secrets` (gnome-keyring, KeePassXC,
+  KWallet), skipping cleanly (`Assumptions`) when a provider/collection is absent. The
+  `system-tests.yml` workflow runs it across all three providers (KWallet/KeePassXC legs are
+  non-blocking).
+- The standalone developer GUI lives in the separate `tools/gui` project (not in the test suite or
+  the core jar). Launch it with `mvn -DskipTests -Dgpg.skip=true install` then
+  `mvn -f tools/gui/pom.xml exec:java`.
 - `DBusConnection.isConnected()` is **unreliable after `close()`** in dbus-java 4.x — do not assert on post-close connection state.
 - Use `Thread.sleep()` (not `Thread.currentThread().sleep()`) for D-Bus signal waits.
 - `@Disabled` tests require interactive prompts or affect global state — the reason is in the annotation string.

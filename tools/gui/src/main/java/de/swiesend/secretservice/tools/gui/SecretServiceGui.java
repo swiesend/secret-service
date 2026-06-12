@@ -1,4 +1,4 @@
-package de.swiesend.secretservice.systemtest;
+package de.swiesend.secretservice.tools.gui;
 
 import de.swiesend.secretservice.ProviderDetector;
 import de.swiesend.secretservice.functional.SecretService;
@@ -15,9 +15,6 @@ import de.swiesend.secretservice.interfaces.Service.CollectionChanged;
 import de.swiesend.secretservice.interfaces.Service.CollectionCreated;
 import de.swiesend.secretservice.interfaces.Service.CollectionDeleted;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -36,25 +33,31 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * Interactive Swing GUI for manual system-level testing of the secret-service library.
+ * Standalone Swing GUI for manual system-level testing of the secret-service library.
  *
- * <p>This test is excluded from the default Maven build. Run it explicitly with:
+ * <p>This is a developer tool, intentionally kept out of the library jar and the test
+ * suite. Build the core library, then launch it from the repository root with:
  * <pre>{@code
- *   mvn test -Psystem-test
+ *   mvn -q -DskipTests install
+ *   mvn -f tools/gui/pom.xml exec:java
  * }</pre>
  *
  * <p>The GUI allows selecting between the <em>default</em> collection and a custom
- * <em>test</em> collection, and supports creating, reading, listing, and deleting secrets.
+ * <em>test</em> collection, and supports creating, reading, listing, and deleting
+ * secrets against whichever provider currently serves {@code org.freedesktop.secrets}
+ * (gnome-keyring, KeePassXC, KWallet).
  */
-@Tag("system-test")
-public class SecretServiceGuiTest {
+public final class SecretServiceGui {
 
-    @Test
-    @DisplayName("Interactive Secret Service GUI")
-    void launchGui() throws InterruptedException {
-        // Gate: only launch when a display is available
+    private SecretServiceGui() {
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        // Gate: a GUI needs a display
         if (GraphicsEnvironment.isHeadless()) {
-            System.out.println("Headless environment detected — skipping GUI system test.");
+            System.err.println("Headless environment detected — cannot launch the Secret Service GUI.");
+            System.err.println("Run on a machine with a display (X11/Wayland) and a running secret service provider.");
+            System.exit(2);
             return;
         }
 
@@ -68,6 +71,7 @@ public class SecretServiceGuiTest {
             frame.setVisible(true);
         });
         latch.await(); // block until the user closes the window
+        System.exit(0);
     }
 
     // ─── GUI implementation ───────────────────────────────────────────────
@@ -992,7 +996,7 @@ public class SecretServiceGuiTest {
         }
 
         private static void resetStatusLabel(JLabel label) {
-            label.setText("\u2014");
+            label.setText("—");
             label.setForeground(Color.GRAY);
         }
 

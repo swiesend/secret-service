@@ -86,7 +86,11 @@ class CollectionTest {
                 String value = entry.getValue();
                 log.info(key + ": " + value);
             }
-            assertEquals(expectedAttributes.size(), actualAttributes.size());
+            // Providers may keep additional internal attributes (e.g. gnome-keyring
+            // injects "xdg:schema"=org.freedesktop.Secret.Generic), so the stored set must
+            // *contain* the expected attributes rather than match its size exactly.
+            assertTrue(actualAttributes.entrySet().containsAll(expectedAttributes.entrySet()),
+                    () -> "expected " + expectedAttributes + " to be contained in " + actualAttributes);
             for (Map.Entry<String, String> entry : expectedAttributes.entrySet()) {
                 String key = entry.getKey();
                 String expectedValue = entry.getValue();
