@@ -32,6 +32,30 @@ ConfirmAccessItem=false
 ConfirmDeleteItem=false
 KPXCINI
 
+# Poll the Service "Collections" property until KeePassXC exposes the database's
+# group as a collection (the unlock + exposure lags behind bus registration).
+wait_for_collection() {
+    local timeout="${1:-30}" waited=0 out
+    while true; do
+        out="$(dbus-send --session --print-reply --dest=org.freedesktop.secrets \
+            /org/freedesktop/secrets org.freedesktop.DBus.Properties.Get \
+            string:org.freedesktop.Secret.Service string:Collections 2>/dev/null || true)"
+        if echo "$out" | grep -q '/org/freedesktop/secrets/collection/'; then
+            echo "Exposed collections:"
+            echo "$out" | grep -o '/org/freedesktop/secrets/collection/[^"]*'
+            return 0
+        fi
+        sleep 1; waited=$((waited + 1))
+        if [ "$waited" -ge "$timeout" ]; then
+            echo "WARNING: no collection exposed after ${timeout}s; Collections reply was:"
+            echo "$out"
+            return 1
+        fi
+    done
+}
+
+echo "KeePassXC version: $(keepassxc --version 2>/dev/null || echo unknown)"
+
 # Launch KeePassXC unlocked against the database; it then exposes the Secret Service.
 ( printf '%s\n' "$PW" | keepassxc --pw-stdin "$DB" >/tmp/keepassxc.log 2>&1 & ) || true
 
@@ -41,6 +65,12 @@ if ! wait_for_secrets 45; then
     exit 1
 fi
 echo "KeePassXC Secret Service ready (provider: KeePassXC)"
+
+# Wait for the fixture's group to be exposed as a collection. Non-fatal: if it
+# never appears the system suite skips, and the diagnostics above explain why.
+if ! wait_for_collection 30; then
+    echo "----- keepassxc.log -----"; cat /tmp/keepassxc.log || true
+fi
 
 # Run the provided command, defaulting to the system-test profile.
 if [ $# -eq 0 ]; then
