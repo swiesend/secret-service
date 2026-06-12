@@ -12,10 +12,12 @@ sleep 2
 DB="$HOME/test.kdbx"
 PW="test"
 
-# Create a database "test.kdbx" with a "test" entry (password: test).
+# Use the committed fixture database: collection "test", password "test", with a
+# group exposed over Secret Service (group exposure is stored inside the .kdbx and
+# cannot be set via keepassxc-cli, so the database is checked in). Copy it to a
+# writable location since KeePassXC may write back to it.
 mkdir -p "$HOME"
-printf '%s\n%s\n' "$PW" "$PW" | keepassxc-cli db-create "$DB" --set-password >/dev/null 2>&1 || true
-printf '%s\n' "$PW" | keepassxc-cli add "$DB" --username it --password-prompt "test/seed" >/dev/null 2>&1 || true
+cp /providers/keepassxc/test.kdbx "$DB"
 
 # Enable Secret Service integration (KeePassXC calls it "FdoSecrets").
 mkdir -p "$HOME/.config/keepassxc"
