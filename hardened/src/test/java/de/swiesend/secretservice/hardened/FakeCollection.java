@@ -1,5 +1,7 @@
 package de.swiesend.secretservice.hardened;
 
+import de.swiesend.secretservice.ProviderDetector;
+import de.swiesend.secretservice.functional.SearchMode;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 
 import java.util.ArrayList;
@@ -155,6 +157,30 @@ final class FakeCollection implements CollectionInterface {
             for (char[] v : snap.values()) Arrays.fill(v, '\0');
         }
     }
+
+    @Override
+    public List<String> search(String query, SearchMode mode) {
+        return search(query, mode, 0);
+    }
+
+    @Override
+    public List<String> search(String query, SearchMode mode, int maxDistance) {
+        List<String> matched = new ArrayList<>();
+        String q = query.toLowerCase();
+        for (Map.Entry<String, Item> e : items.entrySet()) {
+            String candidate = switch (mode) {
+                case BY_NAME -> e.getValue().label;
+                case BY_OBJECT_ID, BY_OBJECT_PATH -> e.getKey();
+                case BY_ATTRIBUTE_KEY -> String.join(" ", e.getValue().attrs.keySet());
+                case BY_ATTRIBUTE_VALUE -> String.join(" ", e.getValue().attrs.values());
+            };
+            if (candidate.toLowerCase().contains(q)) matched.add(e.getKey());
+        }
+        return Collections.unmodifiableList(matched);
+    }
+
+    @Override public String getProvider() { return "fake"; }
+    @Override public ProviderDetector.Provider detectProvider() { return ProviderDetector.Provider.UNKNOWN; }
 
     @Override public boolean isLocked() { return false; }
     @Override public boolean lock() { return true; }
