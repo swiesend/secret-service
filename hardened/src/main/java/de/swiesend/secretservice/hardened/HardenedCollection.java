@@ -201,7 +201,11 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
 
         char[] pepper = provider.getPepper();
-        byte[] totpCode = totpCodeForWrite();
+        // Capture the TOTP step exactly once: the same value must feed DEK derivation and the
+        // stored hardened.totp.step attribute, or a step rollover between two currentStep()
+        // calls would make the item permanently undecryptable in STORED_STEP mode.
+        long totpStep = provider.mode() == KeyMaterialProvider.Mode.NO_TOTP ? 0L : provider.currentStep();
+        byte[] totpCode = totpCodeForWrite(totpStep);
         byte[] salt = new byte[Envelope.SALT_LEN];
         new SecureRandom().nextBytes(salt);
         byte[] epochBytes = epochId.getBytes(StandardCharsets.US_ASCII);
@@ -250,7 +254,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         merged.put(ATTR_EPOCH, epochId);
         merged.put(ATTR_TOTP_MODE, provider.mode().name());
         if (provider.mode() == KeyMaterialProvider.Mode.STORED_STEP) {
-            merged.put(ATTR_TOTP_STEP, Long.toString(provider.currentStep()));
+            merged.put(ATTR_TOTP_STEP, Long.toString(totpStep));
         }
         merged.put(ATTR_KDF, KDF_ALG);
         merged.put(ATTR_AEAD, AEAD_ALG);
@@ -666,13 +670,13 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
     }
 
-    private byte[] totpCodeForWrite() {
+    private byte[] totpCodeForWrite(long step) {
         KeyMaterialProvider.Mode m = provider.mode();
         if (m == KeyMaterialProvider.Mode.NO_TOTP) return new byte[0];
         byte[] seed = provider.getTotpSeed().orElse(null);
         if (seed == null) return new byte[0];
         try {
-            return Totp.code(seed, provider.currentStep());
+            return Totp.code(seed, step);
         } finally {
             Arrays.fill(seed, (byte) 0);
         }

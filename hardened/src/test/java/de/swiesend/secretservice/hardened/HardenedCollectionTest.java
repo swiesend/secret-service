@@ -5,6 +5,7 @@ import de.swiesend.secretservice.hardened.providers.NoTotpKeyMaterialProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -426,5 +427,45 @@ class HardenedCollectionTest {
 
         String path = h.createItem("t", "value-with-totp").orElseThrow();
         assertEquals("value-with-totp", h.withSecret(path, String::new).orElse(null));
+    }
+
+    /** TOTP provider whose step is externally controlled and optionally advances on every call. */
+    static final class SteppingTotpProvider implements KeyMaterialProvider {
+        final byte[] seed = "1234567890abcdef".getBytes();
+        final Mode mode;
+        long step;
+        boolean advanceOnEveryCall;
+
+        SteppingTotpProvider(Mode mode, long step) { this.mode = mode; this.step = step; }
+
+        @Override public char[] getPepper() { return "pepper-for-totp-test-xxxxx".toCharArray(); }
+        @Override public Optional<byte[]> getTotpSeed() { return Optional.of(seed.clone()); }
+        @Override public long currentStep() { return advanceOnEveryCall ? step++ : step; }
+        @Override public Mode mode() { return mode; }
+        @Override public ThreatCoverage threatCoverage() {
+            return new ThreatCoverage(
+                    ThreatCoverage.Level.NONE, ThreatCoverage.Level.REAL,
+                    ThreatCoverage.Level.REAL, ThreatCoverage.Level.NOT_APPLICABLE,
+                    "test provider");
+        }
+    }
+
+    @Test
+    void storedStepSurvivesStepRolloverDuringWrite() {
+        // Regression: createItem used to call provider.currentStep() twice (once for DEK
+        // derivation, once for the hardened.totp.step attribute). If the step rolled over
+        // between the calls, the stored step no longer matched the derivation step and the
+        // item became permanently undecryptable. The stepping provider advances the step on
+        // EVERY call, so any double-call during write breaks the round-trip.
+        SteppingTotpProvider provider = new SteppingTotpProvider(KeyMaterialProvider.Mode.STORED_STEP, 12345L);
+        provider.advanceOnEveryCall = true;
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .build();
+
+        String path = h.createItem("t", "survives-rollover").orElseThrow();
+        char[] expected = "survives-rollover".toCharArray();
+        assertEquals(Boolean.TRUE, h.withSecret(path, secret -> Arrays.equals(secret, expected)).orElse(null),
+                "item written across a step rollover must stay readable in STORED_STEP mode");
     }
 }
