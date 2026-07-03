@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
@@ -49,10 +50,17 @@ import java.util.Optional;
  *
  * <h3>Wire format (inside the AES-256-GCM ciphertext)</h3>
  * <pre>
- * version(1)=0x01 | n_entries(2) |
+ * version(1)=0x01 | generation(8) | n_entries(2) |
  *   ( id_len(1) | id[id_len] | x25519_priv_len(2) | x25519_priv[..] |
  *     mlkem_priv_len(2) | mlkem_priv[..] | mlkem_pub_len(2) | mlkem_pub[..] ) repeated
  * </pre>
+ *
+ * <p>{@code generation} increments on every persist. Persisting is create-then-delete, so
+ * a crash can leave two decryptable keystore items; on load the highest generation wins
+ * and provably-superseded duplicates are deleted. Picking by generation (not item order)
+ * matters: loading a stale keystore would either resurrect epoch keys that
+ * {@link #removeEpoch} destroyed (breaking forward secrecy) or drop keys created
+ * after the stale snapshot (stranding items).</p>
  *
  * <p>X25519 public keys are derivable from the private; ML-KEM public keys are
  * larger, and we keep them so re-wraps don't have to recompute. Private parts
@@ -98,6 +106,8 @@ final class EpochKeystore {
     private final Map<String, EpochKeyPair> entries = new LinkedHashMap<>();
     /** Path of the persisted keystore item, set after first persist or load. */
     private String keystorePath;
+    /** Monotonic persist counter; the highest generation wins when duplicates exist. */
+    private long generation = 0L;
 
     EpochKeystore(CollectionInterface wrapped, KeyMaterialProvider provider) {
         this.wrapped = Objects.requireNonNull(wrapped, "wrapped");
@@ -114,34 +124,63 @@ final class EpochKeystore {
         if (paths.isEmpty() || paths.get().isEmpty()) {
             return;
         }
-        String path = paths.get().get(0);
-        Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
-        if (attrs.isEmpty() || !KIND_VALUE.equals(attrs.get().get(ATTR_KIND))) return;
-        Boolean ok = wrapped.withSecret(path, body -> {
-            try {
-                byte[] raw = Base64.getDecoder().decode(new String(body));
+        // An interrupted persist (create-then-delete) can leave two decryptable keystore
+        // items; a stale keystore written under a different pepper is also possible. Decrypt
+        // every candidate and load the highest generation -- item order proves nothing.
+        List<String> candidates = paths.get();
+        if (candidates.size() > 1) {
+            log.warn("EpochKeystore: found {} keystore items; loading the highest generation.",
+                    candidates.size());
+        }
+        String bestPath = null;
+        Parsed best = null;
+        List<String> superseded = new ArrayList<>();
+        for (String path : candidates) {
+            Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
+            if (attrs.isEmpty() || !KIND_VALUE.equals(attrs.get().get(ATTR_KIND))) continue;
+            Parsed parsed = wrapped.withSecret(path, body -> {
                 try {
-                    byte[] plain = aeadDecrypt(deriveKek(provider.getPepper()), raw);
+                    byte[] raw = Base64.getDecoder().decode(new String(body));
                     try {
-                        deserialize(plain);
-                        return Boolean.TRUE;
+                        byte[] plain = aeadDecrypt(deriveKek(provider.getPepper()), raw);
+                        try {
+                            return deserialize(plain);
+                        } finally {
+                            Arrays.fill(plain, (byte) 0);
+                        }
+                    } catch (GeneralSecurityException e) {
+                        log.warn("EpochKeystore: existing keystore at {} could not be decrypted: {}",
+                                path, e.getMessage());
+                        return null;
                     } finally {
-                        Arrays.fill(plain, (byte) 0);
+                        Arrays.fill(raw, (byte) 0);
                     }
-                } catch (GeneralSecurityException e) {
-                    log.warn("EpochKeystore: existing keystore at {} could not be decrypted: {}",
-                            path, e.getMessage());
-                    return Boolean.FALSE;
-                } finally {
-                    Arrays.fill(raw, (byte) 0);
+                } catch (IllegalArgumentException e) {
+                    log.warn("EpochKeystore: keystore body at {} is not valid base64", path);
+                    return null;
                 }
-            } catch (IllegalArgumentException e) {
-                log.warn("EpochKeystore: keystore body is not valid base64");
-                return Boolean.FALSE;
+            }).orElse(null);
+            if (parsed == null) continue; // undecryptable: not ours to judge, leave it alone
+            if (best == null || parsed.generation > best.generation) {
+                if (bestPath != null) superseded.add(bestPath);
+                best = parsed;
+                bestPath = path;
+            } else {
+                superseded.add(path);
             }
-        }).orElse(Boolean.FALSE);
-        if (Boolean.TRUE.equals(ok)) {
-            this.keystorePath = path;
+        }
+        if (best == null) return;
+        entries.clear();
+        entries.putAll(best.entries);
+        this.generation = best.generation;
+        this.keystorePath = bestPath;
+        // Provably-superseded duplicates (ours, older generation) are safe to remove now.
+        for (String stale : superseded) {
+            if (wrapped.deleteItem(stale)) {
+                log.info("EpochKeystore: removed superseded duplicate keystore item {}", stale);
+            } else {
+                log.warn("EpochKeystore: could not remove superseded keystore item {}", stale);
+            }
         }
     }
 
@@ -179,6 +218,7 @@ final class EpochKeystore {
     // --------- internal: AES-GCM under pepper-derived KEK ---------
 
     private void persist() {
+        generation++;
         byte[] plain = serialize();
         byte[] aead = null;
         try {
@@ -190,18 +230,22 @@ final class EpochKeystore {
             String body = Base64.getEncoder().encodeToString(aead);
             Map<String, String> attrs = new HashMap<>();
             attrs.put(ATTR_KIND, KIND_VALUE);
-            if (keystorePath != null) {
-                // Replace the existing keystore item: delete + create. The keystore is the sole
-                // authority for epoch keys, so a brief absence between delete and create is
-                // harmless -- decryption requires the keystore anyway.
-                wrapped.deleteItem(keystorePath);
-                keystorePath = null;
-            }
+            // Create-then-delete: the previous keystore item must survive until the replacement
+            // is durably written. The keystore is the only copy of the epoch private keys -- a
+            // crash after a delete-first would make every KEM-wrapped item in the collection
+            // permanently undecryptable. A crash between create and delete merely leaves a
+            // superseded duplicate, which the next loadIfPresent detects (lower generation)
+            // and removes.
+            String previousPath = keystorePath;
             Optional<String> created = wrapped.createItem(LABEL, body, attrs);
             if (created.isEmpty()) {
                 throw new IllegalStateException("EpochKeystore: persist failed -- createItem returned empty");
             }
             keystorePath = created.get();
+            if (previousPath != null && !wrapped.deleteItem(previousPath)) {
+                log.warn("EpochKeystore: could not delete superseded keystore item {}; "
+                        + "a stale duplicate remains until the next persist.", previousPath);
+            }
         } finally {
             Arrays.fill(plain, (byte) 0);
             if (aead != null) Arrays.fill(aead, (byte) 0);
@@ -258,7 +302,7 @@ final class EpochKeystore {
 
     private byte[] serialize() {
         // Compute total size first
-        int total = 1 + 2;
+        int total = 1 + 8 + 2;
         for (Map.Entry<String, EpochKeyPair> e : entries.entrySet()) {
             byte[] id = e.getKey().getBytes(StandardCharsets.US_ASCII);
             byte[] xPriv = e.getValue().x25519.getPrivate().getEncoded();
@@ -268,6 +312,7 @@ final class EpochKeystore {
         }
         ByteBuffer buf = ByteBuffer.allocate(total);
         buf.put(VERSION_1);
+        buf.putLong(generation);
         buf.putShort((short) entries.size());
         for (Map.Entry<String, EpochKeyPair> e : entries.entrySet()) {
             byte[] id = e.getKey().getBytes(StandardCharsets.US_ASCII);
@@ -285,14 +330,18 @@ final class EpochKeystore {
         return buf.array();
     }
 
-    private void deserialize(byte[] in) {
+    /** One decrypted keystore snapshot: its persist generation and the epoch entries. */
+    private record Parsed(long generation, Map<String, EpochKeyPair> entries) {}
+
+    private Parsed deserialize(byte[] in) {
         ByteBuffer buf = ByteBuffer.wrap(in);
         byte version = buf.get();
         if (version != VERSION_1) {
             throw new IllegalArgumentException("unsupported keystore version: " + version);
         }
+        long gen = buf.getLong();
         int n = Short.toUnsignedInt(buf.getShort());
-        entries.clear();
+        Map<String, EpochKeyPair> parsed = new LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
             int idLen = Byte.toUnsignedInt(buf.get());
             byte[] id = new byte[idLen]; buf.get(id);
@@ -320,8 +369,9 @@ final class EpochKeystore {
                     Arrays.fill(mPriv, (byte) 0);
                 }
             }
-            entries.put(new String(id, StandardCharsets.US_ASCII), new EpochKeyPair(x, m, mPubKept));
+            parsed.put(new String(id, StandardCharsets.US_ASCII), new EpochKeyPair(x, m, mPubKept));
         }
+        return new Parsed(gen, parsed);
     }
 
     /** For tests: direct access to in-memory entry count. */
