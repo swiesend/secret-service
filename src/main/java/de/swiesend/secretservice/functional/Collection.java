@@ -13,12 +13,14 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 // Note: de.swiesend.secretservice.interfaces.Prompt.Completed is referenced fully-qualified
 // below to avoid a name clash with the low-level Prompt class in this package.
 
 import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
+import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
 
 /**
  * Representation of a Secret-Service collection. Main interface to interact with the keyring. Guarantees a valid Secret-Service session.
@@ -233,7 +235,11 @@ public class Collection implements CollectionInterface {
         }
 
         if (path == null) {
-            waitForCollectionCreatedSignal();
+            // Poll for the CollectionCreated signal instead of sleeping a fixed interval and hoping
+            // it arrived: under load the signal can take longer than one DEFAULT_DELAY_MILLIS tick,
+            // which would spuriously report the collection as "not created".
+            awaitUntil(() -> service.getService().getSignalHandler()
+                    .getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS) != null);
             Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
             if (signal == null) {
                 log.warn("Collection \"" + label + "\" was not created.");
@@ -255,13 +261,32 @@ public class Collection implements CollectionInterface {
         return Optional.ofNullable(path);
     }
 
-    private void waitForCollectionCreatedSignal() {
-        try {
-            Thread.sleep(DEFAULT_DELAY_MILLIS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Interrupted while waiting for a CollectionCreated signal.", e);
+    /**
+     * Polls {@code condition} until it holds or {@link Static.DBus#MAX_DELAY_MILLIS} elapses,
+     * checking every {@link Static.DBus#DEFAULT_DELAY_MILLIS}. Returns the final observed value.
+     * This replaces fixed single-sleep waits for asynchronous D-Bus state (a lock taking effect,
+     * a signal arriving): the happy path returns on the first check with no added latency, while a
+     * slow daemon under load is tolerated up to the bound instead of racing a single tick.
+     * Restores the interrupt flag and returns early if interrupted.
+     */
+    static boolean awaitUntil(BooleanSupplier condition) {
+        if (condition.getAsBoolean()) {
+            return true;
         }
+        // Fully qualified: this package declares its own `System` class, which shadows java.lang.
+        long deadline = java.lang.System.nanoTime() + MAX_DELAY_MILLIS * 1_000_000L;
+        while (java.lang.System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(DEFAULT_DELAY_MILLIS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return condition.getAsBoolean();
+            }
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+        }
+        return condition.getAsBoolean();
     }
 
     private Optional<DBusPath> createCollectionWithPrompt(Map<String, Variant> properties) {
@@ -789,12 +814,10 @@ public class Collection implements CollectionInterface {
                 return false;
             }
             log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
-            try {
-                Thread.sleep(DEFAULT_DELAY_MILLIS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("Interrupted while waiting for collection to lock.", e);
-            }
+            // Poll until the daemon reflects the lock (bounded by MAX_DELAY_MILLIS) rather than
+            // sleeping one fixed tick and hoping: under load the lock can land after that tick,
+            // which previously made lock() spuriously return false.
+            awaitUntil(collection::isLocked);
         }
         return collection.isLocked();
     }
