@@ -7,7 +7,6 @@ import de.swiesend.secretservice.functional.SearchMode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,12 +111,13 @@ class CollectionTest {
         assertTrue(collection.delete());
     }
 
-    // Excluded from the default run: lockService() locks the WHOLE secret service, including the
-    // user's login keyring, and nothing here re-unlocks it. On a real desktop that leaves the login
-    // keyring locked, so the next access pops an interactive "unlock keyring" prompt. Run explicitly
-    // with `-Psystem-test` on a throwaway keyring. (deleteALockedCollection covers the locked-item
-    // case without the global side-effect.)
-    @Tag("system-test")
+    // Disabled: lockService() locks the WHOLE secret service, including the user's login keyring,
+    // and nothing here re-unlocks it. On a real desktop that leaves the login keyring locked, so the
+    // next access pops an interactive "unlock keyring" prompt. It is also gnome-keyring-specific --
+    // setUp cannot even open a session on KWallet/KeePassXC -- so it must not run under
+    // -Psystem-test either. (deleteALockedCollection covers the locked-item case without the global
+    // side-effect; remove @Disabled locally to run this against a throwaway gnome-keyring.)
+    @Disabled("Locks the whole service incl. the login keyring (interactive prompt); gnome-keyring only")
     @Test
     void deleteWithALockedService() {
         assertTrue(service.getService().lockService());
