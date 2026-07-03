@@ -255,6 +255,27 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void generationAnchorWiredThroughBuilderIsConsultedAndFailsClosed() {
+        // Builder wiring smoke test: an anchored collection round-trips and the write advances the
+        // anchor through the keystore. Then, with the anchor floor pushed above the stored keystore
+        // generation (the condition a rollback creates -- the faithful attacker model is covered in
+        // EpochKeystoreTest#anchorRefusesRolledBackKeystore), a fresh instance fails closed.
+        EpochKeystoreTest.FakeAnchor anchor = new EpochKeystoreTest.FakeAnchor();
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true).epochId("anchored").generationAnchor(anchor).build();
+        String path = h.createItem("x", "anchored-secret").orElseThrow();
+        assertEquals("anchored-secret", h.withSecret(path, String::new).orElse(null));
+        assertTrue(anchor.read() > 0, "the write must have advanced the anchor through the keystore");
+
+        // Raise the floor above the stored keystore generation (equivalent to a rolled-back store).
+        anchor.advanceTo(anchor.read() + 5);
+        HardenedCollection h2 = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true).epochId("anchored").generationAnchor(anchor).build();
+        assertTrue(h2.withSecret(path, String::new).isEmpty(),
+                "with the anchor floor above the stored generation, KEM-wrapped reads fail closed");
+    }
+
+    @Test
     void writeUnderEpochLoadedFromKeystoreAcrossSessions() {
         // Two HardenedCollection instances over the same collection, reusing one epoch id, model
         // two process lifetimes. Session 2 loads the epoch from the keystore and must be able to

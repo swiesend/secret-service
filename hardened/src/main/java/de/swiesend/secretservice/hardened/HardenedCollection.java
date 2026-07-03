@@ -90,6 +90,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     private final boolean allowMigration;
     private final HybridKem kem;
     private final EpochKeystore keystore;
+    private final GenerationAnchor generationAnchor;
 
     private volatile String epochId;
 
@@ -99,7 +100,8 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         this.acknowledgeSecurityTheater = b.acknowledgeSecurityTheater;
         this.allowMigration = b.allowMigration;
         this.kem = new HybridKem(b.enablePostQuantum);
-        this.keystore = new EpochKeystore(this.wrapped, this.provider);
+        this.generationAnchor = b.generationAnchor;
+        this.keystore = new EpochKeystore(this.wrapped, this.provider, this.generationAnchor);
 
         ThreatCoverage tc = provider.threatCoverage();
         if (tc.isSecurityTheaterVsSameUid() && !acknowledgeSecurityTheater) {
@@ -141,6 +143,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         private boolean enablePostQuantum = false;
         private boolean allowMigration = false;
         private String epochId;
+        private GenerationAnchor generationAnchor;
 
         Builder(CollectionInterface wrapped, KeyMaterialProvider provider) {
             this.wrapped = Objects.requireNonNull(wrapped, "wrapped collection");
@@ -174,6 +177,18 @@ public final class HardenedCollection implements HardenedCollectionInterface {
          * and an explicit operator action (the env var) before mutating shared state.
          */
         public Builder allowMigration(boolean b) { this.allowMigration = b; return this; }
+
+        /**
+         * Anchor the epoch-keystore generation counter in rollback-resistant storage (a TPM NV
+         * monotonic counter -- see {@code Tpm2GenerationAnchor} in the {@code hardened-tpm2}
+         * module). Without an anchor, an attacker with write access to the keyring store can delete
+         * the current keystore item and re-introduce an older, genuine one to resurrect epoch keys
+         * that {@link #rotateEpoch} destroyed; with one, a below-floor keystore is refused
+         * (fail-closed) on load. Enable this when the collection is <b>created</b> -- see
+         * {@link GenerationAnchor} for why retrofitting onto an existing keystore is refused. The
+         * anchor is closed when this collection is {@link #close() closed}.
+         */
+        public Builder generationAnchor(GenerationAnchor anchor) { this.generationAnchor = anchor; return this; }
 
         // Test/internal-only: lets tests pin a deterministic epoch id. NOT public because
         // operator code that hard-codes an epoch id silently disables forward secrecy
@@ -643,13 +658,20 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     @Override
     public void close() {
         // Close in reverse construction order: provider first (zeroes the pepper cache and
-        // releases TPM handles), then the wrapped CollectionInterface. We swallow each
-        // failure independently so a broken provider can't strand the wrapped connection
-        // and vice versa.
+        // releases TPM handles), then the generation anchor (its own TPM handle), then the
+        // wrapped CollectionInterface. We swallow each failure independently so a broken
+        // component can't strand the others.
         try {
             provider.close();
         } catch (RuntimeException e) {
             log.warn("provider.close() threw: {}", e.toString());
+        }
+        if (generationAnchor != null) {
+            try {
+                generationAnchor.close();
+            } catch (Exception e) {
+                log.warn("generationAnchor.close() threw: {}", e.toString());
+            }
         }
         try {
             wrapped.close();

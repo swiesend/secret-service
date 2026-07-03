@@ -130,4 +130,84 @@ class EpochKeystoreTest {
         assertTrue(fake.rawItems().containsKey("/epoch-keystore/foreign"),
                 "an undecryptable foreign keystore must be left untouched");
     }
+
+    // ---------- anti-rollback anchor (GenerationAnchor) ----------
+
+    /** In-memory monotonic anchor standing in for a TPM NV counter. */
+    static final class FakeAnchor implements GenerationAnchor {
+        long value;
+        boolean closed;
+        FakeAnchor() {}
+        FakeAnchor(long start) { this.value = start; }
+        @Override public long read() { return value; }
+        @Override public long advanceTo(long target) { if (target > value) value = target; return value; }
+        @Override public void close() { closed = true; }
+        /** Test hook: rewind the counter to model a crash between write and advance. */
+        void rewindTo(long v) { this.value = v; }
+    }
+
+    @Test
+    void generationLivesInTheAnchorValueSpace() {
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+        FakeAnchor anchor = new FakeAnchor(1000L); // TPM counters can start at a large value
+
+        EpochKeystore ks = new EpochKeystore(fake, p, anchor);
+        ks.getOrCreate("e1", kem);
+        assertEquals(1001L, anchor.read(), "first persist seeds the generation from the anchor floor + 1");
+        ks.getOrCreate("e2", kem);
+        assertEquals(1002L, anchor.read(), "each persist advances the anchor by one");
+    }
+
+    @Test
+    void anchorRefusesRolledBackKeystore() {
+        // Window-0 anti-rollback: an attacker who re-introduces a genuine older snapshot while the
+        // anchor stays high must be refused -- highest-of-what's-present is not enough.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+        FakeAnchor anchor = new FakeAnchor();
+
+        EpochKeystore writer = new EpochKeystore(fake, p, anchor);
+        writer.getOrCreate("e1", kem); // generation 1
+        String genOnePath = keystoreItems(fake).get(0);
+        FakeCollection.Item genOne = fake.rawItems().get(genOnePath);
+        String genOneBody = genOne.rawSecret();
+        Map<String, String> genOneAttrs = Map.copyOf(genOne.attrs());
+
+        writer.getOrCreate("e2", kem); // generation 2; anchor now 2; gen-1 item deleted
+        assertEquals(2L, anchor.read());
+
+        // Attacker rolls back: drop the current (gen-2) item, re-introduce the captured gen-1 one.
+        fake.deleteItem(keystoreItems(fake).get(0));
+        fake.seedRaw("/rollback/gen1", EpochKeystore.LABEL, genOneBody, genOneAttrs);
+
+        EpochKeystore reader = new EpochKeystore(fake, p, anchor);
+        assertTrue(reader.get("e1").isEmpty(),
+                "a below-floor (rolled-back) keystore must be refused, not loaded");
+        assertTrue(reader.get("e2").isEmpty());
+        assertEquals(0, reader.sizeForTest(), "nothing is loaded on a refused rollback (fail-closed)");
+    }
+
+    @Test
+    void anchorCatchesUpWhenKeystoreGenerationExceedsFloor() {
+        // Crash between the durable write and the anchor advance leaves generation > floor. That is
+        // a lost-advance, not a rollback: the snapshot must load and the anchor must catch up.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+        FakeAnchor anchor = new FakeAnchor();
+
+        EpochKeystore writer = new EpochKeystore(fake, p, anchor);
+        writer.getOrCreate("e1", kem);
+        writer.getOrCreate("e2", kem); // generation 2, anchor 2
+        anchor.rewindTo(1L);           // model a crash before the last advance landed
+
+        EpochKeystore reader = new EpochKeystore(fake, p, anchor);
+        assertTrue(reader.get("e1").isPresent());
+        assertTrue(reader.get("e2").isPresent(),
+                "generation 2 > floor 1 is a lost-advance and must still load");
+        assertEquals(2L, anchor.read(), "the anchor is caught up to the loaded generation");
+    }
 }

@@ -110,6 +110,8 @@ final class EpochKeystore {
 
     private final CollectionInterface wrapped;
     private final KeyMaterialProvider provider;
+    /** Optional anti-rollback anchor (TPM NV counter); null when not configured. */
+    private final GenerationAnchor anchor;
     /** Mutable in-memory map; persisted on every change via {@link #persist}. */
     private final Map<String, EpochKeyPair> entries = new LinkedHashMap<>();
     /** Path of the persisted keystore item, set after first persist or load. */
@@ -118,8 +120,13 @@ final class EpochKeystore {
     private long generation = 0L;
 
     EpochKeystore(CollectionInterface wrapped, KeyMaterialProvider provider) {
+        this(wrapped, provider, null);
+    }
+
+    EpochKeystore(CollectionInterface wrapped, KeyMaterialProvider provider, GenerationAnchor anchor) {
         this.wrapped = Objects.requireNonNull(wrapped, "wrapped");
         this.provider = Objects.requireNonNull(provider, "provider");
+        this.anchor = anchor;
     }
 
     /**
@@ -186,6 +193,28 @@ final class EpochKeystore {
             }
         }
         if (best == null) return;
+        if (anchor != null) {
+            long floor = anchor.read();
+            if (best.generation < floor) {
+                // The highest decryptable snapshot is below the anti-rollback floor. Either the
+                // keystore was rolled back (an attacker re-introduced an older, genuine snapshot)
+                // or the anchor was (re-)provisioned under a pre-existing keystore. Fail closed:
+                // do not load, so KEM-wrapped reads return empty rather than silently resurrecting
+                // epoch keys that a rotation destroyed.
+                log.error("EpochKeystore: keystore generation {} is below the anti-rollback floor {}; "
+                        + "refusing to load (possible keystore rollback). KEM-wrapped reads will "
+                        + "fail closed.", best.generation, floor);
+                return;
+            }
+            if (best.generation > floor) {
+                // A prior persist durably wrote this snapshot but crashed before advancing the
+                // anchor (write-ahead ordering). Catch the anchor up so the floor tracks reality.
+                log.warn("EpochKeystore: keystore generation {} exceeds the anchor floor {}; catching "
+                        + "the anchor up (a prior persist did not complete its advance).",
+                        best.generation, floor);
+                anchor.advanceTo(best.generation);
+            }
+        }
         entries.clear();
         entries.putAll(best.entries);
         this.generation = best.generation;
@@ -249,7 +278,10 @@ final class EpochKeystore {
     // --------- internal: AES-GCM under pepper-derived KEK ---------
 
     private void persist() {
-        generation++;
+        // Next generation lives in the anchor's value space so the load-side floor comparison is
+        // apples-to-apples. Without an anchor this reduces to the old generation++ behaviour.
+        long floor = anchor != null ? anchor.read() : generation;
+        generation = Math.max(generation, floor) + 1;
         byte[] plain = serialize();
         byte[] aead = null;
         try {
@@ -273,6 +305,12 @@ final class EpochKeystore {
                 throw new IllegalStateException("EpochKeystore: persist failed -- createItem returned empty");
             }
             keystorePath = created.get();
+            // Write-ahead: the new snapshot is durably written, so advance the anchor now. A crash
+            // between the create above and this advance leaves generation ahead of the floor, which
+            // the next load treats as a lost-advance and catches up -- never as a rollback.
+            if (anchor != null) {
+                anchor.advanceTo(generation);
+            }
             if (previousPath != null && !wrapped.deleteItem(previousPath)) {
                 log.warn("EpochKeystore: could not delete superseded keystore item {}; "
                         + "a stale duplicate remains until the next persist.", previousPath);
