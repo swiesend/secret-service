@@ -634,43 +634,54 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     // ---------- internals ----------
 
     private char[] decryptToChars(Envelope env, String objectPath, Map<String, String> attrs) {
-        char[] pepper = provider.getPepper();
-        byte[] totpCode = totpCodeForRead(attrs);
-        byte[] dek = null;
-        byte[] plain = null;
-        try {
-            String itemId = attrs.get("hardened.item.id");
-            if (itemId == null) {
-                log.warn("decrypt: {} missing hardened.item.id attribute", objectPath);
-                return null;
-            }
-            // Step E hook: when the envelope advertises kem_id != NONE, look up the matching
-            // epoch keypair, decapsulate env.kemCiphertext(), and pass the resulting shared
-            // secret. For now keystore wiring is staged in Step C; classical envelopes work.
-            byte[] kemSecret = decapsulateForRead(env);
-            try {
-                dek = deriveDek(pepper, totpCode, env.salt(), env.epochId(),
-                        itemId.getBytes(StandardCharsets.US_ASCII), kemSecret);
-                plain = aeadDecrypt(dek, env.nonce(), env.aeadCiphertext(),
-                        associatedData(env.salt(), env.epochId(), itemId));
-                return utf8ToChars(plain);
-            } finally {
-                Arrays.fill(kemSecret, (byte) 0);
-            }
-        } catch (GeneralSecurityException e) {
-            log.warn("decrypt: AEAD failure for {}: {}", objectPath, e.getMessage());
+        String itemId = attrs.get("hardened.item.id");
+        if (itemId == null) {
+            log.warn("decrypt: {} missing hardened.item.id attribute", objectPath);
             return null;
+        }
+        char[] pepper = provider.getPepper();
+        // One or more candidate TOTP codes depending on the stored mode: exactly one for
+        // NO_TOTP / STORED_STEP, but three for LIVE_CODE (current step and +/-1) so a read
+        // that lands one step after the write still succeeds -- the +/-1 tolerance the mode
+        // advertises. Each candidate is tried until one decrypts.
+        List<byte[]> totpCandidates = totpCodesForRead(attrs);
+        byte[] kemSecret;
+        try {
+            // When the envelope advertises kem_id != NONE, look up the matching epoch keypair
+            // and decapsulate env.kemCiphertext() into the shared secret feeding the DEK.
+            kemSecret = decapsulateForRead(env);
         } catch (IllegalStateException e) {
-            // Raised by decapsulateForRead when the envelope's epoch is no longer in the
-            // keystore (rotated and destroyed) -- a legitimate read failure, not a programmer
-            // error. Surface as a warn log + empty so withSecret returns Optional.empty().
+            // The envelope's epoch is no longer in the keystore (rotated and destroyed) -- a
+            // legitimate read failure, not a programmer error. Return empty (not an exception).
             log.warn("decrypt: cannot read {} -- {}", objectPath, e.getMessage());
+            Arrays.fill(pepper, '\0');
+            for (byte[] c : totpCandidates) Arrays.fill(c, (byte) 0);
+            return null;
+        }
+        try {
+            byte[] idBytes = itemId.getBytes(StandardCharsets.US_ASCII);
+            byte[] ad = associatedData(env.salt(), env.epochId(), itemId);
+            for (byte[] totpCode : totpCandidates) {
+                byte[] dek = null;
+                byte[] plain = null;
+                try {
+                    dek = deriveDek(pepper, totpCode, env.salt(), env.epochId(), idBytes, kemSecret);
+                    plain = aeadDecrypt(dek, env.nonce(), env.aeadCiphertext(), ad);
+                    return utf8ToChars(plain);
+                } catch (GeneralSecurityException e) {
+                    // Wrong candidate (or a genuine AEAD failure): try the next candidate.
+                } finally {
+                    if (dek != null) Arrays.fill(dek, (byte) 0);
+                    if (plain != null) Arrays.fill(plain, (byte) 0);
+                }
+            }
+            log.warn("decrypt: AEAD failure for {} (tried {} TOTP candidate(s))",
+                    objectPath, totpCandidates.size());
             return null;
         } finally {
             Arrays.fill(pepper, '\0');
-            Arrays.fill(totpCode, (byte) 0);
-            if (dek != null) Arrays.fill(dek, (byte) 0);
-            if (plain != null) Arrays.fill(plain, (byte) 0);
+            Arrays.fill(kemSecret, (byte) 0);
+            for (byte[] c : totpCandidates) Arrays.fill(c, (byte) 0);
         }
     }
 
@@ -686,28 +697,36 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
     }
 
-    private byte[] totpCodeForRead(Map<String, String> attrs) {
+    /**
+     * Candidate TOTP codes to try on read, most-likely first. NO_TOTP and unparsable modes
+     * yield a single empty code. STORED_STEP yields the one code for the exact stored step.
+     * LIVE_CODE yields three codes -- the current step and +/-1 -- so a read that happens just
+     * after a step rollover still matches the code used at write time. The list contents are
+     * zeroed by the caller.
+     */
+    private List<byte[]> totpCodesForRead(Map<String, String> attrs) {
         String modeStr = attrs.get(ATTR_TOTP_MODE);
-        if (modeStr == null) return new byte[0];
+        if (modeStr == null) return List.of(new byte[0]);
         KeyMaterialProvider.Mode storedMode;
         try {
             storedMode = KeyMaterialProvider.Mode.valueOf(modeStr);
         } catch (IllegalArgumentException e) {
-            return new byte[0];
+            return List.of(new byte[0]);
         }
-        if (storedMode == KeyMaterialProvider.Mode.NO_TOTP) return new byte[0];
+        if (storedMode == KeyMaterialProvider.Mode.NO_TOTP) return List.of(new byte[0]);
         byte[] seed = provider.getTotpSeed().orElse(null);
-        if (seed == null) return new byte[0];
+        if (seed == null) return List.of(new byte[0]);
         try {
-            long step;
             if (storedMode == KeyMaterialProvider.Mode.STORED_STEP) {
                 String s = attrs.get(ATTR_TOTP_STEP);
-                if (s == null) return new byte[0];
-                try { step = Long.parseLong(s); } catch (NumberFormatException e) { return new byte[0]; }
-            } else {
-                step = provider.currentStep();
+                if (s == null) return List.of(new byte[0]);
+                long step;
+                try { step = Long.parseLong(s); } catch (NumberFormatException e) { return List.of(new byte[0]); }
+                return List.of(Totp.code(seed, step));
             }
-            return Totp.code(seed, step);
+            // LIVE_CODE: tolerate a +/-1 step drift between write and read.
+            long step = provider.currentStep();
+            return List.of(Totp.code(seed, step), Totp.code(seed, step - 1), Totp.code(seed, step + 1));
         } finally {
             Arrays.fill(seed, (byte) 0);
         }

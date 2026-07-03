@@ -491,6 +491,26 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void liveCodeToleratesOneStepDriftButNotTwo() {
+        // LIVE_CODE promises reads succeed "within +/-1 step". Write at step N; a read one step
+        // later must still recover the secret (the read tries N, N-1, N+1), but a read two steps
+        // later must fail -- the tolerance window is exactly +/-1.
+        SteppingTotpProvider provider = new SteppingTotpProvider(KeyMaterialProvider.Mode.LIVE_CODE, 1000L);
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .build();
+        String path = h.createItem("t", "live-secret").orElseThrow();
+
+        provider.step = 1001L; // one step after the write
+        assertEquals("live-secret", h.withSecret(path, String::new).orElse(null),
+                "LIVE_CODE read one step after the write must succeed (+/-1 tolerance)");
+
+        provider.step = 1002L; // two steps after the write -- outside the window
+        assertTrue(h.withSecret(path, String::new).isEmpty(),
+                "LIVE_CODE read two steps after the write must fail -- tolerance is only +/-1");
+    }
+
+    @Test
     void storedStepSurvivesStepRolloverDuringWrite() {
         // Regression: createItem used to call provider.currentStep() twice (once for DEK
         // derivation, once for the hardened.totp.step attribute). If the step rolled over
