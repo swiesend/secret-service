@@ -49,14 +49,17 @@ import java.util.function.Function;
  * refuses. This protects shared collections — especially the default collection — from
  * accidental data loss.</p>
  *
- * <h3>Intentional limitations in v1</h3>
+ * <h3>KEM and forward secrecy</h3>
  * <ul>
- *   <li>DEK derivation uses the pepper directly; no per-collection KEM keypair is persisted.
- *       {@link HybridKem} is scaffolded for a future version that adds X25519+ML-KEM forward
- *       secrecy via epoch-ratcheting of a real keypair.</li>
- *   <li>{@code rotateEpoch} generates a fresh epoch id and rewraps items under the new id.
- *       This gives salt-domain separation but not cryptographic forward secrecy — the old
- *       pepper still decrypts the old ciphertext if it was snapshotted.</li>
+ *   <li>Every write uses a KEM against a per-epoch keypair held by the {@link EpochKeystore}:
+ *       classical X25519 ({@code kem_id=KEM_ID_X25519}) by default, or X25519+ML-KEM-768
+ *       ({@code kem_id=KEM_ID_X25519_MLKEM768}) when {@link Builder#enablePostQuantum(boolean)}
+ *       is set and the runtime supplies ML-KEM. The KEM shared secret is mixed into the DEK
+ *       alongside the pepper, so the DEK cannot be recovered from the pepper alone.</li>
+ *   <li>{@code rotateEpoch} rewraps items under a fresh epoch and then destroys every superseded
+ *       epoch keypair. This is real forward secrecy: an envelope snapshotted before rotation can
+ *       no longer be decapsulated even by an attacker who later learns the pepper, because the
+ *       matching epoch private key is gone.</li>
  *   <li>TOTP {@code STORED_STEP} mode is explicitly labeled theater in {@link HardenedStatus}.
  *       Real time-binding requires {@code LIVE_CODE} mode (write window = read window).</li>
  * </ul>
@@ -234,7 +237,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
             byte kemId = kem.kemId();
             byte flags = 0;
-            if (kemId != Envelope.KEM_ID_NONE) flags |= Envelope.FLAG_PQ_HYBRID;
+            if (kemId == Envelope.KEM_ID_X25519_MLKEM768) flags |= Envelope.FLAG_PQ_HYBRID;
             if (provider.mode() == KeyMaterialProvider.Mode.STORED_STEP) flags |= Envelope.FLAG_STORED_STEP_TOTP;
             if (provider.mode() == KeyMaterialProvider.Mode.LIVE_CODE)   flags |= Envelope.FLAG_LIVE_TOTP;
 
@@ -404,7 +407,9 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                     && EpochKeystore.KIND_VALUE.equals(attrs.get().get(EpochKeystore.ATTR_KIND))) {
                 continue;
             }
-            Boolean ok = wrapped.withSecret(path, envelopeChars -> {
+            Boolean ok;
+            try {
+                ok = wrapped.withSecret(path, envelopeChars -> {
                 Optional<Map<String, String>> a = wrapped.getAttributes(path);
                 if (a.isEmpty()) return Boolean.FALSE;
                 byte[] envBytes;
@@ -438,7 +443,16 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 } finally {
                     Arrays.fill(plain, '\0');
                 }
-            }).orElse(Boolean.FALSE);
+                }).orElse(Boolean.FALSE);
+            } catch (RuntimeException e) {
+                // A rewrap can throw if writing the new envelope fails partway -- e.g. the epoch
+                // keystore could not persist the new epoch keypair. The old envelope has not been
+                // deleted, so no data is lost; treat this item as a failed rewrap and keep the
+                // previous epoch alive.
+                log.warn("rotateEpoch: rewrap of {} failed: {}; keeping old envelope intact.",
+                        path, e.toString());
+                ok = Boolean.FALSE;
+            }
             allOk &= ok;
         }
         if (allOk) {
@@ -733,12 +747,14 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     }
 
     /**
-     * Encapsulate against the current epoch's public keypair. Returns {@code null} when PQ
-     * is disabled (writes go through with {@code kem_id=KEM_ID_NONE} and an empty kem_ct).
-     * The returned shared-secret bytes are zeroed by the caller.
+     * Encapsulate against the current epoch's public keypair. The KEM is always on: with PQ
+     * disabled this is a classical X25519 encapsulation ({@code kem_id=KEM_ID_X25519}); with PQ
+     * enabled it adds the ML-KEM-768 half ({@code kem_id=KEM_ID_X25519_MLKEM768}). Either way a
+     * non-empty {@code kem_ct} is produced and the epoch keystore is consulted, so epoch
+     * rotation gives forward secrecy even without a PQ component. The returned shared-secret
+     * bytes are zeroed by the caller.
      */
     private HybridKem.Encapsulation encapsulateForWrite() {
-        if (kem.kemId() == Envelope.KEM_ID_NONE) return null;
         EpochKeystore.EpochKeyPair epochKeys = keystore.getOrCreate(epochId, kem);
         java.security.PublicKey xPub = epochKeys.x25519.getPublic();
         if (xPub == null) {
@@ -778,7 +794,9 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             throw new IllegalStateException("Epoch " + envEpoch + " is missing its X25519 private key");
         }
         java.security.PrivateKey pqPriv = pair.mlkem == null ? null : pair.mlkem.getPrivate();
-        boolean envIsHybrid = env.kemId() != Envelope.KEM_ID_NONE;
+        // Only KEM_ID_X25519_MLKEM768 carries a PQ ciphertext half; KEM_ID_X25519 is classical
+        // and must decapsulate with envelopeIsHybrid=false or the PQ-part check would reject it.
+        boolean envIsHybrid = env.kemId() == Envelope.KEM_ID_X25519_MLKEM768;
         return kem.decapsulate(pair.x25519.getPrivate(), pqPriv, env.kemCiphertext(), envIsHybrid);
     }
 

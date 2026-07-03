@@ -53,12 +53,14 @@ public final class Envelope {
     public static final byte FLAG_LIVE_TOTP = 0x02;
     public static final byte FLAG_STORED_STEP_TOTP = 0x04;
 
-    /** Classical X25519 only; no PQ component. */
+    /** No KEM at all: the DEK is derived from pepper + TOTP + salt only. Legacy alpha envelopes. */
     public static final byte KEM_ID_NONE = 0x00;
     /** X25519 combined with ML-KEM-768 (FIPS 203). Today's recommended PQ default. */
     public static final byte KEM_ID_X25519_MLKEM768 = 0x01;
     /** Reserved: X25519 combined with HQC-192 (NIST Round 4 selection, March 2025). Not yet implemented. */
     public static final byte KEM_ID_X25519_HQC192 = 0x02;
+    /** Classical X25519-only KEM; no PQ component. Epoch-ratcheted for forward secrecy. */
+    public static final byte KEM_ID_X25519 = 0x03;
 
     private final byte version;
     private final byte flags;
@@ -194,9 +196,10 @@ public final class Envelope {
     /** Human-readable label for a {@code kem_id}, suitable for attributes / logs. */
     public static String kemIdLabel(byte kemId) {
         return switch (kemId) {
-            case KEM_ID_NONE -> "x25519";
+            case KEM_ID_NONE -> "none";
             case KEM_ID_X25519_MLKEM768 -> "x25519+ml-kem-768";
             case KEM_ID_X25519_HQC192 -> "x25519+hqc-192";
+            case KEM_ID_X25519 -> "x25519";
             default -> "kem-id-0x" + Integer.toHexString(kemId & 0xff);
         };
     }

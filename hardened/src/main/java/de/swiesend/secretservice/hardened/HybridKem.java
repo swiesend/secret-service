@@ -79,13 +79,14 @@ public final class HybridKem {
 
     /**
      * The {@link Envelope} {@code kem_id} byte this instance will stamp into fresh
-     * envelopes. Today the choice is binary: {@link Envelope#KEM_ID_X25519_MLKEM768}
-     * when PQ is active, otherwise {@link Envelope#KEM_ID_NONE}. Future iterations
-     * pick from the reserved values (HQC-192, triple hybrid) without breaking the
-     * envelope format.
+     * envelopes. The KEM is always on: {@link Envelope#KEM_ID_X25519_MLKEM768} when PQ is
+     * active, otherwise the classical {@link Envelope#KEM_ID_X25519}. It never returns
+     * {@link Envelope#KEM_ID_NONE} -- that value only ever appears on legacy alpha envelopes.
+     * Future iterations pick from the reserved values (HQC-192, triple hybrid) without
+     * breaking the envelope format.
      */
     public byte kemId() {
-        return postQuantumAvailable ? Envelope.KEM_ID_X25519_MLKEM768 : Envelope.KEM_ID_NONE;
+        return postQuantumAvailable ? Envelope.KEM_ID_X25519_MLKEM768 : Envelope.KEM_ID_X25519;
     }
 
     /**

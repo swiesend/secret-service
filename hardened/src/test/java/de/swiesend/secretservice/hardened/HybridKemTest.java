@@ -39,8 +39,10 @@ class HybridKemTest {
         HybridKem kemRequested = new HybridKem(true);
         if (kemRequested.postQuantumAvailable()) {
             assertEquals("x25519+ml-kem-768", kemRequested.algorithmLabel());
+            assertEquals(Envelope.KEM_ID_X25519_MLKEM768, kemRequested.kemId());
         } else {
             assertEquals("x25519", kemRequested.algorithmLabel());
+            assertEquals(Envelope.KEM_ID_X25519, kemRequested.kemId());
         }
     }
 
@@ -49,6 +51,8 @@ class HybridKemTest {
         HybridKem kem = new HybridKem(false);
         assertFalse(kem.postQuantumAvailable());
         assertEquals("x25519", kem.algorithmLabel());
+        // The KEM is always on: a non-PQ instance stamps KEM_ID_X25519, never KEM_ID_NONE.
+        assertEquals(Envelope.KEM_ID_X25519, kem.kemId());
     }
 
     @Test

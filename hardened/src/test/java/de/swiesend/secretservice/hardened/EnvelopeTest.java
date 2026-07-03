@@ -84,6 +84,7 @@ class EnvelopeTest {
                 salt, epoch, EMPTY, nonce, ct);
         assertEquals(Envelope.KEM_ID_NONE, Envelope.fromBytes(none.toBytes()).kemId());
         for (byte id : new byte[]{
+                Envelope.KEM_ID_X25519,
                 Envelope.KEM_ID_X25519_MLKEM768,
                 Envelope.KEM_ID_X25519_HQC192,
                 (byte) 0x7f}) {  // arbitrary unknown id -- agility check
@@ -94,7 +95,9 @@ class EnvelopeTest {
 
     @Test
     void kemIdLabelIsSensible() {
-        assertEquals("x25519", Envelope.kemIdLabel(Envelope.KEM_ID_NONE));
+        // KEM_ID_NONE means "no KEM" (legacy alpha envelopes), not "x25519".
+        assertEquals("none", Envelope.kemIdLabel(Envelope.KEM_ID_NONE));
+        assertEquals("x25519", Envelope.kemIdLabel(Envelope.KEM_ID_X25519));
         assertEquals("x25519+ml-kem-768", Envelope.kemIdLabel(Envelope.KEM_ID_X25519_MLKEM768));
         assertEquals("x25519+hqc-192", Envelope.kemIdLabel(Envelope.KEM_ID_X25519_HQC192));
         // Unknown ids fall through to a generic label so future (opt-in, consumer-allocated)

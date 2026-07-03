@@ -148,17 +148,59 @@ class HardenedCollectionTest {
     }
 
     @Test
-    void defaultBuilderWritesKemIdNone() {
-        // Without enablePostQuantum(true), envelopes must carry kem_id=KEM_ID_NONE and
-        // an empty kem_ct. The PQ flag is opt-in.
+    void defaultBuilderWritesKemIdX25519() {
+        // The KEM is always on. Without enablePostQuantum(true), envelopes carry the classical
+        // kem_id=KEM_ID_X25519 (0x03) with a non-empty kem_ct and no PQ-hybrid flag. This is what
+        // gives epoch rotation forward secrecy even without a PQ component.
         HardenedCollection h = build();
         String path = h.createItem("x", "secret").orElseThrow();
         FakeCollection.Item stored = fake.rawItems().get(path);
         byte[] envBytes = Base64.getDecoder().decode(stored.rawSecret());
         Envelope env = Envelope.fromBytes(envBytes);
-        assertEquals(Envelope.KEM_ID_NONE, env.kemId());
-        assertEquals(0, env.kemCiphertext().length);
-        assertEquals("0x00", stored.attrs().get(HardenedCollection.ATTR_KEM_ID));
+        assertEquals(Envelope.KEM_ID_X25519, env.kemId());
+        assertTrue(env.kemCiphertext().length > 0, "classical KEM must carry an X25519 ephemeral SPKI");
+        assertFalse(env.hasFlag(Envelope.FLAG_PQ_HYBRID), "classical envelopes must not set the PQ flag");
+        assertEquals("0x03", stored.attrs().get(HardenedCollection.ATTR_KEM_ID));
+        assertEquals("x25519", stored.attrs().get(HardenedCollection.ATTR_KEM));
+        // Round-trips through the in-collection keystore.
+        assertEquals("secret", h.withSecret(path, String::new).orElse(null));
+    }
+
+    @Test
+    void classicalKemProvidesForwardSecrecyWithoutPq() {
+        // Even without PQ, a pre-rotation envelope copy must be unreadable after rotateEpoch
+        // destroys the classical epoch key -- the whole point of always using a KEM.
+        HardenedCollection h = build();
+        String path = h.createItem("pre", "classical-secret").orElseThrow();
+        FakeCollection.Item snapshot = fake.rawItems().get(path);
+        String capturedSecret = snapshot.rawSecret();
+        Map<String, String> capturedAttrs = new HashMap<>(snapshot.attrs());
+
+        assertTrue(h.rotateEpoch());
+
+        fake.seedRaw("/replay/pre", "pre", capturedSecret, capturedAttrs);
+        assertTrue(h.withSecret("/replay/pre", String::new).isEmpty(),
+                "classical pre-rotation envelope must be unreadable after rotation (forward secrecy)");
+    }
+
+    @Test
+    void legacyKemIdNoneEnvelopeIsToleratedNotRejectedByKeystore() {
+        // Envelopes written by earlier alpha builds carry kem_id=KEM_ID_NONE (pepper-only DEK,
+        // no keystore lookup). After the KEM became always-on, the reader must still route NONE
+        // through the pepper-only branch rather than the keystore -- otherwise every legacy item
+        // would fail with an "epoch not found" error even before the AEAD is checked. We seed a
+        // NONE envelope whose AEAD won't authenticate; the contract we pin is that the read
+        // returns empty gracefully (AEAD-failure path) and does not throw.
+        HardenedCollection h = build();
+        byte[] env = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
+                new byte[Envelope.SALT_LEN], "legacy-epoch".getBytes(),
+                new byte[0], new byte[Envelope.NONCE_LEN], new byte[32]).toBytes();
+        Map<String, String> attrs = new HashMap<>();
+        attrs.put(HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1);
+        attrs.put("hardened.item.id", "legacy-id");
+        attrs.put(HardenedCollection.ATTR_TOTP_MODE, KeyMaterialProvider.Mode.NO_TOTP.name());
+        fake.seedRaw("/legacy/none", "legacy", Base64.getEncoder().encodeToString(env), attrs);
+        assertTrue(h.withSecret("/legacy/none", String::new).isEmpty());
     }
 
     @Test
@@ -351,11 +393,10 @@ class HardenedCollectionTest {
     @Test
     void withSecretsFailsFastOnAnyItemFailure() {
         HardenedCollection h = build();
-        h.createItem("ok1", "good-1").orElseThrow();
+        String targetPath = h.createItem("ok1", "good-1").orElseThrow();
         h.createItem("ok2", "good-2").orElseThrow();
-        // Tamper: flip one envelope's base64 inside the fake so decryption fails.
-        String targetPath = fake.rawItems().keySet().iterator().next();
-        FakeCollection.Item it = fake.rawItems().get(targetPath);
+        // Tamper the first hardened item's envelope so decryption fails. (Capture the path from
+        // createItem rather than iterating rawItems, which now also contains the keystore item.)
         fake.overwriteRawSecret(targetPath, "!!!not-base64!!!");
 
         Optional<Integer> res = h.withSecrets(map -> map.size());

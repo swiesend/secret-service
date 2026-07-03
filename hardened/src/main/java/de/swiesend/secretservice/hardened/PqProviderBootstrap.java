@@ -13,10 +13,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * the stock SunJCE provider does not yet ship ML-KEM (added in JDK 24, JEP 496).
  *
  * <p>Side-effect discipline: this helper is the <b>only</b> place in the library
- * that mutates global JVM security state, and it is invoked only when callers
- * directly construct {@code new HybridKem(true)}. v1 of {@code HardenedCollection}
- * never opts into PQ -- the wrapper currently leaves PQ wiring to a follow-up
- * release, so default consumer flows never load BouncyCastle.</p>
+ * that mutates global JVM security state, and it is invoked only when a
+ * {@code HybridKem} is constructed with {@code preferPostQuantum=true} (via
+ * {@link HardenedCollection.Builder#enablePostQuantum(boolean)}). The default
+ * classical X25519 KEM never touches this path, so default consumer flows never
+ * load BouncyCastle.</p>
  *
  * <p>BouncyCastle access is reflective so this module compiles and loads without
  * {@code bcprov-jdk18on} on the classpath.</p>
