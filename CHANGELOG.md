@@ -63,7 +63,7 @@ Major release introducing a new functional API and an upgrade to dbus-java 5. Re
 
 - `Added`
   - Introduce java modules `module-info.java`
-- Changed`
+- `Changed`
   - Update `hkdf` from `1.1.0` to `2.0.0`
   - Update `slf4j` from `2.0.6` to `2.0.7`
   - Update Maven dependencies
