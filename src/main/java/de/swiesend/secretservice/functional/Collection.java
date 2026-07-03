@@ -13,12 +13,14 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 // Note: de.swiesend.secretservice.interfaces.Prompt.Completed is referenced fully-qualified
 // below to avoid a name clash with the low-level Prompt class in this package.
 
 import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
+import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
 
 /**
  * Representation of a Secret-Service collection. Main interface to interact with the keyring. Guarantees a valid Secret-Service session.
@@ -233,7 +235,11 @@ public class Collection implements CollectionInterface {
         }
 
         if (path == null) {
-            waitForCollectionCreatedSignal();
+            // Poll for the CollectionCreated signal instead of sleeping a fixed interval and hoping
+            // it arrived: under load the signal can take longer than one DEFAULT_DELAY_MILLIS tick,
+            // which would spuriously report the collection as "not created".
+            awaitUntil(() -> service.getService().getSignalHandler()
+                    .getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS) != null);
             Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
             if (signal == null) {
                 log.warn("Collection \"" + label + "\" was not created.");
@@ -255,13 +261,47 @@ public class Collection implements CollectionInterface {
         return Optional.ofNullable(path);
     }
 
-    private void waitForCollectionCreatedSignal() {
-        try {
-            Thread.sleep(DEFAULT_DELAY_MILLIS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Interrupted while waiting for a CollectionCreated signal.", e);
+    /**
+     * Polls {@code condition} until it holds or {@link Static.DBus#MAX_DELAY_MILLIS} elapses,
+     * checking every {@link Static.DBus#DEFAULT_DELAY_MILLIS}. Returns the final observed value.
+     * This replaces fixed single-sleep waits for asynchronous D-Bus state (a lock taking effect,
+     * a signal arriving): the happy path returns on the first check with no added latency, while a
+     * slow daemon under load is tolerated up to the bound instead of racing a single tick.
+     * Restores the interrupt flag and returns early if interrupted.
+     */
+    static boolean awaitUntil(BooleanSupplier condition) {
+        if (condition.getAsBoolean()) {
+            return true;
         }
+        // Fully qualified: this package declares its own `System` class, which shadows java.lang.
+        long deadline = java.lang.System.nanoTime() + MAX_DELAY_MILLIS * 1_000_000L;
+        while (java.lang.System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(DEFAULT_DELAY_MILLIS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return condition.getAsBoolean();
+            }
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+        }
+        return condition.getAsBoolean();
+    }
+
+    /** Null-safe check that {@code paths} contains an object at {@code objectPath}. Package-private for tests. */
+    static boolean containsPath(List<DBusPath> paths, String objectPath) {
+        return paths != null && paths.stream()
+                .filter(Objects::nonNull)
+                .anyMatch(p -> objectPath.equals(p.getPath()));
+    }
+
+    /**
+     * Null-safe check that {@code prompt} is a real prompt. The Secret Service uses the sentinel
+     * path {@code "/"} (and a missing path) to mean "no prompt required". Package-private for tests.
+     */
+    static boolean requiresPrompt(DBusPath prompt) {
+        return prompt != null && prompt.getPath() != null && !"/".equals(prompt.getPath());
     }
 
     private Optional<DBusPath> createCollectionWithPrompt(Map<String, Variant> properties) {
@@ -782,20 +822,40 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean lock() {
-        if (collection != null && !collection.isLocked()) {
-            Optional<Pair<List<DBusPath>, DBusPath>> result = service.getService().lock(lockable());
-            if (result.isEmpty()) {
-                log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
-                return false;
-            }
-            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
-            try {
-                Thread.sleep(DEFAULT_DELAY_MILLIS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("Interrupted while waiting for collection to lock.", e);
-            }
+        if (collection == null || collection.isLocked()) {
+            // Nothing to do: no collection, or it is already locked.
+            return collection != null && collection.isLocked();
         }
+        Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
+        if (maybeResult.isEmpty()) {
+            log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
+            return false;
+        }
+        Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
+
+        // The Secret Service Lock method returns (locked, prompt): `locked` are the objects the
+        // daemon locked immediately, `prompt` (!= "/") means it needs user interaction. Branch on
+        // the response instead of blindly polling, so we neither race the "Locked" property nor
+        // burn the timeout on a state that will never change.
+        boolean lockedImmediately = containsPath(result.a, collection.getObjectPath());
+        boolean promptRequired = requiresPrompt(result.b);
+
+        if (lockedImmediately) {
+            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+            // Daemon acknowledged the lock; poll only so the "Locked" property has time to
+            // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
+            return awaitUntil(collection::isLocked);
+        }
+        if (promptRequired) {
+            // Locking needs a prompt, which the functional layer does not drive here. Don't wait
+            // out the timeout for a state that won't change -- report the failure immediately.
+            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
+                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
+                    + "leaving it unlocked.");
+            return false;
+        }
+        // Neither locked immediately nor prompted (e.g. a provider that does not support locking
+        // this collection): reflect the daemon's current view without a long wait.
         return collection.isLocked();
     }
 
