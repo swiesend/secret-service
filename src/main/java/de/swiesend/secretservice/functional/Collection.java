@@ -289,6 +289,21 @@ public class Collection implements CollectionInterface {
         return condition.getAsBoolean();
     }
 
+    /** Null-safe check that {@code paths} contains an object at {@code objectPath}. Package-private for tests. */
+    static boolean containsPath(List<DBusPath> paths, String objectPath) {
+        return paths != null && paths.stream()
+                .filter(Objects::nonNull)
+                .anyMatch(p -> objectPath.equals(p.getPath()));
+    }
+
+    /**
+     * Null-safe check that {@code prompt} is a real prompt. The Secret Service uses the sentinel
+     * path {@code "/"} (and a missing path) to mean "no prompt required". Package-private for tests.
+     */
+    static boolean requiresPrompt(DBusPath prompt) {
+        return prompt != null && prompt.getPath() != null && !"/".equals(prompt.getPath());
+    }
+
     private Optional<DBusPath> createCollectionWithPrompt(Map<String, Variant> properties) {
         Optional<Pair<DBusPath, DBusPath>> maybeResponse = service.getService().createCollection(properties);
         if (maybeResponse.isEmpty()) {
@@ -822,10 +837,8 @@ public class Collection implements CollectionInterface {
         // daemon locked immediately, `prompt` (!= "/") means it needs user interaction. Branch on
         // the response instead of blindly polling, so we neither race the "Locked" property nor
         // burn the timeout on a state that will never change.
-        boolean lockedImmediately = result.a != null && result.a.stream()
-                .anyMatch(p -> p != null && collection.getObjectPath().equals(p.getPath()));
-        boolean promptRequired = result.b != null && result.b.getPath() != null
-                && !"/".equals(result.b.getPath());
+        boolean lockedImmediately = containsPath(result.a, collection.getObjectPath());
+        boolean promptRequired = requiresPrompt(result.b);
 
         if (lockedImmediately) {
             log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
