@@ -550,24 +550,28 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             MigrationCandidate candidate = new MigrationCandidate(path, label, Map.copyOf(a));
             if (!selector.test(candidate)) { skipped++; continue; }
 
-            // Read plain
-            Optional<String> plainText = wrapped.withSecret(path, chars -> new String(chars));
-            if (plainText.isEmpty()) {
+            // Read plain into a char[] we can zero -- never a String, which is immutable and
+            // cannot be cleared, so the plaintext would linger on the heap until GC.
+            Optional<char[]> plainChars = wrapped.withSecret(path, char[]::clone);
+            if (plainChars.isEmpty()) {
                 results.add(new MigrationResult(path, false, "could not read plain item"));
                 failed++;
                 continue;
             }
+            char[] plain = plainChars.get();
             // Strip any reserved hardened.* attrs the source unexpectedly carried
             Map<String, String> userAttrs = new LinkedHashMap<>(a);
             userAttrs.keySet().removeIf(k -> k != null && k.startsWith("hardened."));
             // Write hardened
             Optional<String> created;
             try {
-                created = createItem(label, plainText.get(), userAttrs);
+                created = createItem(label, CharBuffer.wrap(plain), userAttrs);
             } catch (RuntimeException e) {
                 results.add(new MigrationResult(path, false, "createItem threw: " + e.getMessage()));
                 failed++;
                 continue;
+            } finally {
+                Arrays.fill(plain, '\0');
             }
             if (created.isEmpty()) {
                 results.add(new MigrationResult(path, false, "createItem returned empty"));
