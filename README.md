@@ -48,6 +48,16 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
   - [`moderate`] There are projects like [SOPS](https://github.com/getsops/sops) for secret-management to encrypt and edit files. But again oneself has to store the encryption keys securely.
   - [`easy`/`moderate`] Using disk encryption like [LUKS](https://gitlab.com/cryptsetup/cryptsetup) does not help against malicious applications, but at least against several scenarios with physical access. 
 - [`moderate`/`advanced`] Deliver your application in a secure sandbox.
+- [`moderate`/`advanced`] **Application-layer encryption** via the optional `secret-service-hardened` artifact (see below).
+
+**Application-layer encryption (`secret-service-hardened`)**
+
+Most consumers need only the core artifact. The optional hardened layer encrypts secret *bodies* before they reach the daemon — AES-256-GCM envelopes with per-item keys derived from an application pepper — so an attacker who holds the keyring bytes but not the pepper sees only ciphertext. Framed against the [threat catalogue](docs/threat_models_and_mitigation.md#2-threat-catalogue), it pays off when:
+
+- the host is multi-tenant (shared users, CI runners, sidecar containers) — **class B**; or
+- the keyring file can leave the host (cloud backup, off-host `rsync`, container/filesystem snapshot) — **class C**, and **class D** (harvest-now-decrypt-later) when you also set `.enablePostQuantum(true)` (hybrid X25519 + ML-KEM-768, with forward secrecy via `rotateEpoch()`).
+
+It does **not** defend against a same-UID live process — **class A**, the CVE-2018-19358 case above; that still requires OS-level isolation (see §3–§4 of the doc). The application pepper can optionally be sealed in a TPM with `secret-service-hardened-tpm2`. Before adopting the hardened layer, walk the [“Do I need this?” decision tree](docs/threat_models_and_mitigation.md#11-do-i-need-this): if your host is single-tenant and the keyring never leaves it, you likely do not need it.
 
 **KeePassXC**
 
