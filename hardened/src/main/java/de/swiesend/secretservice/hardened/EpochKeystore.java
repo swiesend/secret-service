@@ -51,8 +51,8 @@ import java.util.Set;
  *
  * <h3>Wire format (inside the AES-256-GCM ciphertext)</h3>
  * <pre>
- * version(1)=0x01 | generation(8) | n_entries(2) |
- *   ( id_len(1) | id[id_len] | x25519_priv_len(2) | x25519_priv[..] |
+ * version(1)=0x02 | generation(8) | n_entries(2) |
+ *   ( id_len(1) | id[id_len] | x25519_priv_len(2) | x25519_priv[..] | x25519_pub_len(2) | x25519_pub[..] |
  *     mlkem_priv_len(2) | mlkem_priv[..] | mlkem_pub_len(2) | mlkem_pub[..] ) repeated
  * </pre>
  *
@@ -63,9 +63,11 @@ import java.util.Set;
  * {@link #removeEpoch} destroyed (breaking forward secrecy) or drop keys created
  * after the stale snapshot (stranding items).</p>
  *
- * <p>X25519 public keys are derivable from the private; ML-KEM public keys are
- * larger, and we keep them so re-wraps don't have to recompute. Private parts
- * are PKCS#8-encoded; ML-KEM public is X.509 SPKI.</p>
+ * <p>The X25519 public key is stored (version 2+) so a loaded epoch can be encapsulated
+ * against, not just decapsulated -- every write consults the keystore now that the KEM is
+ * always on. Version 1 keystores (no stored X25519 public) still load; their epochs are
+ * read-only and upgrade to version 2 on the next persist. ML-KEM public keys are kept so
+ * re-wraps don't recompute. Private parts are PKCS#8-encoded; public parts are X.509 SPKI.</p>
  *
  * <h3>On-bus envelope</h3>
  * <p>The keystore item lives at label {@link #LABEL} with attribute
@@ -82,7 +84,12 @@ final class EpochKeystore {
     static final String ATTR_KIND = "hardened.kind";
     static final String KIND_VALUE = "epoch-keystore";
 
+    // VERSION_1: version|generation(8)|n|( id | x25519_priv | mlkem_priv | mlkem_pub )*  (read-only).
+    // VERSION_2 adds x25519_pub after x25519_priv so a loaded epoch can be encapsulated against
+    // (writes need the epoch public key). V1 entries load with a null X25519 public -- readable,
+    // but not writable under -- which is fine because V1 epochs are only ever read.
     private static final byte VERSION_1 = 0x01;
+    private static final byte VERSION_2 = 0x02;
     private static final int NONCE_LEN = 12;
     private static final int KEK_LEN = 32; // AES-256
     private static final int TAG_BITS = 128;
@@ -140,25 +147,33 @@ final class EpochKeystore {
             Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
             if (attrs.isEmpty() || !KIND_VALUE.equals(attrs.get().get(ATTR_KIND))) continue;
             Parsed parsed = wrapped.withSecret(path, body -> {
+                byte[] raw;
                 try {
-                    byte[] raw = Base64.getDecoder().decode(new String(body));
-                    try {
-                        byte[] plain = aeadDecrypt(deriveKek(provider.getPepper()), raw);
-                        try {
-                            return deserialize(plain);
-                        } finally {
-                            Arrays.fill(plain, (byte) 0);
-                        }
-                    } catch (GeneralSecurityException e) {
-                        log.warn("EpochKeystore: existing keystore at {} could not be decrypted: {}",
-                                path, e.getMessage());
-                        return null;
-                    } finally {
-                        Arrays.fill(raw, (byte) 0);
-                    }
+                    raw = Base64.getDecoder().decode(new String(body));
                 } catch (IllegalArgumentException e) {
                     log.warn("EpochKeystore: keystore body at {} is not valid base64", path);
                     return null;
+                }
+                try {
+                    byte[] plain = aeadDecrypt(deriveKek(provider.getPepper()), raw);
+                    try {
+                        return deserialize(plain);
+                    } catch (RuntimeException e) {
+                        // Decrypted but did not parse: an unknown/older wire format or a truncated
+                        // body. Treat as undecryptable rather than letting the exception escape and
+                        // crash the whole load.
+                        log.warn("EpochKeystore: keystore at {} decrypted but did not parse: {}",
+                                path, e.toString());
+                        return null;
+                    } finally {
+                        Arrays.fill(plain, (byte) 0);
+                    }
+                } catch (GeneralSecurityException e) {
+                    log.warn("EpochKeystore: existing keystore at {} could not be decrypted: {}",
+                            path, e.getMessage());
+                    return null;
+                } finally {
+                    Arrays.fill(raw, (byte) 0);
                 }
             }).orElse(null);
             if (parsed == null) continue; // undecryptable: not ours to judge, leave it alone
@@ -322,22 +337,25 @@ final class EpochKeystore {
         for (Map.Entry<String, EpochKeyPair> e : entries.entrySet()) {
             byte[] id = e.getKey().getBytes(StandardCharsets.US_ASCII);
             byte[] xPriv = e.getValue().x25519.getPrivate().getEncoded();
+            byte[] xPub = x25519PublicEncoded(e.getValue());
             byte[] mPriv = e.getValue().mlkem == null ? new byte[0] : e.getValue().mlkem.getPrivate().getEncoded();
             byte[] mPub = e.getValue().mlkemPubEncoded == null ? new byte[0] : e.getValue().mlkemPubEncoded;
-            total += 1 + id.length + 2 + xPriv.length + 2 + mPriv.length + 2 + mPub.length;
+            total += 1 + id.length + 2 + xPriv.length + 2 + xPub.length + 2 + mPriv.length + 2 + mPub.length;
         }
         ByteBuffer buf = ByteBuffer.allocate(total);
-        buf.put(VERSION_1);
+        buf.put(VERSION_2);
         buf.putLong(generation);
         buf.putShort((short) entries.size());
         for (Map.Entry<String, EpochKeyPair> e : entries.entrySet()) {
             byte[] id = e.getKey().getBytes(StandardCharsets.US_ASCII);
             byte[] xPriv = e.getValue().x25519.getPrivate().getEncoded();
+            byte[] xPub = x25519PublicEncoded(e.getValue());
             byte[] mPriv = e.getValue().mlkem == null ? new byte[0] : e.getValue().mlkem.getPrivate().getEncoded();
             byte[] mPub = e.getValue().mlkemPubEncoded == null ? new byte[0] : e.getValue().mlkemPubEncoded;
             buf.put((byte) id.length);
             buf.put(id);
             buf.putShort((short) xPriv.length).put(xPriv);
+            buf.putShort((short) xPub.length).put(xPub);
             buf.putShort((short) mPriv.length).put(mPriv);
             buf.putShort((short) mPub.length).put(mPub);
             Arrays.fill(xPriv, (byte) 0);
@@ -346,13 +364,23 @@ final class EpochKeystore {
         return buf.array();
     }
 
+    /** X25519 public SPKI, or empty for an epoch loaded from a V1 keystore that never stored it. */
+    private static byte[] x25519PublicEncoded(EpochKeyPair pair) {
+        return pair.x25519.getPublic() == null ? new byte[0] : pair.x25519.getPublic().getEncoded();
+    }
+
     /** One decrypted keystore snapshot: its persist generation and the epoch entries. */
     private record Parsed(long generation, Map<String, EpochKeyPair> entries) {}
 
     private Parsed deserialize(byte[] in) {
         ByteBuffer buf = ByteBuffer.wrap(in);
         byte version = buf.get();
-        if (version != VERSION_1) {
+        boolean hasX25519Pub;
+        if (version == VERSION_2) {
+            hasX25519Pub = true;
+        } else if (version == VERSION_1) {
+            hasX25519Pub = false; // legacy: no stored X25519 public -> loads with a null public
+        } else {
             throw new IllegalArgumentException("unsupported keystore version: " + version);
         }
         long gen = buf.getLong();
@@ -363,6 +391,11 @@ final class EpochKeystore {
             byte[] id = new byte[idLen]; buf.get(id);
             int xPrivLen = Short.toUnsignedInt(buf.getShort());
             byte[] xPriv = new byte[xPrivLen]; buf.get(xPriv);
+            byte[] xPub = new byte[0];
+            if (hasX25519Pub) {
+                int xPubLen = Short.toUnsignedInt(buf.getShort());
+                xPub = new byte[xPubLen]; buf.get(xPub);
+            }
             int mPrivLen = Short.toUnsignedInt(buf.getShort());
             byte[] mPriv = new byte[mPrivLen]; buf.get(mPriv);
             int mPubLen = Short.toUnsignedInt(buf.getShort());
@@ -370,7 +403,11 @@ final class EpochKeystore {
 
             KeyPair x;
             try {
-                x = HybridKem.importX25519KeyPairFromPkcs8(xPriv);
+                // With the public present (V2) the epoch is fully usable, including for writes;
+                // without it (legacy V1) only the private is available -- reads still work.
+                x = xPub.length > 0
+                        ? HybridKem.importX25519KeyPair(xPriv, xPub)
+                        : HybridKem.importX25519KeyPairFromPkcs8(xPriv);
             } finally {
                 Arrays.fill(xPriv, (byte) 0);
             }

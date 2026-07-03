@@ -264,6 +264,22 @@ public final class HybridKem {
      * {@link EpochKeystore} so a freshly-loaded keystore can return the pair without
      * having stored the public key separately.
      */
+    /**
+     * Reconstructs an X25519 {@link KeyPair} from PKCS#8 private + X.509 SPKI public. Unlike
+     * {@link #importX25519KeyPairFromPkcs8(byte[])}, the returned pair carries its public key, so a
+     * keystore-loaded epoch can be encapsulated against (i.e. written under), not just read.
+     */
+    public static KeyPair importX25519KeyPair(byte[] pkcs8Priv, byte[] x509Pub) {
+        try {
+            KeyFactory kf = KeyFactory.getInstance(X25519);
+            PrivateKey priv = kf.generatePrivate(new PKCS8EncodedKeySpec(pkcs8Priv));
+            PublicKey pub = kf.generatePublic(new X509EncodedKeySpec(x509Pub));
+            return new KeyPair(pub, priv);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("X25519 keypair import failed", e);
+        }
+    }
+
     public static KeyPair importX25519KeyPairFromPkcs8(byte[] pkcs8) {
         try {
             KeyFactory kf = KeyFactory.getInstance(X25519);

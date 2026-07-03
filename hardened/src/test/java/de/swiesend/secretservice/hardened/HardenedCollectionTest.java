@@ -255,6 +255,28 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void writeUnderEpochLoadedFromKeystoreAcrossSessions() {
+        // Two HardenedCollection instances over the same collection, reusing one epoch id, model
+        // two process lifetimes. Session 2 loads the epoch from the keystore and must be able to
+        // BOTH read the old item AND write a new one under that epoch. This regressed when the KEM
+        // became always-on: a keystore-loaded epoch carried a null X25519 public, so encapsulation
+        // (write) threw "missing its X25519 public key". Storing the public (keystore v2) fixes it.
+        HardenedCollection s1 = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true).epochId("shared-epoch").build();
+        String p1 = s1.createItem("a", "secret-a").orElseThrow();
+
+        HardenedCollection s2 = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true).epochId("shared-epoch").build();
+        assertEquals("secret-a", s2.withSecret(p1, String::new).orElse(null),
+                "session 2 must read the item written by session 1");
+        String p2 = s2.createItem("b", "secret-b").orElseThrow(); // previously threw / returned empty
+        assertEquals("secret-b", s2.withSecret(p2, String::new).orElse(null),
+                "session 2 must read the item it wrote under the loaded epoch");
+        assertEquals("secret-b", s1.withSecret(p2, String::new).orElse(null),
+                "the item written by session 2 must be readable through session 1 too");
+    }
+
+    @Test
     void rotateEpochDestroysAllSupersededEpochsNotJustPrevious() {
         // Two epochs accumulate in the keystore across "sessions": an oldest epoch (from an
         // earlier HardenedCollection instance) and a middle epoch. A single rotation must
