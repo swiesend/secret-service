@@ -6,6 +6,15 @@ The [secret-service](https://github.com/swiesend/secret-service) library impleme
 
 The 2.0 interface design is to be found on the [`develop-2.x.x`](https://github.com/swiesend/secret-service/tree/develop-2.x.x) branch.
 
+- `Fixed`:
+  - Flaky `CollectionTest.getAttributes`: gnome-keyring injects an `xdg:schema` attribute asynchronously, so the strict attribute-map assertion raced and failed intermittently (~1 run in 10). Assert only the user-defined attributes, ignoring provider-injected keys [#68](https://github.com/swiesend/secret-service/pull/68).
+  - `Collection.lock()` and collection creation no longer depend on a single fixed `Thread.sleep(DEFAULT_DELAY_MILLIS)`: they poll the expected state up to `Static.DBus.MAX_DELAY_MILLIS`, so under load `lock()` no longer spuriously returns `false` and a freshly created collection is no longer reported as "not created".
+- `Changed`:
+  - `Collection.lock()` is now response-aware: it branches on the Secret Service `Lock` response `(locked, prompt)`, returning promptly instead of waiting out the timeout when the collection cannot be locked (a lock requiring a prompt, or a non-lockable collection).
+  - `CollectionTest.deleteWithALockedService` is tagged `@Tag("system-test")` and excluded from the default `mvn test`: `lockService()` locks the whole service including the user's login keyring, which pops an interactive unlock prompt during an otherwise headless run. Run it explicitly with `-Psystem-test` on a throwaway keyring.
+- `Added`:
+  - `CollectionLockLogicTest`: daemon-free unit tests covering the `lock()` decision helpers (`containsPath`, `requiresPrompt`, `awaitUntil`).
+
 ## [2.0.1-alpha] - 2024-01-21
 
 - `Fixed`:
