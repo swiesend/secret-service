@@ -807,18 +807,42 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean lock() {
-        if (collection != null && !collection.isLocked()) {
-            Optional<Pair<List<DBusPath>, DBusPath>> result = service.getService().lock(lockable());
-            if (result.isEmpty()) {
-                log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
-                return false;
-            }
-            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
-            // Poll until the daemon reflects the lock (bounded by MAX_DELAY_MILLIS) rather than
-            // sleeping one fixed tick and hoping: under load the lock can land after that tick,
-            // which previously made lock() spuriously return false.
-            awaitUntil(collection::isLocked);
+        if (collection == null || collection.isLocked()) {
+            // Nothing to do: no collection, or it is already locked.
+            return collection != null && collection.isLocked();
         }
+        Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
+        if (maybeResult.isEmpty()) {
+            log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
+            return false;
+        }
+        Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
+
+        // The Secret Service Lock method returns (locked, prompt): `locked` are the objects the
+        // daemon locked immediately, `prompt` (!= "/") means it needs user interaction. Branch on
+        // the response instead of blindly polling, so we neither race the "Locked" property nor
+        // burn the timeout on a state that will never change.
+        boolean lockedImmediately = result.a != null && result.a.stream()
+                .anyMatch(p -> p != null && collection.getObjectPath().equals(p.getPath()));
+        boolean promptRequired = result.b != null && result.b.getPath() != null
+                && !"/".equals(result.b.getPath());
+
+        if (lockedImmediately) {
+            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+            // Daemon acknowledged the lock; poll only so the "Locked" property has time to
+            // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
+            return awaitUntil(collection::isLocked);
+        }
+        if (promptRequired) {
+            // Locking needs a prompt, which the functional layer does not drive here. Don't wait
+            // out the timeout for a state that won't change -- report the failure immediately.
+            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
+                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
+                    + "leaving it unlocked.");
+            return false;
+        }
+        // Neither locked immediately nor prompted (e.g. a provider that does not support locking
+        // this collection): reflect the daemon's current view without a long wait.
         return collection.isLocked();
     }
 
