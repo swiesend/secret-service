@@ -7,8 +7,10 @@ import tss.TpmFactory;
 import tss.tpm.CreatePrimaryResponse;
 import tss.tpm.CreateResponse;
 import tss.tpm.TPMA_OBJECT;
+import tss.tpm.TPMA_NV;
 import tss.tpm.TPMS_KEYEDHASH_PARMS;
 import tss.tpm.TPMS_NULL_SCHEME_KEYEDHASH;
+import tss.tpm.TPMS_NV_PUBLIC;
 import tss.tpm.TPMS_SENSITIVE_CREATE;
 import tss.tpm.TPMS_PCR_SELECTION;
 import tss.tpm.TPM2B_DIGEST_KEYEDHASH;
@@ -113,15 +115,23 @@ public final class Tpm2Provisioner {
                 System.exit(2);
                 return;
             }
+            Supplier<Tpm> tpmSupplier = parsed.simulator
+                    ? TpmFactory::localTpmSimulator
+                    : TpmFactory::platformTpm;
+
+            if (parsed.defineCounterIndex != null) {
+                defineGenerationCounter(parsed.defineCounterIndex, password, tpmSupplier);
+                System.out.println("defined NV generation counter at index 0x"
+                        + Integer.toHexString(parsed.defineCounterIndex));
+                return;
+            }
+
             pepper = parsed.pepperSource.read();
             if (pepper.length == 0) {
                 System.err.println("tpm2-provisioner: pepper is empty");
                 System.exit(2);
                 return;
             }
-            Supplier<Tpm> tpmSupplier = parsed.simulator
-                    ? TpmFactory::localTpmSimulator
-                    : TpmFactory::platformTpm;
             Tpm2SealedBlob blob = seal(pepper, password, tpmSupplier);
             blob.writeTo(parsed.outputPath);
             System.out.println("wrote sealed blob to " + parsed.outputPath);
@@ -186,6 +196,47 @@ public final class Tpm2Provisioner {
     }
 
     /**
+     * Define a TPM NV <b>monotonic counter</b> to back {@link Tpm2GenerationAnchor}. Run once per
+     * collection/keystore, at a distinct {@code nvIndex}. The counter is created under the owner
+     * hierarchy with the given {@code password} as its index auth value (increment and read are
+     * auth-gated so a hostile process cannot drive the floor), and is initialised with one
+     * increment so it is immediately readable.
+     *
+     * <p>Increment/read auth participates in the TPM dictionary-attack lockout ({@code NO_DA} is
+     * deliberately not set). The caller zeroes {@code password}; this method zeroes its copy.</p>
+     *
+     * @throws RuntimeException (TSS.Java unchecked) if the index is already defined or the TPM
+     *         rejects the definition.
+     */
+    public static void defineGenerationCounter(int nvIndex, char[] password, Supplier<Tpm> tpmSupplier) {
+        byte[] auth = charsToUtf8(password);
+        Tpm tpm = null;
+        try {
+            tpm = tpmSupplier.get();
+            TPM_HANDLE idx = TPM_HANDLE.NV(nvIndex);
+            TPMS_NV_PUBLIC nvPublic = new TPMS_NV_PUBLIC(
+                    idx,
+                    TPM_ALG_ID.SHA256,
+                    new TPMA_NV(TPMA_NV.COUNTER, TPMA_NV.AUTHWRITE, TPMA_NV.AUTHREAD),
+                    new byte[0], // no policy; auth is the index auth value
+                    8);          // TPM NV counters are 8 bytes
+            tpm.NV_DefineSpace(tpm._OwnerHandle, auth, nvPublic);
+            // First increment initialises the counter so NV_Read succeeds thereafter.
+            idx.AuthValue = auth;
+            tpm.NV_Increment(idx, idx);
+        } finally {
+            if (tpm != null) {
+                try {
+                    tpm.close();
+                } catch (IOException e) {
+                    log.debug("tpm.close() failed: {}", e.toString());
+                }
+            }
+            Arrays.fill(auth, (byte) 0);
+        }
+    }
+
+    /**
      * Sealed keyed-hash template. Note the absence of {@code TPMA_OBJECT.noDA}: the
      * sealed object participates in the TPM's Dictionary Attack (DA) lockout, so a
      * same-UID attacker who captures the blob file but lacks the password cannot
@@ -214,7 +265,10 @@ public final class Tpm2Provisioner {
 
     private static void usage(PrintStream out) {
         out.println("usage: Tpm2Provisioner --out <path> [password-source] [pepper-source] [--simulator]");
+        out.println("   or: Tpm2Provisioner --define-counter <nv-index> [password-source] [--simulator]");
         out.println("  --out               path of the sealed-blob file to create (mode 0600)");
+        out.println("  --define-counter I  define an NV monotonic counter at index I (e.g. 0x01800200)");
+        out.println("                      to back Tpm2GenerationAnchor, instead of sealing a pepper");
         out.println("  --simulator         use localhost:2321 TPM simulator instead of platform TPM");
         out.println();
         out.println("password source (exactly one; --password-prompt is the default on a tty):");
@@ -349,12 +403,16 @@ public final class Tpm2Provisioner {
         final PasswordSource passwordSource;
         final PepperSource pepperSource;
         final boolean simulator;
+        /** When non-null, define an NV generation counter at this index instead of sealing a pepper. */
+        final Integer defineCounterIndex;
 
-        Args(Path outputPath, PasswordSource passwordSource, PepperSource pepperSource, boolean simulator) {
+        Args(Path outputPath, PasswordSource passwordSource, PepperSource pepperSource, boolean simulator,
+             Integer defineCounterIndex) {
             this.outputPath = outputPath;
             this.passwordSource = passwordSource;
             this.pepperSource = pepperSource;
             this.simulator = simulator;
+            this.defineCounterIndex = defineCounterIndex;
         }
 
         static Args parse(String[] argv) {
@@ -364,6 +422,7 @@ public final class Tpm2Provisioner {
             boolean passwordOnStdin = false;
             boolean pepperOnStdin = false;
             boolean simulator = false;
+            Integer defineCounterIndex = null;
             int pwSourcesSpecified = 0;
             int pepperSourcesSpecified = 0;
             for (int i = 0; i < argv.length; i++) {
@@ -372,6 +431,13 @@ public final class Tpm2Provisioner {
                     case "--out" -> {
                         if (++i >= argv.length) throw new IllegalArgumentException("--out requires a path argument");
                         out = Path.of(argv[i]);
+                    }
+                    case "--define-counter" -> {
+                        if (++i >= argv.length) throw new IllegalArgumentException("--define-counter requires an NV index (e.g. 0x01800200)");
+                        try { defineCounterIndex = Integer.decode(argv[i]); }
+                        catch (NumberFormatException e) {
+                            throw new IllegalArgumentException("--define-counter index must be an integer, got: " + argv[i]);
+                        }
                     }
                     case "--password-stdin" -> {
                         pwSource = stdinSource();
@@ -420,7 +486,14 @@ public final class Tpm2Provisioner {
                     default -> throw new IllegalArgumentException("unknown flag: " + a);
                 }
             }
-            if (out == null) throw new IllegalArgumentException("--out is required");
+            // --define-counter is a distinct action: it needs a password (the counter's index auth)
+            // but no --out and no pepper source.
+            if (defineCounterIndex == null && out == null) {
+                throw new IllegalArgumentException("--out is required (or use --define-counter <index>)");
+            }
+            if (defineCounterIndex != null && pepperSourcesSpecified > 0) {
+                throw new IllegalArgumentException("--define-counter does not seal a pepper; drop the --pepper-* flag");
+            }
             if (pwSourcesSpecified > 1) {
                 throw new IllegalArgumentException("specify at most one password source");
             }
@@ -441,7 +514,7 @@ public final class Tpm2Provisioner {
                 // never sees it; pepper recovery requires re-provisioning on the same TPM.
                 pepperSource = randomPepperSource();
             }
-            return new Args(out, pwSource, pepperSource, simulator);
+            return new Args(out, pwSource, pepperSource, simulator, defineCounterIndex);
         }
     }
 }
