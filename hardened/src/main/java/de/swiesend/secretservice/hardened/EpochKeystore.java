@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Per-collection store of {@code epoch_id → (X25519 keypair, ML-KEM keypair)} pairs.
@@ -206,6 +207,21 @@ final class EpochKeystore {
     synchronized void removeEpoch(String epochId) {
         loadIfPresent();
         if (entries.remove(epochId) != null) {
+            persist();
+        }
+    }
+
+    /**
+     * Drops every epoch entry except {@code epochId} (forward-secrecy primitive); persists if
+     * anything changed. Unlike {@link #removeEpoch}, this also destroys epochs from earlier
+     * sessions that a single-step rotation would leave alive, so a pre-rotation backup plus the
+     * current keystore can no longer decapsulate any superseded envelope.
+     */
+    synchronized void retainOnly(String epochId) {
+        loadIfPresent();
+        if (entries.keySet().retainAll(Set.of(epochId))) {
+            log.info("EpochKeystore: retained only epoch {}; destroyed all superseded epoch keys.",
+                    epochId);
             persist();
         }
     }

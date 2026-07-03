@@ -442,14 +442,18 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             allOk &= ok;
         }
         if (allOk) {
-            // Forward secrecy: drop the old epoch's private keys from the keystore. Items
-            // captured pre-rotation can no longer be decapsulated. Only run on full success
-            // so we never strand items behind a destroyed key.
+            // Forward secrecy: keep only the new epoch's keypair and destroy every superseded
+            // one -- not just `previous`, but any epoch left over from earlier sessions. A fully
+            // successful rewrap proves no surviving hardened item references an older epoch (an
+            // unreadable item would have failed the rewrap and set allOk=false, keeping all keys),
+            // so retaining only `next` can never strand an item. Items captured pre-rotation can
+            // no longer be decapsulated by any retained key.
             try {
-                keystore.removeEpoch(previous);
-                log.info("rotateEpoch: destroyed previous epoch {} keypair (forward secrecy)", previous);
+                keystore.retainOnly(next);
+                log.info("rotateEpoch: retained only epoch {}; destroyed all superseded epoch keys "
+                        + "(forward secrecy)", next);
             } catch (RuntimeException e) {
-                log.warn("rotateEpoch: failed to destroy previous epoch {}: {}", previous, e.toString());
+                log.warn("rotateEpoch: failed to destroy superseded epoch keys: {}", e.toString());
                 allOk = false;
             }
         } else {

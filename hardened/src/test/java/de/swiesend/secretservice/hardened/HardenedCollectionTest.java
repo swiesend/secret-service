@@ -213,6 +213,46 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void rotateEpochDestroysAllSupersededEpochsNotJustPrevious() {
+        // Two epochs accumulate in the keystore across "sessions": an oldest epoch (from an
+        // earlier HardenedCollection instance) and a middle epoch. A single rotation must
+        // destroy BOTH, not just the immediately-previous one -- otherwise a pre-rotation
+        // backup plus the current keystore could still decapsulate the oldest envelope.
+        HardenedCollection oldest = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .enablePostQuantum(true)
+                .epochId("epoch-oldest")
+                .build();
+        String pathOldest = oldest.createItem("oldest", "oldest-secret").orElseThrow();
+        FakeCollection.Item snapshot = fake.rawItems().get(pathOldest);
+        String capturedSecret = snapshot.rawSecret();
+        Map<String, String> capturedAttrs = new HashMap<>(snapshot.attrs());
+
+        // A later session under a different epoch; its keystore now holds {oldest, middle}.
+        HardenedCollection middle = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .enablePostQuantum(true)
+                .epochId("epoch-middle")
+                .build();
+        middle.createItem("middle", "middle-secret").orElseThrow();
+
+        assertTrue(middle.rotateEpoch(), "rotateEpoch must succeed");
+
+        // The keystore must now hold exactly one epoch (the new one); both older epochs gone.
+        EpochKeystore ks = new EpochKeystore(fake, provider);
+        ks.get("epoch-oldest"); // triggers load
+        assertEquals(1, ks.sizeForTest(), "keystore must retain exactly the new epoch");
+        assertTrue(ks.get("epoch-oldest").isEmpty(), "oldest epoch key must be destroyed");
+        assertTrue(ks.get("epoch-middle").isEmpty(), "middle epoch key must be destroyed");
+
+        // A pre-rotation copy of the oldest envelope must no longer decrypt: forward secrecy
+        // now covers epochs older than `previous`, which the old removeEpoch(previous) missed.
+        fake.seedRaw("/replay/oldest", "oldest", capturedSecret, capturedAttrs);
+        assertTrue(middle.withSecret("/replay/oldest", String::new).isEmpty(),
+                "captured oldest-epoch envelope must be unreadable after rotation destroys its key");
+    }
+
+    @Test
     void emittedSecretIsBase64EnvelopeNotPlaintext() {
         HardenedCollection h = build();
         String path = h.createItem("x", "plaintext-value").orElseThrow();
