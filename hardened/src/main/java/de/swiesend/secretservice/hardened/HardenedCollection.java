@@ -216,34 +216,43 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
         byte[] plaintext = charsToUtf8(secret);
         byte[] dek = null;
+        byte[] kemSecret = null;
         byte[] nonce = new byte[Envelope.NONCE_LEN];
-        byte[] aeadCt;
-        // Encapsulate against the current epoch's public key when PQ is enabled. encapsulateForWrite
-        // returns a (kemCiphertext, kemSecret) pair, both empty when PQ is disabled. The kemSecret
-        // is mixed into HKDF below; kemCiphertext is stored alongside the AEAD ciphertext.
-        HybridKem.Encapsulation encap = encapsulateForWrite();
-        byte[] kemCt = encap == null ? new byte[0] : encap.kemCiphertext();
-        byte[] kemSecret = encap == null ? new byte[0] : encap.sharedSecret();
+        KemId kemId = kem.kemId();
         String envelopeB64;
+        // Everything that touches key material runs inside this try so a KEM/keystore/AEAD
+        // failure both zeroes the sensitive buffers (finally) and returns a fail-safe empty
+        // (catch) -- createItem is typed Optional<String>, so it must not leak an exception.
         try {
+            // Encapsulate against the current epoch keypair (always on: classical X25519, plus the
+            // ML-KEM half when PQ is enabled). The kemSecret is mixed into HKDF; kemCiphertext is
+            // stored in the envelope.
+            HybridKem.Encapsulation encap = encapsulateForWrite();
+            byte[] kemCt = encap.kemCiphertext();
+            kemSecret = encap.sharedSecret();
             dek = deriveDek(pepper, totpCode, salt, epochBytes,
                     itemId.getBytes(StandardCharsets.US_ASCII), kemSecret);
             new SecureRandom().nextBytes(nonce);
+            byte[] aeadCt;
             try {
                 aeadCt = aeadEncrypt(dek, nonce, plaintext, associatedData(salt, epochBytes, itemId));
             } catch (GeneralSecurityException e) {
                 throw new IllegalStateException("AES-GCM encryption failed", e);
             }
 
-            byte kemId = kem.kemId();
             byte flags = 0;
-            if (kemId == Envelope.KEM_ID_X25519_MLKEM768) flags |= Envelope.FLAG_PQ_HYBRID;
+            if (kemId.carriesPqCiphertext()) flags |= Envelope.FLAG_PQ_HYBRID;
             if (provider.mode() == KeyMaterialProvider.Mode.STORED_STEP) flags |= Envelope.FLAG_STORED_STEP_TOTP;
             if (provider.mode() == KeyMaterialProvider.Mode.LIVE_CODE)   flags |= Envelope.FLAG_LIVE_TOTP;
 
-            Envelope env = new Envelope(Envelope.VERSION_1, flags, kemId, salt, epochBytes,
-                    kemCt == null ? new byte[0] : kemCt, nonce, aeadCt);
+            Envelope env = new Envelope(Envelope.VERSION_1, flags, kemId.id(), salt, epochBytes,
+                    kemCt, nonce, aeadCt);
             envelopeB64 = Base64.getEncoder().encodeToString(env.toBytes());
+        } catch (IllegalStateException e) {
+            // KEM failure (e.g. an epoch keypair could not be loaded/persisted) or AES-GCM
+            // failure: report as an empty Optional, never a thrown exception.
+            log.warn("createItem: could not seal item '{}': {}", label, e.toString());
+            return Optional.empty();
         } finally {
             Arrays.fill(plaintext, (byte) 0);
             if (dek != null) Arrays.fill(dek, (byte) 0);
@@ -261,8 +270,8 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
         merged.put(ATTR_KDF, KDF_ALG);
         merged.put(ATTR_AEAD, AEAD_ALG);
-        merged.put(ATTR_KEM, kem.algorithmLabel());
-        merged.put(ATTR_KEM_ID, String.format("0x%02x", kem.kemId() & 0xff));
+        merged.put(ATTR_KEM, kemId.label());
+        merged.put(ATTR_KEM_ID, String.format("0x%02x", kemId.id() & 0xff));
         merged.put("hardened.item.id", itemId);
 
         return wrapped.createItem(label, envelopeB64, merged);
@@ -798,9 +807,10 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             throw new IllegalStateException("Epoch " + envEpoch + " is missing its X25519 private key");
         }
         java.security.PrivateKey pqPriv = pair.mlkem == null ? null : pair.mlkem.getPrivate();
-        // Only KEM_ID_X25519_MLKEM768 carries a PQ ciphertext half; KEM_ID_X25519 is classical
-        // and must decapsulate with envelopeIsHybrid=false or the PQ-part check would reject it.
-        boolean envIsHybrid = env.kemId() == Envelope.KEM_ID_X25519_MLKEM768;
+        // Only kems that carry a PQ ciphertext half decapsulate as hybrid; a classical X25519
+        // envelope must use envelopeIsHybrid=false or the PQ-part check would reject it. Derive
+        // this from the KemId table so it can never disagree with the write-side flag.
+        boolean envIsHybrid = KemId.fromId(env.kemId()).map(KemId::carriesPqCiphertext).orElse(false);
         return kem.decapsulate(pair.x25519.getPrivate(), pqPriv, env.kemCiphertext(), envIsHybrid);
     }
 

@@ -193,14 +193,11 @@ public final class Envelope {
         return true;
     }
 
-    /** Human-readable label for a {@code kem_id}, suitable for attributes / logs. */
+    /**
+     * Human-readable label for a {@code kem_id}, suitable for attributes / logs. Delegates to
+     * {@link KemId#labelFor(byte)} so the id-to-label mapping lives in exactly one place.
+     */
     public static String kemIdLabel(byte kemId) {
-        return switch (kemId) {
-            case KEM_ID_NONE -> "none";
-            case KEM_ID_X25519_MLKEM768 -> "x25519+ml-kem-768";
-            case KEM_ID_X25519_HQC192 -> "x25519+hqc-192";
-            case KEM_ID_X25519 -> "x25519";
-            default -> "kem-id-0x" + Integer.toHexString(kemId & 0xff);
-        };
+        return KemId.labelFor(kemId);
     }
 }

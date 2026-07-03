@@ -74,19 +74,18 @@ public final class HybridKem {
     public boolean postQuantumAvailable() { return postQuantumAvailable; }
 
     public String algorithmLabel() {
-        return Envelope.kemIdLabel(kemId());
+        return kemId().label();
     }
 
     /**
-     * The {@link Envelope} {@code kem_id} byte this instance will stamp into fresh
-     * envelopes. The KEM is always on: {@link Envelope#KEM_ID_X25519_MLKEM768} when PQ is
-     * active, otherwise the classical {@link Envelope#KEM_ID_X25519}. It never returns
-     * {@link Envelope#KEM_ID_NONE} -- that value only ever appears on legacy alpha envelopes.
-     * Future iterations pick from the reserved values (HQC-192, triple hybrid) without
-     * breaking the envelope format.
+     * The {@link KemId} this instance stamps into fresh envelopes. The KEM is always on:
+     * {@link KemId#X25519_MLKEM768} when PQ is active, otherwise the classical
+     * {@link KemId#X25519}. It never returns {@link KemId#NONE} -- that value only ever appears
+     * on legacy alpha envelopes. Future iterations pick from the reserved values (HQC-192,
+     * triple hybrid) without breaking the envelope format.
      */
-    public byte kemId() {
-        return postQuantumAvailable ? Envelope.KEM_ID_X25519_MLKEM768 : Envelope.KEM_ID_X25519;
+    public KemId kemId() {
+        return postQuantumAvailable ? KemId.X25519_MLKEM768 : KemId.X25519;
     }
 
     /**
