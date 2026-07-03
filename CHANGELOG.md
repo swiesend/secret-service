@@ -2,16 +2,31 @@
 
 The [secret-service](https://github.com/swiesend/secret-service) library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
-## Unreleased
+## [3.0.0-alpha] - Unreleased
 
+Major release introducing a new functional API, multi-provider support, and an upgrade to dbus-java 5. Requires **JDK 17**. Delivered on the `develop-2.x.x` line (now merged to `main`).
+
+- `Added`:
+  - New **functional API** (`de.swiesend.secretservice.functional`): `SecretService`, `Session`, `Collection`, `System`, backed by `functional.interfaces` (`ServiceInterface`, `SessionInterface`, `CollectionInterface`, `SystemInterface`, `Activatable`, `AvailableServices`). Instance-scoped connections, `Optional` returns instead of checked exceptions, and `AutoCloseable` lifecycle. Entry point: `SecretService.create()`.
+  - Secure secret access on the functional API: `getSecret(...)` returns `Optional<char[]>` (never `String`), and `withSecret(path, Function<char[],R>)` / `withSecrets(Function<Map<String,char[]>,R>)` decrypt, hand the caller a `char[]`, and zero it in a `finally` block so plaintext does not linger on the heap.
+  - **Search API**: `Collection.search(query, SearchMode)` with substring and fuzzy (Levenshtein) matching; `SearchMode` = `BY_NAME`, `BY_OBJECT_ID`, `BY_OBJECT_PATH`, `BY_ATTRIBUTE_KEY`, `BY_ATTRIBUTE_VALUE`.
+  - **Multi-provider support**: `ProviderDetector` and `getProvider()` identify the backing Secret Service implementation (gnome-keyring, KeePassXC, KWallet served via ksecretd). Provider-agnostic `ProviderSystemTest` (`@Tag("system-test")`) runs in CI across all three providers.
+  - `collectionById` / `openById` lookups and label↔id mapping on the functional API.
+  - Standalone developer **GUI** extracted to a separate `tools/gui` module (not part of the library jar).
+  - New JPMS exports: `de.swiesend.secretservice.functional`, `functional.interfaces`, and `gnome.keyring.interfaces`.
+- `Changed`:
+  - Upgrade **dbus-java** from 4.x to **5.2.0**: construct `MethodCall` via the public `MessageFactory` (`connection.getMessageFactory().createMethodCall(...)`) — no reflection and no `--add-opens`. Migrate `ObjectPath` → `DBusPath` across the codebase, and normalize `ay` byte arrays (which 5.1.0+ may unmarshal as `byte[]` or `List<Byte>`) via `Static.Utils.toByteArray`.
+  - Path-scoped signal registration (fixes `InvalidBusNameException`); suppress stack traces for known D-Bus error responses in `MessageHandler`; verify lock/unlock post-conditions by returning the actual daemon state.
+  - Address the CVE-2018-19358 silent-read exposure: the functional API never returns `String` secrets, forces a user-permission prompt before unlocking (all collections, not just the default), and zeroes secret buffers after use.
+  - `Collection.lock()` is now response-aware: it branches on the Secret Service `Lock` response `(locked, prompt)`, returning promptly instead of waiting out the timeout when the collection cannot be locked (a lock requiring a prompt, or a non-lockable collection). `lock()` and collection creation also poll the expected state up to `Static.DBus.MAX_DELAY_MILLIS` instead of a single fixed `Thread.sleep(DEFAULT_DELAY_MILLIS)`, so under load `lock()` no longer spuriously returns `false` and a freshly created collection is no longer reported as "not created".
+  - Update dependencies: `hkdf` 2.0.0, `slf4j` 2.0.17, JUnit Jupiter 5.10.5.
+- `Deprecated`:
+  - `SimpleCollection` and its base interface are marked `@Deprecated(since = "3.0", forRemoval = true)`. They remain as a backward-compatible adapter that delegates to the functional API, scheduled for removal in 4.0.
 - `Fixed`:
   - Flaky `CollectionTest.getAttributes`: gnome-keyring injects an `xdg:schema` attribute asynchronously, so the strict attribute-map assertion raced and failed intermittently (~1 run in 10). Assert only the user-defined attributes, ignoring provider-injected keys [#68](https://github.com/swiesend/secret-service/pull/68).
-  - `Collection.lock()` and collection creation no longer depend on a single fixed `Thread.sleep(DEFAULT_DELAY_MILLIS)`: they poll the expected state up to `Static.DBus.MAX_DELAY_MILLIS`, so under load `lock()` no longer spuriously returns `false` and a freshly created collection is no longer reported as "not created".
-- `Changed`:
-  - `Collection.lock()` is now response-aware: it branches on the Secret Service `Lock` response `(locked, prompt)`, returning promptly instead of waiting out the timeout when the collection cannot be locked (a lock requiring a prompt, or a non-lockable collection).
   - `CollectionTest.deleteWithALockedService` is tagged `@Tag("system-test")` and excluded from the default `mvn test`: `lockService()` locks the whole service including the user's login keyring, which pops an interactive unlock prompt during an otherwise headless run. Run it explicitly with `-Psystem-test` on a throwaway keyring.
-- `Added`:
-  - `CollectionLockLogicTest`: daemon-free unit tests covering the `lock()` decision helpers (`containsPath`, `requiresPrompt`, `awaitUntil`).
+- `Testing`:
+  - Provider-agnostic system tests (`@Tag("system-test")`, run via `-Psystem-test`) across gnome-keyring, KeePassXC, and KWallet; added `CollectionLockLogicTest` (daemon-free unit tests for the `lock()` decision helpers `containsPath`, `requiresPrompt`, `awaitUntil`) and search-API tests.
 
 ## [2.0.1-alpha] - 2024-01-21
 
