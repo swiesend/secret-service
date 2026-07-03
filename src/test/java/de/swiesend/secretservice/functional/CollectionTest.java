@@ -156,18 +156,34 @@ class CollectionTest {
         String item = null;
         Optional<Map<String, String>> maybeAttributes;
         Map<String, String> emptyMap = Map.of();
-        ;
+
+        // gnome-keyring injects a default "xdg:schema"=org.freedesktop.Secret.Generic attribute,
+        // and does so asynchronously -- so it may or may not be present by the time getAttributes
+        // returns right after createItem. Comparing the raw map is therefore racy (this test used
+        // to flake ~1 run in 10). Assert on the user-defined attributes only, ignoring any
+        // provider-injected bookkeeping keys, so the result is deterministic. This mirrors how
+        // createItemWithAttribute() and getItems() already tolerate xdg:schema.
 
         item = collection.createItem("test", "secret").get();
         maybeAttributes = collection.getAttributes(item);
         assertTrue(maybeAttributes.isPresent());
-        assertEquals(emptyMap, maybeAttributes.get());
+        assertEquals(emptyMap, userAttributes(maybeAttributes.get()));
 
         Map<String, String> attributes = Map.of("key", "value");
         item = collection.createItem("test", "secret", attributes).get();
         maybeAttributes = collection.getAttributes(item);
         assertTrue(maybeAttributes.isPresent());
-        assertEquals(attributes, maybeAttributes.get());
+        assertEquals(attributes, userAttributes(maybeAttributes.get()));
+    }
+
+    /**
+     * Strips provider-injected bookkeeping attributes (e.g. gnome-keyring's asynchronously added
+     * "xdg:schema") so a test can assert on exactly the attributes the caller set.
+     */
+    private static Map<String, String> userAttributes(Map<String, String> attributes) {
+        Map<String, String> userDefined = new HashMap<>(attributes);
+        userDefined.remove("xdg:schema");
+        return userDefined;
     }
 
     @Test
