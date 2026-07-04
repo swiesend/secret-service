@@ -79,7 +79,11 @@ public final class Tpm2GenerationAnchor implements GenerationAnchor {
             throw new IllegalStateException("TPM connection failed: " + e.getMessage(), e);
         }
         this.tpm = opened;
-        this.nvIndex = TPM_HANDLE.NV(nvIndex);
+        // nvIndex is a full NV handle (e.g. 0x01800200), so construct the handle directly.
+        // TPM_HANDLE.NV(x) computes 0x01000000 + x and expects a 24-bit offset; feeding it a
+        // full handle double-applies the NV base (0x01800200 -> 0x02800200), yielding an
+        // HMAC-session handle type that the TPM rejects with TPM_RC_VALUE.
+        this.nvIndex = new TPM_HANDLE(nvIndex);
         this.nvIndex.AuthValue = this.auth;
         try {
             // Fail fast (and clearly) if the counter was never provisioned.

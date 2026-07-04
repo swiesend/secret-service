@@ -213,7 +213,10 @@ public final class Tpm2Provisioner {
         Tpm tpm = null;
         try {
             tpm = tpmSupplier.get();
-            TPM_HANDLE idx = TPM_HANDLE.NV(nvIndex);
+            // nvIndex is a full NV handle (e.g. 0x01800200). Construct it directly: TPM_HANDLE.NV(x)
+            // adds the NV base 0x01000000 to x, so passing a full handle overflows into the
+            // handle-type byte (0x01800200 -> 0x02800200) and the TPM rejects it with TPM_RC_VALUE.
+            TPM_HANDLE idx = new TPM_HANDLE(nvIndex);
             TPMS_NV_PUBLIC nvPublic = new TPMS_NV_PUBLIC(
                     idx,
                     TPM_ALG_ID.SHA256,

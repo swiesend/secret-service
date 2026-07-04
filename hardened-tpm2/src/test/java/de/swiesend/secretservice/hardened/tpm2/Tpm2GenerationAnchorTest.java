@@ -38,7 +38,7 @@ class Tpm2GenerationAnchorTest {
 
     private static void undefineQuietly(int nvIndex) {
         try (Tpm tpm = TpmFactory.localTpmSimulator()) {
-            tpm.NV_UndefineSpace(tpm._OwnerHandle, TPM_HANDLE.NV(nvIndex));
+            tpm.NV_UndefineSpace(tpm._OwnerHandle, new TPM_HANDLE(nvIndex));
         } catch (Exception ignored) {
             // best-effort cleanup; index may not exist (TSS throws, which we swallow)
         }

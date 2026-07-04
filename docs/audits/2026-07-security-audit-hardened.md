@@ -23,7 +23,10 @@ attacker (same-UID, CVE-2018-19358) **out of scope**, and admits forward secrecy
 if backups are retained. The code matches those scoped claims. The remaining gaps are (a) a few
 crypto-hygiene deviations that are sound-but-non-idiomatic, and (b) several headline features that
 are **off or worthless in the default configuration** and only become real with the TPM module plus
-OS-level controls the library cannot enforce.
+OS-level controls the library cannot enforce. End-to-end testing against a TPM simulator (stood up
+during this audit) additionally revealed that the TPM anti-rollback anchor **never actually
+functioned** — every NV operation failed on a handle-construction bug that CI never caught because
+those tests skip without a simulator (**F-8**, now fixed and verified).
 
 **Premise: partially correct, and structurally limited.** The premise is sound as *defense-in-depth
 for offline/backup-theft (class C) and harvest-now-decrypt-later (class D)* attackers. But it is
@@ -52,6 +55,8 @@ than the feature list implies, which the project's own "do I need this?" tree co
 | F-5 | Low | `STORED_STEP` TOTP is self-defeating (labeled "theater" in code); `LIVE_CODE` is a liveness window, not a possession factor. |
 | F-6 | Low | Provider self-reports outrun enforcement (non-POSIX FS skips 0600 check but still claims `crossUid=REAL`); several providers never scrub on `close()`. |
 | F-7 | Low | `HardenedHealthCheck` reports "HEALTHY" with `sameUid=NONE`, attach mechanism on, and heap dumps enabled (those are WARN, not FAIL). |
+| F-8 | High | **TPM anti-rollback anchor never functioned**: `TPM_HANDLE.NV(fullHandle)` double-applies the NV base, so every NV define/increment/read fails `TPM_RC_VALUE`. Masked because the NV tests skip in CI without a simulator. **Fixed + verified end-to-end during this audit.** |
+| F-9 | Low | TPM pepper provider is not binary-safe: `getPepper()` UTF-8-decodes the unsealed bytes, silently corrupting any non-UTF-8 pepper. Harmless for the base64 peppers real providers emit; the round-trip test was asserting on raw binary. |
 | P-1 | High (premise) | Root of trust is the pepper; the layer cannot defend class A (same-UID) in-process — the threat the README motivates with. |
 | P-2 | Medium (premise) | Real, delivered value is concentrated in `hardened-tpm2` + a deployment posture the library can only recommend. |
 | G-1..G-6 | Info (positive) | AEAD usage, hybrid combiner, FS mechanism, fail-safe/zeroing hygiene, honest self-assessment. |
@@ -145,7 +150,8 @@ keyring can reintroduce an older genuine keystore snapshot and **resurrect the e
 
 Consequence: forward secrecy (a headline feature) is only robust when *both* (a) the pepper is
 outside same-UID reach *and* (b) a `Tpm2GenerationAnchor` is configured. In the default build,
-neither holds.
+neither holds — and per **F-8**, until this audit the anchor could not be configured at all (its NV
+operations threw), so the "robust" configuration was unreachable in practice.
 
 **Recommendation:** when `enablePostQuantum(true)` or `rotateEpoch()` is used without an anchor,
 emit a loud construction-time `WARN` (mirroring the same-UID theater gate), or require an explicit
@@ -246,6 +252,54 @@ collection with an env-var provider, attach mechanism on, and heap dumps enabled
 **HEALTHY** (as long as the canary decrypts or no canary is supplied). "Healthy" means "the canary
 round-tripped," not "the deployment resists same-UID." Consider renaming or splitting the signal so
 a WARN-only-but-weak deployment does not read as green.
+
+### F-8 — TPM anti-rollback anchor never functioned (NV handle bug) *(High)* — FIXED
+
+Found by running the TPM tests end-to-end against a software TPM (ibmswtpm2) set up during this
+audit; they are `@Assumptions`-skipped in CI whenever no simulator listens on `localhost:2321`, so
+this had never executed.
+
+`Tpm2Provisioner.defineGenerationCounter`, the `Tpm2GenerationAnchor` constructor, and the anchor
+test's cleanup all built the NV handle with `TPM_HANDLE.NV(nvIndex)`, passing a **full NV handle**
+(e.g. `0x01800200`, the value the public API and CLI help document). But TSS.Java's
+`TPM_HANDLE.NV(x)` computes `0x01000000 + x`, expecting a **24-bit index offset**. Passing a full
+handle double-applies the NV base:
+
+```
+NV(0x01800210) -> 0x02800210   (handle-type byte 0x02 = HMAC session, not an NV index)
+```
+
+so **every** `NV_DefineSpace` / `NV_Increment` / `NV_Read` was rejected with `TPM_RC_VALUE`.
+Confirmed against two independent ibmswtpm2 revisions (HEAD and rev1682): the offset form
+`NV(0x800210)` produces handle `0x01800210` and the counter defines, increments, and reads
+correctly; the full-handle form always fails. Sealing/unsealing (which uses no NV) was unaffected,
+which is why the pepper provider partly worked while the anchor did not.
+
+**Impact:** the entire TPM anti-rollback path — the *only* shipped `GenerationAnchor` implementation,
+and the one thing that makes forward secrecy robust against a keyring-writer (see F-1) — was
+non-functional in every build. Provisioning a counter or opening an anchor threw. This compounds
+F-1: anti-rollback was not merely off-by-default, it could not be turned on.
+
+**Fix (applied):** construct the handle directly from the documented full-handle value —
+`new TPM_HANDLE(nvIndex)` — at all three call sites, with a comment explaining the offset-vs-handle
+trap. After the fix, `Tpm2GenerationAnchorTest` passes 4/4 end-to-end (define, increment,
+monotonicity, and value-survives-reopen).
+
+### F-9 — TPM pepper provider is not binary-safe *(Low)*
+
+`Tpm2KeyMaterialProvider` stores the unsealed pepper as `cachedPepper = utf8ToChars(pepperBytes)`,
+and `getPepper()` returns that `char[]`; downstream, `HardenedCollection.deriveDek` re-encodes it as
+UTF-8. The whole pepper SPI is therefore text-oriented, and real providers (env/file, and
+`Tpm2Provisioner`'s own generator) emit **base64 ASCII** peppers that round-trip losslessly. But
+`Tpm2Provisioner.seal(byte[] pepper)` accepts **arbitrary bytes**, and a non-UTF-8 pepper is silently
+mangled on read (a random 32-byte pepper decoded to 31 chars in testing). This is a latent footgun,
+not a live compromise — no shipped code path seals binary peppers.
+
+The round-trip test was asserting byte-for-byte equality on a **random binary** pepper, which the
+text SPI cannot satisfy; it was aligned to seal a realistic ASCII pepper (matching real usage) so it
+exercises the supported contract. **Recommendation:** either document `seal` as text-only and reject
+non-UTF-8 input, or make the provider binary-safe by base64-encoding internally so `getPepper()` is
+always ASCII regardless of the sealed bytes.
 
 ---
 
@@ -360,9 +414,16 @@ construction; the premise findings concern framing and architectural fit, not a 
   `HardenedHealthCheck.java`, `HardenedStatus.java`; TPM set (`Tpm2KeyMaterialProvider`,
   `Tpm2SealedBlob`, `Tpm2GenerationAnchor`, `Tpm2Availability`, `Tpm2Provisioner`); and the threat/
   architecture docs.
-- **Not covered:** dynamic testing, fuzzing of the `Envelope` parser, timing/side-channel
-  measurement, review of the core (non-hardened) transport encryption, and the D-Bus layer beyond
-  how the hardened layer uses attributes.
+- **Dynamic testing performed:** the `hardened-tpm2` suite was run end-to-end against a software TPM
+  (ibmswtpm2 `tpm_server` on `localhost:2321`, built locally) on JDK 25 — the simulator-gated seal/
+  unseal and NV generation-counter tests that skip in CI. This surfaced F-8 and F-9. Note the
+  in-tree tests target the Microsoft/IBM TSS TCP simulator protocol via `TpmFactory.localTpmSimulator()`;
+  **swtpm is not protocol-compatible** with that path (its TCP control channel differs), so ibmswtpm2
+  (or the MS simulator) is required — or swtpm exposed as a `/dev/tpmrm0` vTPM for the `platformTpm()`
+  path, which the current tests do not use.
+- **Not covered:** fuzzing of the `Envelope` parser, timing/side-channel measurement, review of the
+  core (non-hardened) transport encryption, the D-Bus layer beyond how the hardened layer uses
+  attributes, and the anchor against a *hardware* TPM (only the simulator was exercised).
 - **Confidence:** high on the mechanism/correctness findings (traced to source); the premise
   findings are architectural judgments, stated as such.
 - This document reflects the state at commit `613d8b4` and should be re-reviewed if the DEK

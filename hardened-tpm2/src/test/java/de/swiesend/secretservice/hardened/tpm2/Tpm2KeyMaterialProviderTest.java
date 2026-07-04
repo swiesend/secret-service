@@ -67,8 +67,14 @@ class Tpm2KeyMaterialProviderTest {
                 "TPM simulator not listening on localhost:2321; skipping. "
                         + "Run ibmswtpm2 or mspTSSSimulator locally to enable.");
 
-        byte[] pepper = new byte[32];
-        new java.security.SecureRandom().nextBytes(pepper);
+        // The pepper SPI is text-oriented: getPepper() returns a char[] and HardenedCollection
+        // re-encodes it as UTF-8 for HKDF, so real providers (env/file, and Tpm2Provisioner's own
+        // generator) emit an ASCII base64 pepper. Seal such a pepper here so the round-trip is
+        // lossless. Sealing raw non-UTF-8 bytes is unsupported and silently lossy -- see the
+        // security audit (binary-safety finding) -- so this test must not assert on binary input.
+        byte[] entropy = new byte[24];
+        new java.security.SecureRandom().nextBytes(entropy);
+        byte[] pepper = java.util.Base64.getEncoder().encode(entropy); // 32 ASCII bytes
         char[] password = "t3st-p@ssword".toCharArray();
 
         Tpm2SealedBlob blob = Tpm2Provisioner.seal(pepper, password.clone(), TpmFactory::localTpmSimulator);
