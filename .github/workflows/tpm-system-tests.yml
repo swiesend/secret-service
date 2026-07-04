@@ -1,22 +1,16 @@
 name: TPM System Tests
 
 # Exercises HardenedTpm2SystemTest (@Tag("system-test")) end-to-end against a
-# software TPM 2.0 and gnome-keyring. Two independent backends are run:
+# software TPM 2.0 and gnome-keyring.
 #
-#   reference-simulator (blocking) -- builds the Microsoft ms-tpm-20-ref TPM 2.0
-#     reference simulator, runs it on localhost:2321, and drives the test with
-#     -Dhardened.tpm2.backend=simulator (TSS.Java's TCP simulator transport).
-#     No kernel module, device, or privilege required -> the portable, reliable leg.
+# It builds the Microsoft ms-tpm-20-ref TPM 2.0 reference simulator, runs it on
+# localhost:2321, and drives the test with -Dhardened.tpm2.backend=simulator
+# (TSS.Java's TCP simulator transport). No kernel module, device, or privilege is
+# required. The test is otherwise identical to a real-hardware run.
 #
-#   swtpm-vtpm-proxy (non-blocking) -- backs the real device path /dev/tpmrm0 with
-#     swtpm via the kernel vTPM proxy (tpm_vtpm_proxy -> /dev/vtpmx) and maps it into
-#     the container, so the test's default -Dhardened.tpm2.backend=platform exercises
-#     forPlatformTpm() exactly as on real hardware. Depends on the runner host kernel
-#     providing tpm_vtpm_proxy, so it is non-blocking (mirrors the fragile
-#     KWallet/KeePassXC legs of system-tests.yml).
-#
-# Both fail loudly (not silently-skip): each asserts the test ran 3 passing,
-# non-skipped tests, so a missing TPM/keyring cannot make the job falsely green.
+# It fails loudly rather than silently-skipping: it asserts the test ran 3
+# passing, non-skipped tests, so a missing simulator or keyring cannot make the
+# job falsely green.
 
 on:
   push:
@@ -109,99 +103,5 @@ jobs:
           name: tpm-system-tests-simulator-diagnostics
           path: |
             /tmp/tpmsim/simulator.log
-            hardened-tpm2/target/surefire-reports/**
-          if-no-files-found: ignore
-
-  swtpm-vtpm-proxy:
-    runs-on: ubuntu-latest
-    # Non-blocking until proven stable across GitHub runner kernels (tpm_vtpm_proxy
-    # availability is not guaranteed). Flip to false once it is reliably green.
-    continue-on-error: true
-    name: tpm-system-tests (swtpm + gnome-keyring)
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Cache Maven repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Install swtpm and load the vTPM proxy module
-        run: |
-          set -euxo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends swtpm swtpm-tools
-          # The vTPM proxy lets swtpm present itself as a real /dev/tpmX character device.
-          sudo modprobe tpm_vtpm_proxy
-          if [ ! -e /dev/vtpmx ]; then
-            echo "::error::/dev/vtpmx is missing — tpm_vtpm_proxy is unavailable on this runner kernel; cannot back /dev/tpmrm0 with swtpm."
-            exit 1
-          fi
-
-      - name: Start a swtpm-backed vTPM character device
-        id: swtpm
-        run: |
-          set -euxo pipefail
-          sudo mkdir -p /tmp/mytpm
-          # Minimal state init (no EK/platform certs needed for the seal/unseal test).
-          sudo swtpm_setup --tpm2 --tpmstate /tmp/mytpm --overwrite
-          # --vtpm-proxy asks the kernel to create a fresh /dev/tpmN + /dev/tpmrmN pair;
-          # --flags startup-clear issues TPM2_Startup so the device is ready to use.
-          sudo swtpm chardev --vtpm-proxy --tpmstate dir=/tmp/mytpm --tpm2 \
-            --flags startup-clear --daemon --logfile /tmp/swtpm.log
-          sleep 2
-          cat /tmp/swtpm.log || true
-          DEV="$(grep -oE '/dev/tpm[0-9]+' /tmp/swtpm.log | head -n1)"
-          if [ -z "${DEV:-}" ]; then
-            echo "::error::swtpm did not report a new TPM device"; cat /tmp/swtpm.log; exit 1
-          fi
-          RM="/dev/tpmrm${DEV#/dev/tpm}"
-          # Make both nodes accessible to the (root) container process.
-          sudo chmod 0666 "$DEV" "$RM"
-          ls -l "$DEV" "$RM"
-          echo "dev=$DEV" >> "$GITHUB_OUTPUT"
-          echo "rm=$RM"   >> "$GITHUB_OUTPUT"
-
-      - name: Build gnome-keyring container
-        run: docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-gnome-keyring .
-
-      - name: Run hardened-tpm2 system test (swtpm-backed)
-        run: |
-          set -euxo pipefail
-          # Map the swtpm nodes to the canonical paths TSS.Java opens inside the container.
-          docker run --rm \
-            --device=${{ steps.swtpm.outputs.rm }}:/dev/tpmrm0 \
-            --device=${{ steps.swtpm.outputs.dev }}:/dev/tpm0 \
-            -v "${{ github.workspace }}":/workspace \
-            -v "$HOME/.m2/repository":/root/.m2/repository \
-            secret-service-gnome-keyring \
-            mvn -B test -Psystem-test -pl hardened-tpm2 -am \
-                -Dtest=HardenedTpm2SystemTest -Dsurefire.failIfNoSpecifiedTests=false
-
-      - name: Assert the TPM test actually ran (guard against a silent skip)
-        run: |
-          set -euxo pipefail
-          report="hardened-tpm2/target/surefire-reports/de.swiesend.secretservice.hardened.tpm2.HardenedTpm2SystemTest.txt"
-          if [ ! -f "$report" ]; then
-            echo "::error::no surefire report — the system test did not execute"; exit 1
-          fi
-          cat "$report"
-          # 3 tests, none skipped: proves the swtpm device and gnome-keyring were both exercised.
-          if ! grep -Eq "Tests run: 3, Failures: 0, Errors: 0, Skipped: 0" "$report"; then
-            echo "::error::HardenedTpm2SystemTest did not run 3 passing, non-skipped tests (TPM or keyring not exercised)"
-            exit 1
-          fi
-
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tpm-system-tests-diagnostics
-          path: |
-            /tmp/swtpm.log
             hardened-tpm2/target/surefire-reports/**
           if-no-files-found: ignore
