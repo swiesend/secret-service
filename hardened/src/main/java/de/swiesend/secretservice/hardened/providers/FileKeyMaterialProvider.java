@@ -34,6 +34,9 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
 
     private volatile byte[] cachedPepper;
     private volatile byte[] cachedSeed;
+    /** True only once the POSIX 0600/owner check actually ran and passed; false on non-POSIX filesystems. */
+    private volatile boolean posixEnforced = false;
+    private volatile boolean closed = false;
 
     public FileKeyMaterialProvider(Path path) { this(path, false); }
 
@@ -79,6 +82,10 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
                         + "); requireDifferentOwner=true but file gives no cross-UID barrier");
             }
         }
+        // The 0600/owner checks above actually ran; threatCoverage() may now claim a
+        // perm-based cross-UID/offline barrier. On a non-POSIX filesystem we returned early
+        // above with posixEnforced still false, and the coverage is degraded accordingly.
+        posixEnforced = true;
     }
 
     private static String PosixFilePermissions(Set<PosixFilePermission> p) {
@@ -130,6 +137,7 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
 
     @Override
     public char[] getPepper() {
+        if (closed) throw new IllegalStateException("provider closed");
         byte[] snap = cachedPepper;
         char[] out = new char[snap.length];
         for (int i = 0; i < snap.length; i++) out[i] = (char) (snap[i] & 0xff);
@@ -149,6 +157,18 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
 
     @Override
     public ThreatCoverage threatCoverage() {
+        if (!posixEnforced) {
+            // Non-POSIX filesystem: the 0600/owner check was skipped, so we cannot claim any
+            // permission-based barrier. Report honestly rather than emit crossUid=REAL on trust.
+            return new ThreatCoverage(
+                    ThreatCoverage.Level.NONE,
+                    ThreatCoverage.Level.NONE,
+                    ThreatCoverage.Level.NONE,
+                    ThreatCoverage.Level.NOT_APPLICABLE,
+                    "Filesystem does not expose POSIX attributes, so the 0600/owner permission check "
+                            + "could not be enforced; no cross-UID or offline barrier can be assumed."
+            );
+        }
         if (requireDifferentOwner) {
             return new ThreatCoverage(
                     ThreatCoverage.Level.PARTIAL,
@@ -167,5 +187,15 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
                 "File mode 0600 owned by the running user denies other UIDs but not a malicious "
                         + "same-UID process (which can read the file directly)."
         );
+    }
+
+    /** Scrubs the cached pepper and TOTP seed. */
+    @Override
+    public void close() {
+        byte[] p = cachedPepper;
+        if (p != null) Arrays.fill(p, (byte) 0);
+        byte[] s = cachedSeed;
+        if (s != null) Arrays.fill(s, (byte) 0);
+        closed = true;
     }
 }

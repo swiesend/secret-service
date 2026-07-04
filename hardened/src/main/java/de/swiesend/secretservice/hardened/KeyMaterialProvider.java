@@ -63,11 +63,18 @@ public interface KeyMaterialProvider extends AutoCloseable {
     default void close() {}
 
     enum Mode {
-        /** No time-binding; salt + pepper + KEM only. */
+        /** No time-binding; salt + pepper + KEM only. The honest choice when no live TOTP is available. */
         NO_TOTP,
-        /** Step counter is stored in item attributes; read derives HOTP(seed, stored_step). */
+        /**
+         * Step counter is stored in the authenticated envelope; read derives {@code HOTP(seed, stored_step)}.
+         * <p><b>Security theater:</b> the stored step travels with the ciphertext and the seed co-locates
+         * with the pepper, so anyone who can read the item plus the key-material source recomputes the
+         * factor. It adds no defense against an attacker who already holds the ciphertext; prefer
+         * {@link #LIVE_CODE} for real time-binding or {@link #NO_TOTP} to bind nothing honestly.
+         * {@code HardenedCollection} logs a warning at construction when this mode is selected.
+         */
         STORED_STEP,
-        /** Step counter is not stored; read must occur within +/-1 step. */
+        /** Step counter is not stored; read must occur within +/-1 step. The only mode that binds time. */
         LIVE_CODE
     }
 }

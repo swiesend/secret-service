@@ -24,6 +24,7 @@ public final class InteractiveKeyMaterialProvider implements KeyMaterialProvider
 
     private final char[] pepper;
     private final byte[] totpSeed;
+    private volatile boolean closed = false;
 
     /** Reads pepper and optional TOTP seed from the console. */
     public InteractiveKeyMaterialProvider() {
@@ -60,7 +61,10 @@ public final class InteractiveKeyMaterialProvider implements KeyMaterialProvider
         this.totpSeed = totpSeed == null ? null : totpSeed.clone();
     }
 
-    @Override public char[] getPepper() { return pepper.clone(); }
+    @Override public char[] getPepper() {
+        if (closed) throw new IllegalStateException("provider closed");
+        return pepper.clone();
+    }
 
     @Override
     public Optional<byte[]> getTotpSeed() {
@@ -82,5 +86,13 @@ public final class InteractiveKeyMaterialProvider implements KeyMaterialProvider
                 "Prompted pepper kept in JVM heap; defeats offline backup theft and cross-UID readers, "
                         + "but live same-UID attackers with /proc/<pid>/mem or ptrace still recover it."
         );
+    }
+
+    /** Scrubs the in-memory pepper and TOTP seed. */
+    @Override
+    public void close() {
+        Arrays.fill(pepper, '\0');
+        if (totpSeed != null) Arrays.fill(totpSeed, (byte) 0);
+        closed = true;
     }
 }

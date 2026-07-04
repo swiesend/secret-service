@@ -43,14 +43,17 @@ class HardenedHealthCheckTest {
     }
 
     @Test
-    void healthCheckFlagsWeakProviderAsWarn() {
+    void healthCheckFailsWeakProvider() {
         HardenedHealthCheck.Report r = HardenedHealthCheck.check(collection, null);
-        // EnvVarKeyMaterialProvider reports sameUid=NONE, so the WARN finding must appear.
-        boolean hasSameUidWarn = r.findings().stream()
+        // EnvVarKeyMaterialProvider reports sameUid=NONE, which is now a hard FAIL: a provider with
+        // no same-UID defense must not report HEALTHY, even without a canary.
+        boolean hasSameUidFail = r.findings().stream()
                 .anyMatch(f -> f.check().equals("provider.sameUid")
-                        && f.severity() == HardenedHealthCheck.Severity.WARN);
-        assertTrue(hasSameUidWarn,
-                "weak provider must produce a 'provider.sameUid' WARN finding");
+                        && f.severity() == HardenedHealthCheck.Severity.FAIL);
+        assertTrue(hasSameUidFail,
+                "weak provider must produce a 'provider.sameUid' FAIL finding");
+        assertFalse(r.healthy(),
+                "a sameUid=NONE provider must make the report UNHEALTHY");
     }
 
     @Test

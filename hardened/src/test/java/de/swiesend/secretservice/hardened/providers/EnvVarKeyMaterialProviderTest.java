@@ -64,4 +64,14 @@ class EnvVarKeyMaterialProviderTest {
         assertEquals(32, raw.length);
         assertFalse(p.isBlank());
     }
+
+    @Test
+    void closeScrubsAndBlocksGetPepper() {
+        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper-value", null, null);
+        char[] before = p.getPepper();
+        assertEquals("pepper-value", new String(before));
+        p.close();
+        // The provider's own copy is zeroed and further access fails closed.
+        assertThrows(IllegalStateException.class, p::getPepper);
+    }
 }

@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Optional;
@@ -43,6 +44,7 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
     private final char[] pepperChars;
     private final byte[] totpSeed;
     private final Mode mode;
+    private volatile boolean closed = false;
 
     public EnvVarKeyMaterialProvider() {
         this(System.getenv(ENV_PEPPER), System.getenv(ENV_TOTP_SEED), System.getenv(ENV_MODE));
@@ -86,6 +88,7 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
 
     @Override
     public char[] getPepper() {
+        if (closed) throw new IllegalStateException("provider closed");
         return pepperChars.clone();  // fresh; caller zeros in a finally block
     }
 
@@ -109,6 +112,18 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
                 "Env-var pepper co-located with the ciphertext trust domain; any same-UID reader "
                         + "of /proc/<pid>/environ or the process environment block defeats this provider."
         );
+    }
+
+    /**
+     * Scrubs the provider's {@code char[]}/{@code byte[]} copies of the pepper and TOTP seed.
+     * Note the unzeroable-backing caveat in the class Javadoc: the original {@code System.getenv}
+     * String is outside this instance and cannot be cleared here.
+     */
+    @Override
+    public void close() {
+        Arrays.fill(pepperChars, '\0');
+        if (totpSeed != null) Arrays.fill(totpSeed, (byte) 0);
+        closed = true;
     }
 
     /** Utility for tests and ops: generate a cryptographically-strong base64 pepper. */

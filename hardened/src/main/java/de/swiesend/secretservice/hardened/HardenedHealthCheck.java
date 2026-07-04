@@ -54,7 +54,10 @@ public final class HardenedHealthCheck {
     public record Finding(String check, Severity severity, String detail) {}
 
     /**
-     * Aggregate report. {@link #healthy()} is true iff no finding has {@link Severity#FAIL}.
+     * Aggregate report. {@link #healthy()} is true iff no finding has {@link Severity#FAIL}. A provider
+     * whose {@code sameUid} threat coverage is {@code NONE} (e.g. {@code EnvVarKeyMaterialProvider})
+     * produces a FAIL, so a weak-but-decrypting CI/dev deployment reports UNHEALTHY -- "healthy" means
+     * "hardened and decrypting," not merely "decrypting." Missing JVM-hardening flags remain WARN.
      */
     public record Report(
             String providerClass,
@@ -113,12 +116,16 @@ public final class HardenedHealthCheck {
         String providerClass = coll.providerClassName();
         List<Finding> findings = new ArrayList<>();
 
-        // 1. Provider posture
+        // 1. Provider posture -- a same-UID coverage of NONE is a hard FAIL: the provider offers no
+        // defense against the very attacker class a keyring most needs protecting from (CVE-2018-19358).
+        // A canary that decrypts does not make such a deployment "healthy"; only CI/dev builds should
+        // see this, and they should not be calling the health check green.
         ThreatCoverage tc = status.threatCoverage();
         if (tc.sameUid() == ThreatCoverage.Level.NONE) {
-            findings.add(new Finding("provider.sameUid", Severity.WARN,
-                    "Same-UID threat coverage is NONE -- this provider is suitable only for CI/dev. "
-                            + "If you intended production, switch to Tpm2KeyMaterialProvider or wrap with Argon2KeyMaterialProvider."));
+            findings.add(new Finding("provider.sameUid", Severity.FAIL,
+                    "Same-UID threat coverage is NONE -- this provider offers no same-UID defense and is "
+                            + "suitable only for CI/dev. For production switch to Tpm2KeyMaterialProvider or "
+                            + "wrap with Argon2KeyMaterialProvider."));
         }
 
         // 2. JVM-flag posture

@@ -22,7 +22,12 @@ public final class NoTotpKeyMaterialProvider implements KeyMaterialProvider {
 
     @Override public Optional<byte[]> getTotpSeed() { return Optional.empty(); }
 
+    @Override public long currentStep() { return delegate.currentStep(); }
+
     @Override public Mode mode() { return Mode.NO_TOTP; }
 
     @Override public ThreatCoverage threatCoverage() { return delegate.threatCoverage(); }
+
+    /** Propagates close to the wrapped provider so its cached material is scrubbed. */
+    @Override public void close() { delegate.close(); }
 }

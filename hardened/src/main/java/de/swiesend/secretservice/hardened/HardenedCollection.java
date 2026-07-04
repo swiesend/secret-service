@@ -57,9 +57,15 @@ import java.util.function.Function;
  *       is set and the runtime supplies ML-KEM. The KEM shared secret is mixed into the DEK
  *       alongside the pepper, so the DEK cannot be recovered from the pepper alone.</li>
  *   <li>{@code rotateEpoch} rewraps items under a fresh epoch and then destroys every superseded
- *       epoch keypair. This is real forward secrecy: an envelope snapshotted before rotation can
- *       no longer be decapsulated even by an attacker who later learns the pepper, because the
- *       matching epoch private key is gone.</li>
+ *       epoch keypair. This gives forward secrecy: an envelope captured <em>before</em> the key was
+ *       destroyed can no longer be decapsulated even by an attacker who later learns the pepper.
+ *       The guarantee is bounded by two things outside this layer's control: (1) the wrapped store
+ *       must actually erase a deleted keystore item (gnome-keyring may retain deleted items in
+ *       unallocated space), and (2) <b>backup retention must be rotated too</b> -- an older keyring
+ *       backup still containing the pre-rotation keystore, plus the pepper, recovers the old keys,
+ *       so without backup discipline the guarantee is only theoretical. A rollback of the keystore
+ *       (reintroducing a destroyed epoch) is prevented only when a {@link GenerationAnchor} is
+ *       configured (see {@link Builder#generationAnchor}).</li>
  *   <li>TOTP {@code STORED_STEP} mode is explicitly labeled theater in {@link HardenedStatus}.
  *       Real time-binding requires {@code LIVE_CODE} mode (write window = read window).</li>
  * </ul>
@@ -117,18 +123,39 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         // names the provider, the threat coverage it claims, whether the security-theater
         // gate was bypassed, and the time-binding mode. Skim logs to verify your deployment
         // is in the posture you intended.
+        boolean hasAnchor = generationAnchor != null;
         log.info(
             "HardenedCollection initialised: provider={}, threatCoverage=[sameUid={}, crossUid={}, offline={}, networkHndl={}], "
-                + "acknowledgedTheater={}, totpMode={}, epoch={}",
+                + "acknowledgedTheater={}, totpMode={}, generationAnchor={}, epoch={}",
             provider.getClass().getSimpleName(),
             tc.sameUid(), tc.crossUid(), tc.offline(), tc.networkHndl(),
-            acknowledgeSecurityTheater, provider.mode(), epochId);
+            acknowledgeSecurityTheater, provider.mode(), hasAnchor ? "present" : "none", epochId);
         if (acknowledgeSecurityTheater) {
             log.warn(
                 "HardenedCollection: acknowledgeSecurityTheater=true is set. The configured provider "
                     + "({}) does NOT defend against same-UID attackers. This flag should not appear "
                     + "in production builds.",
                 provider.getClass().getSimpleName());
+        }
+        // F-1: forward secrecy relies on the epoch keystore's generation being anti-rollback
+        // protected. Without a GenerationAnchor, a party that can write the keyring store can
+        // resurrect an older keystore snapshot and undo a rotateEpoch() destruction. Warn loudly
+        // when post-quantum / HNDL protection is requested but no anchor backs it.
+        if (b.enablePostQuantum && !hasAnchor) {
+            log.warn(
+                "HardenedCollection: enablePostQuantum(true) without a GenerationAnchor. Forward "
+                    + "secrecy via rotateEpoch() can be silently undone by a keyring-writer that "
+                    + "reintroduces a destroyed epoch. Configure a Tpm2GenerationAnchor for "
+                    + "rollback-resistant HNDL protection.");
+        }
+        // F-5: STORED_STEP TOTP is theater -- the step travels in a cleartext attribute and the
+        // seed lives with the pepper, so a reader of the ciphertext recomputes the factor. It adds
+        // no security. Only LIVE_CODE binds time; NO_TOTP is honest about binding nothing.
+        if (provider.mode() == KeyMaterialProvider.Mode.STORED_STEP) {
+            log.warn(
+                "HardenedCollection: provider mode is STORED_STEP, which adds no security (the step "
+                    + "is stored in cleartext next to the ciphertext and the seed co-locates with the "
+                    + "pepper). Use LIVE_CODE for real time-binding, or NO_TOTP.");
         }
     }
 
@@ -154,11 +181,13 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
         /**
          * Enables hybrid X25519 + ML-KEM-768 wrapping. The KEM shared secret participates in the
-         * HKDF info string for the per-item DEK; the KEM ciphertext is stored alongside the AEAD
+         * HKDF derivation of the per-item DEK; the KEM ciphertext is stored alongside the AEAD
          * ciphertext in the envelope. Per-collection epoch keypairs are persisted as a separate
          * encrypted item in the wrapped collection (the "epoch keystore"). On {@link #rotateEpoch},
-         * the old epoch's private key is destroyed, yielding real forward secrecy for ciphertexts
-         * written under the previous epoch -- a class-D / HNDL defense.
+         * the old epoch's private key is destroyed, giving forward secrecy for ciphertexts written
+         * under the previous epoch -- a class-D / HNDL defense, <b>bounded by backup-retention
+         * discipline and by configuring a {@link #generationAnchor} against keystore rollback</b>
+         * (see the class Javadoc's "KEM and forward secrecy" section).
          *
          * <p>When {@code true}, requires {@code javax.crypto.KEM.getInstance("ML-KEM-768")} to be
          * available. On this module's JDK 25 floor it is provided natively by the stock SunJCE
@@ -411,6 +440,15 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
     @Override
     public boolean rotateEpoch() {
+        if (generationAnchor == null) {
+            // The rotation about to happen destroys the superseded epoch keys -- the forward-secrecy
+            // primitive. Without an anti-rollback anchor, a party that can write the keyring store can
+            // reintroduce the pre-rotation keystore snapshot and resurrect those keys, silently undoing
+            // the guarantee. See GenerationAnchor / Tpm2GenerationAnchor.
+            log.warn("rotateEpoch: no GenerationAnchor configured. The forward secrecy this rotation "
+                    + "creates can be undone by a keyring-writer that rolls the keystore back to a "
+                    + "pre-rotation snapshot. Configure a Tpm2GenerationAnchor to make it rollback-resistant.");
+        }
         String previous = this.epochId;
         String next = newEpochId();
         log.info("rotateEpoch: {} -> {} (rewrap pending items)", previous, next);
