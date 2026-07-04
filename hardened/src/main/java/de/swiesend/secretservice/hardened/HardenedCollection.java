@@ -160,10 +160,11 @@ public final class HardenedCollection implements HardenedCollectionInterface {
          * the old epoch's private key is destroyed, yielding real forward secrecy for ciphertexts
          * written under the previous epoch -- a class-D / HNDL defense.
          *
-         * <p>When {@code true}, requires {@code javax.crypto.KEM.getInstance("ML-KEM"|"ML-KEM-768")}
-         * to be available -- either JDK 24+ stock, or BouncyCastle 1.82+ on JDK 21-23. Falls back
-         * to X25519-only if PQ is unavailable; the kem_id byte then reflects what was actually
-         * used so old envelopes remain readable.</p>
+         * <p>When {@code true}, requires {@code javax.crypto.KEM.getInstance("ML-KEM-768")} to be
+         * available. On this module's JDK 25 floor it is provided natively by the stock SunJCE
+         * provider (JEP 496), so no third-party crypto provider is needed. Falls back to X25519-only
+         * if PQ is unavailable; the kem_id byte then reflects what was actually used so old envelopes
+         * remain readable.</p>
          */
         public Builder enablePostQuantum(boolean b) { this.enablePostQuantum = b; return this; }
 

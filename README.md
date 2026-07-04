@@ -85,9 +85,9 @@ Since `3.0.0-alpha` the project is a Maven reactor with **three separately publi
 
 | Artifact | JDK floor | Adds | Pulls extra runtime deps? |
 |---|---|---|---|
-| `de.swiesend:secret-service` | 17 | The classical Secret Service 0.2 client + transport encryption | hkdf, dbus-java, slf4j-api |
-| `de.swiesend:secret-service-hardened` | 21 | Optional app-layer AES-256-GCM envelopes, `KeyMaterialProvider` SPI | none beyond core (BouncyCastle is `provided/optional` for opt-in PQ) |
-| `de.swiesend:secret-service-hardened-tpm2` | 21 | TPM-sealed pepper provider | none beyond hardened (TSS.Java is `provided/optional`) |
+| `de.swiesend:secret-service` | 25 | The classical Secret Service 0.2 client + transport encryption | hkdf, dbus-java, slf4j-api |
+| `de.swiesend:secret-service-hardened` | 25 | Optional app-layer AES-256-GCM envelopes, `KeyMaterialProvider` SPI, hybrid X25519 + ML-KEM-768 (native SunJCE) | none beyond core (BouncyCastle is `provided/optional`, only for the `Argon2KeyMaterialProvider`) |
+| `de.swiesend:secret-service-hardened-tpm2` | 25 | TPM-sealed pepper provider | none beyond hardened (TSS.Java is `provided/optional`) |
 
 **Most consumers want only the first row:**
 
@@ -101,7 +101,7 @@ Since `3.0.0-alpha` the project is a Maven reactor with **three separately publi
 
 A `mvn dependency:tree` for that single declaration shows four transitive deps and nothing from the hardened or TPM modules. See [`docs/threat_models_and_mitigation.md`](docs/threat_models_and_mitigation.md) §7 to decide whether you also need the optional layers.
 
-**Optional: app-layer encryption** (adds AES-256-GCM envelopes; requires JDK 21):
+**Optional: app-layer encryption** (adds AES-256-GCM envelopes; requires JDK 25):
 
 ```xml
 <dependency>
@@ -111,7 +111,7 @@ A `mvn dependency:tree` for that single declaration shows four transitive deps a
 </dependency>
 ```
 
-**Optional: TPM-sealed pepper** (Linux + TPM 2.0 hardware required at runtime; requires JDK 21):
+**Optional: TPM-sealed pepper** (Linux + TPM 2.0 hardware required at runtime; requires JDK 25):
 
 ```xml
 <dependency>

@@ -25,15 +25,10 @@ import java.util.Arrays;
  * Hybrid KEM: X25519 (classical) combined with ML-KEM-768 when a JCE provider
  * supplies the algorithm.
  *
- * <p>Implementation uses the standard {@link javax.crypto.KEM} API (JEP 452,
- * JDK 21+). ML-KEM-768 comes from:</p>
- * <ul>
- *   <li>SunJCE on JDK 24+ (built in).</li>
- *   <li>BouncyCastle 1.78+ on JDK 21-23 (registered via
- *       {@link PqProviderBootstrap#ensurePqProvider()}, which is invoked only
- *       when {@code preferPostQuantum=true}).</li>
- *   <li>Anything else providing the {@code "ML-KEM-768"} JCE algorithm.</li>
- * </ul>
+ * <p>Implementation uses the standard {@link javax.crypto.KEM} API (JEP 452). ML-KEM-768 is
+ * provided natively by the stock SunJCE provider (JEP 496, final in JDK 24); this module targets
+ * JDK 25, so no third-party crypto provider is registered and the PQ path pulls in no extra
+ * dependency.</p>
  *
  * <p>If the algorithm is unavailable the layer degrades cleanly to X25519-only;
  * {@link #postQuantumAvailable()} reports the truth and the {@link Envelope#FLAG_PQ_HYBRID}
@@ -106,32 +101,15 @@ public final class HybridKem {
      * Generates the post-quantum half of an epoch keypair. Throws if PQ is not
      * available -- callers gate on {@link #postQuantumAvailable()}.
      *
-     * <p>On JDK 24+ the stock SunJCE registers {@code "ML-KEM-768"} as an explicit
-     * algorithm and we initialise directly with that name. On JDK 21-23 with
-     * BouncyCastle 1.82+, the JCE name is {@code "ML-KEM"} and the parameter set
-     * is supplied via {@code org.bouncycastle.jcajce.spec.MLKEMParameterSpec}
-     * (looked up reflectively so this module compiles without BouncyCastle on the
-     * classpath).</p>
+     * <p>The stock SunJCE (JDK 24+) registers {@code "ML-KEM-768"} as an explicit algorithm whose
+     * name already fixes the parameter set, so no {@code initialize} call is required.</p>
      */
     public KeyPair generatePqKeyPair() {
         if (!postQuantumAvailable) {
             throw new IllegalStateException("ML-KEM-768 unavailable; cannot generate PQ keypair");
         }
-        String alg = PqProviderBootstrap.mlKem768Algorithm();
         try {
-            KeyPairGenerator g = KeyPairGenerator.getInstance(alg);
-            if ("ML-KEM".equals(alg)) {
-                // BC flavour: drive parameter set via MLKEMParameterSpec.ml_kem_768
-                try {
-                    Class<?> specCls = Class.forName("org.bouncycastle.jcajce.spec.MLKEMParameterSpec");
-                    Object spec = specCls.getField("ml_kem_768").get(null);
-                    g.initialize((java.security.spec.AlgorithmParameterSpec) spec, new SecureRandom());
-                } catch (ReflectiveOperationException roe) {
-                    throw new IllegalStateException("BouncyCastle MLKEMParameterSpec missing", roe);
-                }
-            }
-            // On JDK 24+ with name "ML-KEM-768", no initialize call is required.
-            return g.generateKeyPair();
+            return KeyPairGenerator.getInstance(PqProviderBootstrap.ML_KEM_768).generateKeyPair();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("ML-KEM-768 keypair generation failed", e);
         }

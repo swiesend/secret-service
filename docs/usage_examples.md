@@ -21,7 +21,7 @@ End-to-end code samples for `secret-service`, `secret-service-hardened`, and `se
 
 ## 1. Core: read & write a secret
 
-Plain Secret Service over D-Bus, transport-encrypted by default. JDK 17.
+Plain Secret Service over D-Bus, transport-encrypted by default. JDK 25.
 
 ```java
 import de.swiesend.secretservice.functional.SecretService;
@@ -76,7 +76,7 @@ Internally `SimpleCollection` shares a static D-Bus connection (cleaned up by a 
 
 ## 3. Hardened: minimal opt-in wrapper
 
-Adds AES-256-GCM application-layer envelopes on top of any `CollectionInterface`. JDK 21 + `de.swiesend:secret-service-hardened`.
+Adds AES-256-GCM application-layer envelopes on top of any `CollectionInterface`. JDK 25 + `de.swiesend:secret-service-hardened`.
 
 ```java
 import de.swiesend.secretservice.functional.SecretService;
@@ -153,7 +153,7 @@ count.ifPresentOrElse(
 
 ## 6. Hardened: enable post-quantum + rotate epoch
 
-Wires X25519 + ML-KEM-768 hybrid into HKDF DEK derivation. Requires `javax.crypto.KEM` to be available (JDK 24+ stock, or BouncyCastle 1.82+ on JDK 21–23).
+Wires X25519 + ML-KEM-768 hybrid into HKDF DEK derivation. Uses native ML-KEM-768 from the stock SunJCE provider (JDK 24+, JEP 496) via `javax.crypto.KEM` — no third-party crypto provider needed.
 
 ```java
 HardenedCollection coll = HardenedCollection.builder(base, provider)

@@ -16,9 +16,9 @@
     <name>secret-service (parent)</name>
     <description>
         Reactor for the secret-service Java library. Builds the `secret-service`
-        core artifact (classical Secret Service 0.2 client, JDK 17) and the
+        core artifact (classical Secret Service 0.2 client) and the
         opt-in `secret-service-hardened` artifact (application-layer encryption
-        wrapper using javax.crypto.KEM, JDK 21).
+        wrapper using javax.crypto.KEM). All modules target JDK 25.
     </description>
     <url>https://github.com/swiesend/secret-service</url>
 
@@ -60,10 +60,10 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- core inherits these defaults; hardened overrides to 21 in its own pom -->
-        <maven.compiler.release>17</maven.compiler.release>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <java.version>17</java.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+        <java.version>25</java.version>
 
         <!-- 3rd party dependencies -->
         <hkdf.version>2.0.0</hkdf.version>

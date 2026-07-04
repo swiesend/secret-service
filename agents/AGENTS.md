@@ -8,7 +8,7 @@ This is the unified instruction file for all AI agents (Claude Code, GitHub Copi
 
 - **Group/Artifact:** `de.swiesend:secret-service`
 - **License:** MIT
-- **JDK:** Requires JDK 17+ to build
+- **JDK:** Requires JDK 25 to build
 
 ## Build Commands
 

@@ -20,16 +20,15 @@
         Wraps a CollectionInterface with AES-256-GCM under an HKDF-derived DEK;
         pluggable KeyMaterialProvider SPI with honest ThreatCoverage self-assessment.
 
-        JDK 21 floor: uses the standard javax.crypto.KEM API (JEP 452).
-        ML-KEM-768 comes from the stock SunJCE provider on JDK 24+, or from
-        BouncyCastle 1.78+ (scope=provided, optional) on JDK 21-23. Falls back
-        cleanly to X25519-only when no PQ provider is available.
+        JDK 25 floor: post-quantum ML-KEM-768 uses the stock SunJCE provider via the
+        standard javax.crypto.KEM API (JEP 496), so no third-party crypto provider is
+        needed for the KEM. Falls back cleanly to X25519-only if ML-KEM is unavailable.
     </description>
 
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
     </properties>
 
     <dependencies>
@@ -46,12 +45,11 @@
             <artifactId>slf4j-api</artifactId>
         </dependency>
 
-        <!-- Optional: only on JDK 21-23 where SunJCE does not yet ship ML-KEM.
-             Reflectively probed by PqProviderBootstrap; absence falls back to
-             X25519-only. `provided` keeps it off downstream runtime classpath
-             but on our compile and test classpaths so the hybrid round-trip
-             test can exercise the PQ path. Consumers add this to their own
-             pom to enable PQ. -->
+        <!-- Optional: required only by Argon2KeyMaterialProvider (Argon2id has no JDK-native
+             implementation). Accessed reflectively; `provided` + `optional` keeps it off the
+             downstream runtime classpath but on our compile/test classpaths so the Argon2 tests
+             run. Consumers add it to their own pom only if they use Argon2 pepper-stretching.
+             The post-quantum KEM no longer needs it (native SunJCE ML-KEM on JDK 24+). -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
@@ -81,9 +79,9 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <release>21</release>
-                    <source>21</source>
-                    <target>21</target>
+                    <release>25</release>
+                    <source>25</source>
+                    <target>25</target>
                 </configuration>
             </plugin>
         </plugins>

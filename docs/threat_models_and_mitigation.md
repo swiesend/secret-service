@@ -592,13 +592,13 @@ sha256sum yourapp-3.0.0.tar.gz > yourapp-3.0.0.tar.gz.sha256
 **Class coverage.** Same as §7.1, *minus* the launcher-set JVM flags. Effectively no improvement over a vanilla `java -jar`.
 
 **Pitfalls.**
-- Shadow-JAR'ing `bcprov-jdk18on` (BouncyCastle) into your fat JAR can trip JCE provider signing requirements at runtime. Test on a vanilla JDK 21 install, not just your dev box.
+- Shadow-JAR'ing `bcprov-jdk18on` (BouncyCastle) into your fat JAR can trip JCE provider signing requirements at runtime. Test on a vanilla JDK 25 install, not just your dev box.
 - `java -jar` ignores `-XX` flags before the `-jar` argument unless the user types them.
 
 **Ship-readiness check.**
 ```sh
 mvn package
-java -jar target/yourapp-3.0.0.jar --version  # smoke test on JDK 21
+java -jar target/yourapp-3.0.0.jar --version  # smoke test on JDK 25
 ```
 
 **Recommendation.** Use §7.3 (jpackage) instead of §7.2 for desktop apps — it gives you the launcher and the install path for free.
