@@ -24,6 +24,7 @@ import tss.Tpm;
 import tss.TpmFactory;
 
 import java.io.IOException;
+import java.net.Socket;
 import java.nio.CharBuffer;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -41,22 +42,34 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * End-to-end system test for the TPM-sealed pepper path against a <b>real platform TPM 2.0</b>
- * and the <b>live Secret Service</b>, using a throwaway, non-default collection.
+ * End-to-end system test for the TPM-sealed pepper path against a <b>TPM 2.0</b> (real hardware
+ * or a reference simulator) and the <b>live Secret Service</b>, using a throwaway, non-default
+ * collection.
  *
- * <p>Unlike {@link Tpm2KeyMaterialProviderTest} (which targets the {@code localhost:2321}
- * simulator and exercises the provider in isolation), this test drives the full stack:
- * {@link Tpm2Provisioner#seal} → {@link Tpm2KeyMaterialProvider#forPlatformTpm} →
+ * <p>Unlike {@link Tpm2KeyMaterialProviderTest} (which exercises the provider in isolation), this
+ * test drives the full stack: {@link Tpm2Provisioner#seal} → {@link Tpm2KeyMaterialProvider} →
  * {@link HardenedCollection} → gnome-keyring over D-Bus. It proves the pepper is sealed and
- * unsealed on the actual chip and that application-layer AEAD encryption round-trips through a
- * live keyring.</p>
+ * unsealed on a real TPM and that application-layer AEAD encryption round-trips through a live
+ * keyring.</p>
+ *
+ * <h3>Backend selection</h3>
+ * <p>The TPM backend is chosen by the {@code hardened.tpm2.backend} system property:</p>
+ * <ul>
+ *   <li>{@code platform} (default) — opens the real device via
+ *       {@link Tpm2KeyMaterialProvider#forPlatformTpm} ({@code /dev/tpmrm0}). Highest fidelity;
+ *       needs TPM hardware and device access (the {@code tss} group).</li>
+ *   <li>{@code simulator} — connects to a TPM 2.0 reference simulator on {@code localhost:2321}
+ *       via {@link Tpm2KeyMaterialProvider#forSimulator}. Needs no kernel module, device, or
+ *       privilege, so it is the portable choice for CI. Start ms-tpm-20-ref or ibmswtpm2 first.</li>
+ * </ul>
+ * <p>Run with e.g. {@code mvn test -Psystem-test -Dhardened.tpm2.backend=simulator}.</p>
  *
  * <h3>Preconditions and skipping</h3>
  * <p>The suite uses {@link Assumptions} so it is safe to run anywhere: it skips cleanly when</p>
  * <ul>
- *   <li>TSS.Java is not on the classpath, or no usable TPM device is reachable
- *       (e.g. CI containers, missing {@code /dev/tpmrm0}, or the caller is not in the
- *       {@code tss} group), and</li>
+ *   <li>TSS.Java is not on the classpath, or the selected TPM backend is not reachable (no
+ *       {@code /dev/tpmrm0} / not in the {@code tss} group for {@code platform}; nothing listening
+ *       on {@code localhost:2321} for {@code simulator}), and</li>
  *   <li>the active Secret Service provider is not gnome-keyring — the only provider that lets
  *       the test create and later delete a dedicated throwaway collection non-interactively
  *       (via a master password, no GUI prompt).</li>
@@ -69,10 +82,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * persistent state is written to the chip.</p>
  *
  * <p>Excluded from the default build; run with {@code mvn test -Psystem-test} on a host with a
- * TPM 2.0 and gnome-keyring on the session bus.</p>
+ * TPM 2.0 (or simulator) and gnome-keyring on the session bus.</p>
  */
 @Tag("system-test")
-@DisplayName("hardened-tpm2 real-TPM + live Secret Service system test")
+@DisplayName("hardened-tpm2 TPM + live Secret Service system test")
 class HardenedTpm2SystemTest {
 
     private static final Logger log = LoggerFactory.getLogger(HardenedTpm2SystemTest.class);
@@ -89,9 +102,40 @@ class HardenedTpm2SystemTest {
     private HardenedCollection hardened;
     private Path blobPath;
 
-    /** @return true if a real platform TPM can be opened (implies the {@code tss} group / device access). */
-    private static boolean platformTpmReachable() {
+    /**
+     * The selected TPM backend. {@code simulator} when {@code -Dhardened.tpm2.backend=simulator}
+     * is passed (connect to {@code localhost:2321}); otherwise {@code platform} (open the real
+     * device). Uses {@link java.lang.System} fully-qualified because this class imports the
+     * functional {@code System} facade.
+     */
+    private static final boolean SIMULATOR =
+            "simulator".equalsIgnoreCase(java.lang.System.getProperty("hardened.tpm2.backend", "platform"));
+
+    /** Supplier of a connected {@link Tpm} for the selected backend, used when sealing. */
+    private static java.util.function.Supplier<Tpm> tpmSupplier() {
+        return SIMULATOR ? TpmFactory::localTpmSimulator : TpmFactory::platformTpm;
+    }
+
+    /** Open a provider against the selected backend (unseal path). */
+    private static Tpm2KeyMaterialProvider openProvider(Path blob, char[] password) throws IOException {
+        return SIMULATOR
+                ? Tpm2KeyMaterialProvider.forSimulator(blob, password)
+                : Tpm2KeyMaterialProvider.forPlatformTpm(blob, password);
+    }
+
+    /** @return true if the selected TPM backend is reachable (device openable, or simulator socket up). */
+    private static boolean tpmReachable() {
         if (!Tpm2Availability.isAvailable()) return false;
+        if (SIMULATOR) {
+            // Probe the socket only (like Tpm2KeyMaterialProviderTest): opening a full TSS session
+            // would power-cycle the simulator as a side effect.
+            try (Socket s = new Socket("localhost", 2321)) {
+                return true;
+            } catch (IOException e) {
+                log.info("TPM simulator not reachable on localhost:2321, skipping: {}", e.toString());
+                return false;
+            }
+        }
         try (Tpm tpm = TpmFactory.platformTpm()) {
             return tpm != null;
         } catch (Throwable t) {
@@ -103,8 +147,9 @@ class HardenedTpm2SystemTest {
 
     @BeforeEach
     void setUp(@TempDir Path dir) throws IOException {
-        Assumptions.assumeTrue(platformTpmReachable(),
-                "No usable platform TPM 2.0 (TSS.Java missing, /dev/tpmrm0 absent, or caller not in 'tss' group)");
+        Assumptions.assumeTrue(tpmReachable(), SIMULATOR
+                ? "No TPM 2.0 simulator on localhost:2321 (start ms-tpm-20-ref or ibmswtpm2)"
+                : "No usable platform TPM 2.0 (TSS.Java missing, /dev/tpmrm0 absent, or caller not in 'tss' group)");
 
         system = System.connect().orElse(null);
         Assumptions.assumeTrue(system != null, "Could not connect to D-Bus");
@@ -124,13 +169,13 @@ class HardenedTpm2SystemTest {
         // Seal a random pepper inside the real TPM (transient handles only) -> 0600 temp blob.
         byte[] pepper = new byte[32];
         new SecureRandom().nextBytes(pepper);
-        Tpm2SealedBlob sealed = Tpm2Provisioner.seal(pepper, TPM_PASSWORD.clone(), TpmFactory::platformTpm);
+        Tpm2SealedBlob sealed = Tpm2Provisioner.seal(pepper, TPM_PASSWORD.clone(), tpmSupplier());
         Arrays.fill(pepper, (byte) 0);
         blobPath = dir.resolve("pepper.tpm2blob");
         sealed.writeTo(blobPath);
 
-        // Real unseal on the chip.
-        Tpm2KeyMaterialProvider provider0 = Tpm2KeyMaterialProvider.forPlatformTpm(blobPath, TPM_PASSWORD.clone());
+        // Real unseal on the selected TPM backend.
+        Tpm2KeyMaterialProvider provider0 = openProvider(blobPath, TPM_PASSWORD.clone());
 
         // Dedicated, uniquely named, NON-default collection.
         String label = "hardened-tpm2-systemtest-" + UUID.randomUUID();
@@ -197,14 +242,14 @@ class HardenedTpm2SystemTest {
     @DisplayName("the TPM enforces the unseal password: a wrong password fails closed")
     void wrongUnsealPasswordFailsClosed() {
         assertThrows(IOException.class,
-                () -> Tpm2KeyMaterialProvider.forPlatformTpm(blobPath, "WRONG-PASSWORD".toCharArray()),
+                () -> openProvider(blobPath, "WRONG-PASSWORD".toCharArray()),
                 "unseal with the wrong password must fail the TPM authorisation as a checked IOException");
     }
 
     @Test
     @DisplayName("the TPM-sealed provider advertises honest same-UID=PARTIAL threat coverage")
     void providerAdvertisesHonestThreatCoverage() throws IOException {
-        try (Tpm2KeyMaterialProvider provider = Tpm2KeyMaterialProvider.forPlatformTpm(blobPath, TPM_PASSWORD.clone())) {
+        try (Tpm2KeyMaterialProvider provider = openProvider(blobPath, TPM_PASSWORD.clone())) {
             ThreatCoverage tc = provider.threatCoverage();
             assertEquals(ThreatCoverage.Level.PARTIAL, tc.sameUid(),
                     "TPM-sealed provider must advertise sameUid=PARTIAL (real same-UID defense needs a MAC policy)");

@@ -1,18 +1,22 @@
 name: TPM System Tests
 
 # Exercises HardenedTpm2SystemTest (@Tag("system-test")) end-to-end against a
-# *software* TPM 2.0 (swtpm) and gnome-keyring.
+# software TPM 2.0 and gnome-keyring. Two independent backends are run:
 #
-# TSS.Java's forPlatformTpm() can only talk to a character device (/dev/tpmrm0),
-# not a TCP simulator that swtpm would expose. So we back /dev/tpmrm0 with swtpm
-# via the kernel vTPM proxy (tpm_vtpm_proxy -> /dev/vtpmx), then map that device
-# into the reused gnome-keyring provider container. The test itself is unchanged:
-# it opens /dev/tpmrm0 exactly as it does on real hardware.
+#   reference-simulator (blocking) -- builds the Microsoft ms-tpm-20-ref TPM 2.0
+#     reference simulator, runs it on localhost:2321, and drives the test with
+#     -Dhardened.tpm2.backend=simulator (TSS.Java's TCP simulator transport).
+#     No kernel module, device, or privilege required -> the portable, reliable leg.
 #
-# TPM-in-CI depends on the runner host kernel providing tpm_vtpm_proxy, so this
-# job is non-blocking (continue-on-error), mirroring the fragile KWallet/KeePassXC
-# legs of system-tests.yml. It fails loudly (not silently-skips) if the TPM cannot
-# be brought up or the test does not actually run.
+#   swtpm-vtpm-proxy (non-blocking) -- backs the real device path /dev/tpmrm0 with
+#     swtpm via the kernel vTPM proxy (tpm_vtpm_proxy -> /dev/vtpmx) and maps it into
+#     the container, so the test's default -Dhardened.tpm2.backend=platform exercises
+#     forPlatformTpm() exactly as on real hardware. Depends on the runner host kernel
+#     providing tpm_vtpm_proxy, so it is non-blocking (mirrors the fragile
+#     KWallet/KeePassXC legs of system-tests.yml).
+#
+# Both fail loudly (not silently-skip): each asserts the test ran 3 passing,
+# non-skipped tests, so a missing TPM/keyring cannot make the job falsely green.
 
 on:
   push:
@@ -26,7 +30,89 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tpm-system-tests:
+  reference-simulator:
+    runs-on: ubuntu-latest
+    name: tpm-system-tests (ms-tpm-20-ref simulator + gnome-keyring)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build the ms-tpm-20-ref TPM 2.0 simulator
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential autoconf automake libtool pkg-config libssl-dev git
+          git clone --depth 1 https://github.com/microsoft/ms-tpm-20-ref.git /tmp/ms-tpm-20-ref
+          cd /tmp/ms-tpm-20-ref/TPMCmd
+          ./bootstrap
+          ./configure
+          make -j"$(nproc)"
+          SIM="$(find /tmp/ms-tpm-20-ref -type f -executable -name 'tpm2-simulator' | head -n1)"
+          test -n "$SIM" || { echo "::error::tpm2-simulator binary not found after build"; exit 1; }
+          echo "SIMULATOR_BIN=$SIM" >> "$GITHUB_ENV"
+
+      - name: Start the simulator on localhost:2321
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/tpmsim
+          # The simulator writes its NVChip to the current directory; run it there. It listens on
+          # 2321 (command) and 2322 (platform) -- both are what TSS.Java's localTpmSimulator uses.
+          ( cd /tmp/tpmsim && nohup "$SIMULATOR_BIN" 2321 > /tmp/tpmsim/simulator.log 2>&1 & )
+          # Wait until the command port accepts connections.
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/2321) 2>/dev/null; then exec 3>&- 3<&-; echo "simulator up"; break; fi
+            sleep 1
+            [ "$i" -eq 30 ] && { echo "::error::simulator did not open port 2321"; cat /tmp/tpmsim/simulator.log || true; exit 1; }
+          done
+
+      - name: Build gnome-keyring container
+        run: docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-gnome-keyring .
+
+      - name: Run hardened-tpm2 system test (simulator-backed)
+        run: |
+          set -euxo pipefail
+          # --network=host lets the containerised test reach the simulator on the host's localhost:2321.
+          docker run --rm --network=host \
+            -v "${{ github.workspace }}":/workspace \
+            -v "$HOME/.m2/repository":/root/.m2/repository \
+            secret-service-gnome-keyring \
+            mvn -B test -Psystem-test -pl hardened-tpm2 -am \
+                -Dtest=HardenedTpm2SystemTest -Dsurefire.failIfNoSpecifiedTests=false \
+                -Dhardened.tpm2.backend=simulator
+
+      - name: Assert the TPM test actually ran (guard against a silent skip)
+        run: |
+          set -euxo pipefail
+          report="hardened-tpm2/target/surefire-reports/de.swiesend.secretservice.hardened.tpm2.HardenedTpm2SystemTest.txt"
+          if [ ! -f "$report" ]; then
+            echo "::error::no surefire report — the system test did not execute"; exit 1
+          fi
+          cat "$report"
+          if ! grep -Eq "Tests run: 3, Failures: 0, Errors: 0, Skipped: 0" "$report"; then
+            echo "::error::HardenedTpm2SystemTest did not run 3 passing, non-skipped tests (simulator or keyring not exercised)"
+            exit 1
+          fi
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpm-system-tests-simulator-diagnostics
+          path: |
+            /tmp/tpmsim/simulator.log
+            hardened-tpm2/target/surefire-reports/**
+          if-no-files-found: ignore
+
+  swtpm-vtpm-proxy:
     runs-on: ubuntu-latest
     # Non-blocking until proven stable across GitHub runner kernels (tpm_vtpm_proxy
     # availability is not guaranteed). Flip to false once it is reliably green.
