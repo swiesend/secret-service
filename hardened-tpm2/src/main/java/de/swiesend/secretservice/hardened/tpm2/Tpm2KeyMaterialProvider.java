@@ -117,6 +117,9 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
             throw new IOException("TPM unseal failed: " + e.getMessage(), e);
         }
         try {
+            // v2 blobs seal base64(pepper) (see Tpm2Provisioner.seal), so the unsealed bytes are
+            // always ASCII and utf8ToChars is lossless for any original pepper. The effective
+            // pepper this provider exposes is base64(sealed-input) -- deterministic and full-entropy.
             this.cachedPepper = utf8ToChars(pepperBytes);
         } finally {
             Arrays.fill(pepperBytes, (byte) 0);

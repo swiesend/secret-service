@@ -18,29 +18,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Tpm2ProvisionerArgsTest {
 
     @Test
-    void defaultPepperIsBase64AsciiAndRoundTripsThroughUtf8() throws Exception {
-        // The default pepper is generated inside the JVM and should be valid UTF-8 (base64
-        // ASCII). Verify it: round-trip through UTF-8 → char[] → UTF-8 → byte[] must be
-        // bit-identical, otherwise the provider's utf8ToChars(...) on unseal will corrupt it.
+    void defaultPepperIsRawEntropyAndBase64FormIsUtf8Safe() throws Exception {
+        // The default pepper source now returns 32 raw bytes of entropy; seal() owns the base64
+        // encoding that makes the pepper binary-safe (audit F-9). Verify the source yields raw
+        // entropy and that its base64 form (what gets sealed) round-trips losslessly through UTF-8.
         Tpm2Provisioner.Args args = Tpm2Provisioner.Args.parse(new String[]{
                 "--out", "/tmp/ignored", "--password-env", "PW"
         });
         byte[] pepper = args.pepperSource.read();
         try {
-            // Must be non-empty and ASCII-only (base64 alphabet).
-            assertTrue(pepper.length >= 32, "default pepper should be at least 32 bytes");
-            for (byte b : pepper) {
-                assertTrue(b >= 0, "default pepper must be ASCII (round-trip-safe under UTF-8)");
-            }
-            // Verify decode-then-re-encode round-trip in UTF-8.
-            String s = new String(pepper, StandardCharsets.UTF_8);
+            assertEquals(32, pepper.length, "default pepper should be 32 bytes of raw entropy");
+            byte[] sealable = Base64.getEncoder().encode(pepper); // what seal() will store
+            String s = new String(sealable, StandardCharsets.UTF_8);
             byte[] reencoded = s.getBytes(StandardCharsets.UTF_8);
-            assertEquals(pepper.length, reencoded.length);
-            for (int i = 0; i < pepper.length; i++) {
-                assertEquals(pepper[i], reencoded[i],
-                        "default pepper must round-trip losslessly through UTF-8 (failed at index " + i + ")");
+            assertEquals(sealable.length, reencoded.length);
+            for (int i = 0; i < sealable.length; i++) {
+                assertEquals(sealable[i], reencoded[i],
+                        "sealed base64 pepper must round-trip losslessly through UTF-8 (index " + i + ")");
             }
-            // Sanity-check: it really is base64.
             assertNotNull(Base64.getDecoder().decode(s));
         } finally {
             java.util.Arrays.fill(pepper, (byte) 0);

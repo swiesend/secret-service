@@ -53,6 +53,19 @@ class Tpm2SealedBlobTest {
     }
 
     @Test
+    void rejectsLegacyV1BlobWithReprovisionHint() {
+        // A v1 blob (byte 8 == 0x01) sealed the pepper verbatim and is not binary-safe (F-9).
+        // Reading it must fail with guidance to re-provision, not silently return a wrong pepper.
+        byte[] raw = new Tpm2SealedBlob(Tpm2SealedBlob.PolicyKind.PASSWORD,
+                pattern(16, 1), pattern(16, 2)).toBytes();
+        raw[8] = 0x01; // downgrade the version byte to v1
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> Tpm2SealedBlob.fromBytes(raw));
+        assertTrue(e.getMessage().contains("re-provision"),
+                "v1 rejection must tell the operator to re-provision; was: " + e.getMessage());
+    }
+
+    @Test
     void rejectsEmptyParts() {
         assertThrows(IllegalArgumentException.class,
                 () -> new Tpm2SealedBlob(Tpm2SealedBlob.PolicyKind.PASSWORD, new byte[0], new byte[4]));

@@ -67,20 +67,19 @@ class Tpm2KeyMaterialProviderTest {
                 "TPM simulator not listening on localhost:2321; skipping. "
                         + "Run ibmswtpm2 or mspTSSSimulator locally to enable.");
 
-        // The pepper SPI is text-oriented: getPepper() returns a char[] and HardenedCollection
-        // re-encodes it as UTF-8 for HKDF, so real providers (env/file, and Tpm2Provisioner's own
-        // generator) emit an ASCII base64 pepper. Seal such a pepper here so the round-trip is
-        // lossless. Sealing raw non-UTF-8 bytes is unsupported and silently lossy -- see the
-        // security audit (binary-safety finding) -- so this test must not assert on binary input.
-        byte[] entropy = new byte[24];
-        new java.security.SecureRandom().nextBytes(entropy);
-        byte[] pepper = java.util.Base64.getEncoder().encode(entropy); // 32 ASCII bytes
+        // seal() is binary-safe (audit F-9): it base64-encodes the pepper before sealing, so ANY
+        // input bytes round-trip losslessly through the text pepper SPI. Seal RAW RANDOM BINARY --
+        // the case that used to corrupt (32 -> 31 chars) -- and assert the provider yields exactly
+        // base64(input), proving full-entropy, collision-free recovery.
+        byte[] pepper = new byte[32];
+        new java.security.SecureRandom().nextBytes(pepper); // raw binary, not UTF-8
         char[] password = "t3st-p@ssword".toCharArray();
 
         Tpm2SealedBlob blob = Tpm2Provisioner.seal(pepper, password.clone(), TpmFactory::localTpmSimulator);
         Path blobPath = dir.resolve("pepper.tpm2blob");
         blob.writeTo(blobPath);
 
+        byte[] expected = java.util.Base64.getEncoder().encode(pepper); // provider's effective pepper
         try (Tpm2KeyMaterialProvider provider = Tpm2KeyMaterialProvider.forSimulator(blobPath, password.clone())) {
             ThreatCoverage tc = provider.threatCoverage();
             assertEquals(ThreatCoverage.Level.PARTIAL, tc.sameUid(),
@@ -92,8 +91,10 @@ class Tpm2KeyMaterialProviderTest {
             try {
                 byte[] unsealedBytes = new byte[roundTripped.length];
                 for (int i = 0; i < roundTripped.length; i++) unsealedBytes[i] = (byte) roundTripped[i];
-                assertArrayEquals(pepper, unsealedBytes,
-                        "unsealed pepper must match the sealed original byte-for-byte");
+                assertArrayEquals(expected, unsealedBytes,
+                        "provider pepper must be base64(sealed bytes) -- lossless for binary input");
+                assertEquals(expected.length, roundTripped.length,
+                        "no bytes lost round-tripping a binary pepper (F-9 regression guard)");
             } finally {
                 Arrays.fill(roundTripped, '\0');
             }

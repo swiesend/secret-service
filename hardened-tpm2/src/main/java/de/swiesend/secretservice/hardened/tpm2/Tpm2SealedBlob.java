@@ -57,7 +57,10 @@ public final class Tpm2SealedBlob {
     }
 
     private static final byte[] MAGIC = {'T', 'P', 'M', '2', 'B', 'L', 'O', 'B'};
+    /** v1 sealed the pepper bytes verbatim -- lossy for non-UTF-8 peppers (see security audit F-9). */
     private static final byte VERSION_1 = 0x01;
+    /** v2 seals base64(pepper), so any pepper round-trips losslessly through the text pepper SPI. */
+    private static final byte VERSION_2 = 0x02;
 
     private static final Set<PosixFilePermission> MODE_0600 = EnumSet.of(
             PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
@@ -86,7 +89,7 @@ public final class Tpm2SealedBlob {
         int total = MAGIC.length + 2 + 2 + outPublic.length + 2 + outPrivate.length;
         ByteBuffer buf = ByteBuffer.allocate(total).order(ByteOrder.BIG_ENDIAN);
         buf.put(MAGIC);
-        buf.put(VERSION_1);
+        buf.put(VERSION_2);
         buf.put(policyKind.wire());
         buf.putShort((short) outPublic.length);
         buf.put(outPublic);
@@ -104,7 +107,12 @@ public final class Tpm2SealedBlob {
         buf.get(magic);
         if (!Arrays.equals(magic, MAGIC)) throw new IllegalArgumentException("bad magic");
         byte version = buf.get();
-        if (version != VERSION_1) {
+        if (version == VERSION_1) {
+            throw new IllegalArgumentException(
+                    "sealed-blob is the older v1 format (pepper sealed verbatim, not binary-safe); "
+                            + "re-provision with Tpm2Provisioner to produce a v2 blob");
+        }
+        if (version != VERSION_2) {
             throw new IllegalArgumentException("unsupported sealed-blob version: " + version);
         }
         PolicyKind policyKind = PolicyKind.fromWire(buf.get());

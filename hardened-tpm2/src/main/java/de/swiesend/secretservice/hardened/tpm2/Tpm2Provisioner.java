@@ -152,9 +152,18 @@ public final class Tpm2Provisioner {
      * Seal {@code pepperBytes} under {@code password}. The caller is responsible for
      * zeroing {@code pepperBytes} and {@code password} after this method returns; the
      * method zeroes its internal copies.
+     *
+     * <p>The pepper is base64-encoded before sealing so that <b>any</b> input bytes round-trip
+     * losslessly through the text-oriented pepper SPI ({@code getPepper()} returns a {@code char[]}
+     * and {@code HardenedCollection} re-encodes it as UTF-8). Callers therefore pass raw entropy;
+     * the seal owns the encoding. The provider's effective pepper is {@code base64(pepperBytes)}.
+     * This produces a v2 {@link Tpm2SealedBlob}; older v1 blobs (verbatim, not binary-safe) are
+     * rejected on read and must be re-provisioned.</p>
      */
     public static Tpm2SealedBlob seal(byte[] pepperBytes, char[] password, Supplier<Tpm> tpmSupplier) {
         byte[] authValue = charsToUtf8(password);
+        // Base64 the pepper so non-UTF-8 input survives the char[]/UTF-8 round-trip (audit F-9).
+        byte[] sealable = java.util.Base64.getEncoder().encode(pepperBytes);
         Tpm tpm = null;
         TPM_HANDLE primary = null;
         try {
@@ -169,7 +178,7 @@ public final class Tpm2Provisioner {
 
             CreateResponse cr = tpm.Create(
                     primary,
-                    new TPMS_SENSITIVE_CREATE(authValue, pepperBytes),
+                    new TPMS_SENSITIVE_CREATE(authValue, sealable),
                     sealTemplate(),
                     new byte[0],
                     new TPMS_PCR_SELECTION[0]);
@@ -178,6 +187,7 @@ public final class Tpm2Provisioner {
             byte[] outPrivateBytes = cr.outPrivate.toTpm();
             return new Tpm2SealedBlob(Tpm2SealedBlob.PolicyKind.PASSWORD, outPublicBytes, outPrivateBytes);
         } finally {
+            Arrays.fill(sealable, (byte) 0);
             if (tpm != null) {
                 try {
                     if (primary != null) tpm.FlushContext(primary);
@@ -353,18 +363,16 @@ public final class Tpm2Provisioner {
     }
 
     /**
-     * Default pepper: 32 random bytes encoded as base64 ASCII (~44 chars). Base64 ASCII is
-     * always valid UTF-8, so the pepper round-trips through {@code Tpm2KeyMaterialProvider}
-     * losslessly via {@code utf8ToChars}. (Raw random 32 bytes would have ~50% chance of
-     * containing invalid UTF-8 sequences and corrupt on read.)
+     * Default pepper: 32 raw bytes of {@link SecureRandom} entropy. {@link #seal} base64-encodes
+     * whatever bytes it is given before sealing, so the source no longer needs to pre-encode --
+     * doing so here too would double-encode. Binary-safety for every pepper source now lives in
+     * {@code seal}, not in the individual sources.
      */
     static PepperSource randomPepperSource() {
         return () -> {
             byte[] raw = new byte[32];
             new SecureRandom().nextBytes(raw);
-            byte[] base64 = java.util.Base64.getEncoder().encode(raw);
-            Arrays.fill(raw, (byte) 0);
-            return base64;
+            return raw;
         };
     }
 
