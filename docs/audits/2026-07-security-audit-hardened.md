@@ -61,6 +61,29 @@ than the feature list implies, which the project's own "do I need this?" tree co
 | P-2 | Medium (premise) | Real, delivered value is concentrated in `hardened-tpm2` + a deployment posture the library can only recommend. |
 | G-1..G-6 | Info (positive) | AEAD usage, hybrid combiner, FS mechanism, fail-safe/zeroing hygiene, honest self-assessment. |
 
+### Resolution status (2026-07)
+
+All fixable findings have been addressed on the `claude/secrets-encryption-design-daWnL` branch. The
+narrative below documents the state at audit time; each finding's remediation:
+
+| # | Status | How |
+|---|---|---|
+| F-1 | Fixed | Construction-time warning when `enablePostQuantum(true)` is set without a `GenerationAnchor`, and a `rotateEpoch()` warning when no anchor is configured; anchor presence in the posture log. |
+| F-2 | Fixed | Forward-secrecy Javadoc scoped to store delete-semantics + backup-retention discipline and to needing a `GenerationAnchor` against rollback. |
+| F-3 | Fixed | Envelope **v2**: full-header AEAD associated data; item-id and TOTP mode/step embedded as authenticated fields and read from the envelope, not D-Bus attributes. |
+| F-4 | Fixed | DEK KDF feeds pepper + KEM secret + TOTP code through the HKDF IKM (length-prefixed); only public context in `info`; domain tag bumped to `/v2`. |
+| F-5 | Fixed | Construction-time warning for `STORED_STEP`; `Mode` Javadoc marks it theater. |
+| F-6 | Fixed | `close()` scrubbing on EnvVar/File/Interactive; `NoTotp` propagates `close()`/`currentStep()`; File `ThreatCoverage` degrades to all-`NONE` when the POSIX check is skipped. |
+| F-7 | Fixed | `sameUid=NONE` is now a health-check **FAIL** (weak deployments report UNHEALTHY). |
+| F-8 | Fixed | `new TPM_HANDLE(nvIndex)` at all NV call sites; verified end-to-end against a software TPM. |
+| F-9 | Fixed | `seal()` base64-encodes the pepper (binary-safe); sealed-blob **v2**; v1 blobs rejected with a re-provision hint. |
+| P-1 | Doc-addressed | README hardened section leads with "no class-A defense in-process; needs a different security principal." The separate-UID-broker redesign is called out as out of scope. |
+| P-2 | Doc-addressed | README + this audit state the real value is concentrated in the TPM path plus measured boot + MAC + backup rotation. |
+
+Decisions taken (with the maintainer): full envelope **v2 clean break** (no v1 read-compat, alpha);
+TPM pepper made binary-safe by **base64-internally** (existing sealed blobs must be re-provisioned);
+health-check `sameUid=NONE` promoted to **FAIL**.
+
 ---
 
 ## 2. Architecture recap (as built)

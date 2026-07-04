@@ -52,12 +52,17 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
 
 **Application-layer encryption (`secret-service-hardened`)**
 
-Most consumers need only the core artifact. The optional hardened layer encrypts secret *bodies* before they reach the daemon — AES-256-GCM envelopes with per-item keys derived from an application pepper — so an attacker who holds the keyring bytes but not the pepper sees only ciphertext. Framed against the [threat catalogue](docs/threat_models_and_mitigation.md#2-threat-catalogue), it pays off when:
+**Most consumers need only the core artifact.** Read the scope before adopting this: the hardened layer encrypts secret *bodies* before they reach the daemon — AES-256-GCM envelopes with per-item keys derived from an application *pepper* — so an attacker who holds the keyring bytes but not the pepper sees only ciphertext. It is **defense-in-depth, not a same-UID boundary.**
+
+- It does **not** defend against a same-UID live process — **class A**, the CVE-2018-19358 case above. Because the decrypting key must be available to your own process, no in-process encryption can. Class A needs a *different security principal*: OS-level isolation (MAC policy, sandboxing) or a hardware token that performs the crypto (see §3–§4 of the [threat-model doc](docs/threat_models_and_mitigation.md)).
+- The whole scheme's root of trust is the pepper. Its real value materializes only when the pepper lives somewhere an attacker who has the keyring cannot also reach — i.e. **`secret-service-hardened-tpm2` (TPM-sealed pepper), and, to mean anything against a capable attacker, together with measured boot, a MAC policy confining `/dev/tpmrm0`, JVM hardening, and disciplined backup-retention rotation.** With an env-var or co-located file pepper on a single-tenant desktop, it adds little a full-disk-encrypted laptop does not already provide.
+
+Where it genuinely pays off ([threat catalogue](docs/threat_models_and_mitigation.md#2-threat-catalogue)):
 
 - the host is multi-tenant (shared users, CI runners, sidecar containers) — **class B**; or
-- the keyring file can leave the host (cloud backup, off-host `rsync`, container/filesystem snapshot) — **class C**, and **class D** (harvest-now-decrypt-later) when you also set `.enablePostQuantum(true)` (hybrid X25519 + ML-KEM-768, with forward secrecy via `rotateEpoch()`).
+- the keyring file can leave the host (cloud backup, off-host `rsync`, container/filesystem snapshot) — **class C** (real only with a pepper independent of that disk/backup), and **class D** (harvest-now-decrypt-later) when you also set `.enablePostQuantum(true)` (hybrid X25519 + ML-KEM-768, with forward secrecy via `rotateEpoch()` — itself rollback-resistant only with a `GenerationAnchor`).
 
-It does **not** defend against a same-UID live process — **class A**, the CVE-2018-19358 case above; that still requires OS-level isolation (see §3–§4 of the doc). The application pepper can optionally be sealed in a TPM with `secret-service-hardened-tpm2`. Before adopting the hardened layer, walk the [“Do I need this?” decision tree](docs/threat_models_and_mitigation.md#11-do-i-need-this): if your host is single-tenant and the keyring never leaves it, you likely do not need it.
+Before adopting the hardened layer, walk the [“Do I need this?” decision tree](docs/threat_models_and_mitigation.md#11-do-i-need-this): if your host is single-tenant and the keyring never leaves it, you likely do not need it.
 
 **KeePassXC**
 
