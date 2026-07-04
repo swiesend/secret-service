@@ -167,6 +167,22 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void tamperingWithEnvelopeHeaderFailsAuthentication() {
+        // The AEAD associated data now covers the full envelope header, so flipping a header field
+        // (here the flags byte at offset 5) must fail decryption rather than being silently accepted.
+        HardenedCollection h = build();
+        String path = h.createItem("x", "secret").orElseThrow();
+        assertEquals("secret", h.withSecret(path, String::new).orElse(null), "sanity: reads before tamper");
+
+        byte[] envBytes = Base64.getDecoder().decode(fake.rawItems().get(path).rawSecret());
+        envBytes[5] = Envelope.FLAG_LIVE_TOTP; // flip the flags byte (was 0); still parses, but AAD changes
+        fake.overwriteRawSecret(path, Base64.getEncoder().encodeToString(envBytes));
+
+        assertTrue(h.withSecret(path, String::new).isEmpty(),
+                "a tampered header must fail AEAD authentication and yield empty, not plaintext");
+    }
+
+    @Test
     void classicalKemProvidesForwardSecrecyWithoutPq() {
         // Even without PQ, a pre-rotation envelope copy must be unreadable after rotateEpoch
         // destroys the classical epoch key -- the whole point of always using a KEM.
@@ -184,23 +200,19 @@ class HardenedCollectionTest {
     }
 
     @Test
-    void legacyKemIdNoneEnvelopeIsToleratedNotRejectedByKeystore() {
-        // Envelopes written by earlier alpha builds carry kem_id=KEM_ID_NONE (pepper-only DEK,
-        // no keystore lookup). After the KEM became always-on, the reader must still route NONE
-        // through the pepper-only branch rather than the keystore -- otherwise every legacy item
-        // would fail with an "epoch not found" error even before the AEAD is checked. We seed a
-        // NONE envelope whose AEAD won't authenticate; the contract we pin is that the read
-        // returns empty gracefully (AEAD-failure path) and does not throw.
+    void legacyV1EnvelopeIsRejectedGracefully() {
+        // Format v1 (unauthenticated item-id/TOTP, narrow AAD) is no longer supported. A stale v1
+        // item must be rejected gracefully -- withSecret returns empty rather than throwing -- so a
+        // leftover alpha item never crashes a read.
         HardenedCollection h = build();
-        byte[] env = new Envelope(Envelope.VERSION_1, (byte) 0, Envelope.KEM_ID_NONE,
-                new byte[Envelope.SALT_LEN], "legacy-epoch".getBytes(),
-                new byte[0], new byte[Envelope.NONCE_LEN], new byte[32]).toBytes();
+        byte[] env = new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
+                new byte[Envelope.SALT_LEN], "legacy-epoch".getBytes(), "legacy-id".getBytes(),
+                Envelope.TOTP_MODE_NONE, 0L, new byte[0], new byte[Envelope.NONCE_LEN], new byte[32]).toBytes();
+        env[4] = Envelope.VERSION_1; // downgrade the version byte -> an unsupported v1 envelope
         Map<String, String> attrs = new HashMap<>();
         attrs.put(HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1);
-        attrs.put("hardened.item.id", "legacy-id");
-        attrs.put(HardenedCollection.ATTR_TOTP_MODE, KeyMaterialProvider.Mode.NO_TOTP.name());
-        fake.seedRaw("/legacy/none", "legacy", Base64.getEncoder().encodeToString(env), attrs);
-        assertTrue(h.withSecret("/legacy/none", String::new).isEmpty());
+        fake.seedRaw("/legacy/v1", "legacy", Base64.getEncoder().encodeToString(env), attrs);
+        assertTrue(h.withSecret("/legacy/v1", String::new).isEmpty());
     }
 
     @Test

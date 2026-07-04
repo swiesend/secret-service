@@ -88,7 +88,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     private static final String AEAD_ALG  = "aes-256-gcm";
     private static final int AEAD_KEY_LEN = 32;
     private static final int AEAD_TAG_BITS = 128;
-    private static final String HKDF_INFO_TAG = "secret-service/hardened/v1";
+    private static final String HKDF_INFO_TAG = "secret-service/hardened/v2";
 
     private final CollectionInterface wrapped;
     private final KeyMaterialProvider provider;
@@ -260,6 +260,8 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         String itemId = UUID.randomUUID().toString();
 
         byte[] plaintext = charsToUtf8(secret);
+        byte[] idBytes = itemId.getBytes(StandardCharsets.US_ASCII);
+        byte totpModeByte = totpModeByte(provider.mode());
         byte[] dek = null;
         byte[] kemSecret = null;
         byte[] nonce = new byte[Envelope.NONCE_LEN];
@@ -275,23 +277,28 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             HybridKem.Encapsulation encap = encapsulateForWrite();
             byte[] kemCt = encap.kemCiphertext();
             kemSecret = encap.sharedSecret();
-            dek = deriveDek(pepper, totpCode, salt, epochBytes,
-                    itemId.getBytes(StandardCharsets.US_ASCII), kemSecret);
+            dek = deriveDek(pepper, totpCode, salt, epochBytes, idBytes, kemSecret);
             new SecureRandom().nextBytes(nonce);
-            byte[] aeadCt;
-            try {
-                aeadCt = aeadEncrypt(dek, nonce, plaintext, associatedData(salt, epochBytes, itemId));
-            } catch (GeneralSecurityException e) {
-                throw new IllegalStateException("AES-GCM encryption failed", e);
-            }
 
             byte flags = 0;
             if (kemId.carriesPqCiphertext()) flags |= Envelope.FLAG_PQ_HYBRID;
             if (provider.mode() == KeyMaterialProvider.Mode.STORED_STEP) flags |= Envelope.FLAG_STORED_STEP_TOTP;
             if (provider.mode() == KeyMaterialProvider.Mode.LIVE_CODE)   flags |= Envelope.FLAG_LIVE_TOTP;
 
-            Envelope env = new Envelope(Envelope.VERSION_1, flags, kemId.id(), salt, epochBytes,
-                    kemCt, nonce, aeadCt);
+            // AAD binds the whole header (version, flags, kem_id, salt, epoch, item-id, TOTP
+            // mode/step, kem_ct, nonce), so item identity and time-binding are authenticated by the
+            // AEAD rather than trusted from mutable D-Bus attributes on read.
+            byte[] aad = Envelope.associatedData(Envelope.VERSION_2, flags, kemId.id(), salt, epochBytes,
+                    idBytes, totpModeByte, totpStep, kemCt, nonce);
+            byte[] aeadCt;
+            try {
+                aeadCt = aeadEncrypt(dek, nonce, plaintext, aad);
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("AES-GCM encryption failed", e);
+            }
+
+            Envelope env = new Envelope(Envelope.VERSION_2, flags, kemId.id(), salt, epochBytes,
+                    idBytes, totpModeByte, totpStep, kemCt, nonce, aeadCt);
             envelopeB64 = Base64.getEncoder().encodeToString(env.toBytes());
         } catch (IllegalStateException e) {
             // KEM failure (e.g. an epoch keypair could not be loaded/persisted) or AES-GCM
@@ -386,7 +393,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 Arrays.fill(envelopeBytes, (byte) 0);
             }
 
-            char[] plain = decryptToChars(env, objectPath, attrs.get());
+            char[] plain = decryptToChars(env, objectPath);
             if (plain == null) return null;
             try {
                 return callback.apply(plain);
@@ -483,7 +490,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 }
                 Envelope env = Envelope.fromBytes(envBytes);
                 Arrays.fill(envBytes, (byte) 0);
-                char[] plain = decryptToChars(env, path, a.get());
+                char[] plain = decryptToChars(env, path);
                 if (plain == null) return Boolean.FALSE;
                 try {
                     String label = wrapped.getItemLabel(path).orElse("item");
@@ -721,18 +728,17 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
     // ---------- internals ----------
 
-    private char[] decryptToChars(Envelope env, String objectPath, Map<String, String> attrs) {
-        String itemId = attrs.get("hardened.item.id");
-        if (itemId == null) {
-            log.warn("decrypt: {} missing hardened.item.id attribute", objectPath);
-            return null;
-        }
+    private char[] decryptToChars(Envelope env, String objectPath) {
+        // Item identity and TOTP mode/step come from the AUTHENTICATED envelope, not from mutable
+        // D-Bus attributes: they are covered by the AEAD associated data, so tampering fails
+        // decryption rather than steering it.
+        byte[] idBytes = env.itemId();
         char[] pepper = provider.getPepper();
-        // One or more candidate TOTP codes depending on the stored mode: exactly one for
+        // One or more candidate TOTP codes depending on the envelope's mode: exactly one for
         // NO_TOTP / STORED_STEP, but three for LIVE_CODE (current step and +/-1) so a read
-        // that lands one step after the write still succeeds -- the +/-1 tolerance the mode
-        // advertises. Each candidate is tried until one decrypts.
-        List<byte[]> totpCandidates = totpCodesForRead(attrs);
+        // that lands one step after the write still succeeds. Each candidate is tried until one
+        // decrypts.
+        List<byte[]> totpCandidates = totpCodesForRead(env);
         byte[] kemSecret;
         try {
             // When the envelope advertises kem_id != NONE, look up the matching epoch keypair
@@ -747,8 +753,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             return null;
         }
         try {
-            byte[] idBytes = itemId.getBytes(StandardCharsets.US_ASCII);
-            byte[] ad = associatedData(env.salt(), env.epochId(), itemId);
+            byte[] ad = env.associatedData();
             for (byte[] totpCode : totpCandidates) {
                 byte[] dek = null;
                 byte[] plain = null;
@@ -786,31 +791,20 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     }
 
     /**
-     * Candidate TOTP codes to try on read, most-likely first. NO_TOTP and unparsable modes
-     * yield a single empty code. STORED_STEP yields the one code for the exact stored step.
-     * LIVE_CODE yields three codes -- the current step and +/-1 -- so a read that happens just
-     * after a step rollover still matches the code used at write time. The list contents are
-     * zeroed by the caller.
+     * Candidate TOTP codes to try on read, most-likely first, keyed off the AUTHENTICATED envelope
+     * fields (not D-Bus attributes). NO_TOTP yields a single empty code. STORED_STEP yields the one
+     * code for the envelope's stored step. LIVE_CODE yields three codes -- the current step and
+     * +/-1 -- so a read just after a step rollover still matches the write-time code. The list
+     * contents are zeroed by the caller.
      */
-    private List<byte[]> totpCodesForRead(Map<String, String> attrs) {
-        String modeStr = attrs.get(ATTR_TOTP_MODE);
-        if (modeStr == null) return List.of(new byte[0]);
-        KeyMaterialProvider.Mode storedMode;
-        try {
-            storedMode = KeyMaterialProvider.Mode.valueOf(modeStr);
-        } catch (IllegalArgumentException e) {
-            return List.of(new byte[0]);
-        }
-        if (storedMode == KeyMaterialProvider.Mode.NO_TOTP) return List.of(new byte[0]);
+    private List<byte[]> totpCodesForRead(Envelope env) {
+        byte mode = env.totpMode();
+        if (mode == Envelope.TOTP_MODE_NONE) return List.of(new byte[0]);
         byte[] seed = provider.getTotpSeed().orElse(null);
         if (seed == null) return List.of(new byte[0]);
         try {
-            if (storedMode == KeyMaterialProvider.Mode.STORED_STEP) {
-                String s = attrs.get(ATTR_TOTP_STEP);
-                if (s == null) return List.of(new byte[0]);
-                long step;
-                try { step = Long.parseLong(s); } catch (NumberFormatException e) { return List.of(new byte[0]); }
-                return List.of(Totp.code(seed, step));
+            if (mode == Envelope.TOTP_MODE_STORED_STEP) {
+                return List.of(Totp.code(seed, env.totpStep()));
             }
             // LIVE_CODE: tolerate a +/-1 step drift between write and read.
             long step = provider.currentStep();
@@ -876,49 +870,59 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     }
 
     /**
-     * Derives the per-item DEK. {@code kemSecret} is the optional KEM-derived shared secret;
-     * pass an empty array (or {@code null}) for items without a KEM. The HKDF info string
-     * domain-separates with-KEM and without-KEM derivations: an envelope written without a
-     * KEM cannot be decrypted as if it had one and vice versa.
+     * Derives the per-item DEK. All secret inputs -- the pepper, the KEM-derived shared secret, and
+     * the (possibly empty) TOTP code -- are concatenated into the HKDF <em>input keying material</em>
+     * and mixed by {@code HKDF-Extract(salt, IKM)}; the public per-item context (a domain tag, the
+     * epoch id, and the item id) goes into {@code HKDF-Expand}'s {@code info}. This is the textbook
+     * shape: an attacker must know every secret input to reconstruct the DEK, and the length-prefixed
+     * IKM keeps an absent KEM/TOTP input distinct from a present-but-empty one, so a with-KEM and a
+     * without-KEM derivation can never collide. {@code kemSecret} may be {@code null}/empty for
+     * KEM-less (legacy) items.
      */
     private static byte[] deriveDek(char[] pepper, byte[] totpCode, byte[] salt, byte[] epoch,
                                     byte[] itemId, byte[] kemSecret) {
         byte[] pepperBytes = charsToUtf8(CharBuffer.wrap(pepper));
         byte[] kem = kemSecret == null ? new byte[0] : kemSecret;
+        byte[] ikm = buildIkm(pepperBytes, kem, totpCode);
         try {
-            byte[] prk = HKDF.fromHmacSha256().extract(salt, pepperBytes);
-            byte[] info = buildInfo(totpCode, epoch, itemId, kem);
+            byte[] info = buildInfo(epoch, itemId);
+            byte[] prk = HKDF.fromHmacSha256().extract(salt, ikm);
             byte[] dek = HKDF.fromHmacSha256().expand(prk, info, AEAD_KEY_LEN);
             Arrays.fill(prk, (byte) 0);
             Arrays.fill(info, (byte) 0);
             return dek;
         } finally {
+            Arrays.fill(ikm, (byte) 0);
             Arrays.fill(pepperBytes, (byte) 0);
         }
     }
 
-    private static byte[] buildInfo(byte[] totpCode, byte[] epoch, byte[] itemId, byte[] kemSecret) {
-        byte[] tag = HKDF_INFO_TAG.getBytes(StandardCharsets.UTF_8);
+    /** Length-prefixed concatenation of the secret keying inputs: pepper || kemSecret || totpCode. */
+    private static byte[] buildIkm(byte[] pepper, byte[] kemSecret, byte[] totpCode) {
         ByteBuffer buf = ByteBuffer.allocate(
-                tag.length + 2 + totpCode.length + 2 + epoch.length + 2 + itemId.length + 2 + kemSecret.length);
-        buf.put(tag);
-        buf.putShort((short) totpCode.length).put(totpCode);
-        buf.putShort((short) epoch.length).put(epoch);
-        buf.putShort((short) itemId.length).put(itemId);
-        // length-prefix the KEM secret separately so an empty KEM secret yields a deterministic,
-        // non-clashing info string vs a present-but-empty one. The two-byte length prefix keeps
-        // the info domain-separated even when the secret is absent.
+                2 + pepper.length + 2 + kemSecret.length + 2 + totpCode.length);
+        buf.putShort((short) pepper.length).put(pepper);
         buf.putShort((short) kemSecret.length).put(kemSecret);
+        buf.putShort((short) totpCode.length).put(totpCode);
         return buf.array();
     }
 
-    private static byte[] associatedData(byte[] salt, byte[] epoch, String itemId) {
-        byte[] id = itemId.getBytes(StandardCharsets.US_ASCII);
-        ByteBuffer buf = ByteBuffer.allocate(2 + salt.length + 2 + epoch.length + 2 + id.length);
-        buf.putShort((short) salt.length).put(salt);
+    /** Public per-item context for HKDF-Expand: domain tag || epoch || item id (length-prefixed). */
+    private static byte[] buildInfo(byte[] epoch, byte[] itemId) {
+        byte[] tag = HKDF_INFO_TAG.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer buf = ByteBuffer.allocate(tag.length + 2 + epoch.length + 2 + itemId.length);
+        buf.put(tag);
         buf.putShort((short) epoch.length).put(epoch);
-        buf.putShort((short) id.length).put(id);
+        buf.putShort((short) itemId.length).put(itemId);
         return buf.array();
+    }
+
+    private static byte totpModeByte(KeyMaterialProvider.Mode mode) {
+        return switch (mode) {
+            case NO_TOTP -> Envelope.TOTP_MODE_NONE;
+            case STORED_STEP -> Envelope.TOTP_MODE_STORED_STEP;
+            case LIVE_CODE -> Envelope.TOTP_MODE_LIVE_CODE;
+        };
     }
 
     private static byte[] aeadEncrypt(byte[] key, byte[] nonce, byte[] plaintext, byte[] aad)
