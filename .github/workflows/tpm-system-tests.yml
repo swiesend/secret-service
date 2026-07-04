@@ -43,8 +43,11 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
+          # autoconf-archive provides AX_PTHREAD (used by configure.ac); without it autoreconf
+          # fails with a "possibly undefined macro: AC_SUBST/AS_IF" cascade. pkg-config + libssl-dev
+          # satisfy PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto]).
           sudo apt-get install -y --no-install-recommends \
-            build-essential autoconf automake libtool pkg-config libssl-dev git
+            build-essential autoconf automake libtool pkg-config autoconf-archive libssl-dev git
           git clone --depth 1 https://github.com/microsoft/ms-tpm-20-ref.git /tmp/ms-tpm-20-ref
           cd /tmp/ms-tpm-20-ref/TPMCmd
           ./bootstrap
