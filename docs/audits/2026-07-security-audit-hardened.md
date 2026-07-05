@@ -72,7 +72,7 @@ narrative below documents the state at audit time; each finding's remediation:
 | F-2 | Fixed | Forward-secrecy Javadoc scoped to store delete-semantics + backup-retention discipline and to needing a `GenerationAnchor` against rollback. |
 | F-3 | Fixed | Envelope **v2**: full-header AEAD associated data; item-id and TOTP mode/step embedded as authenticated fields and read from the envelope, not D-Bus attributes. |
 | F-4 | Fixed | DEK KDF feeds pepper + KEM secret + TOTP code through the HKDF IKM (length-prefixed); only public context in `info`; domain tag bumped to `/v2`. |
-| F-5 | Fixed | Construction-time warning for `STORED_STEP`; `Mode` Javadoc marks it theater. |
+| F-5 | Resolved by removal | TOTP support was subsequently removed entirely: `STORED_STEP` was theater in every configuration and `LIVE_CODE` only a liveness window (the SPI exposed the raw seed). The interim construction-time warning and Javadoc labels shipped first, then the whole factor was deleted; pre-removal non-TOTP envelopes remain readable. |
 | F-6 | Fixed | `close()` scrubbing on EnvVar/File/Interactive; `NoTotp` propagates `close()`/`currentStep()`; File `ThreatCoverage` degrades to all-`NONE` when the POSIX check is skipped. |
 | F-7 | Fixed | `sameUid=NONE` is now a health-check **FAIL** (weak deployments report UNHEALTHY). |
 | F-8 | Fixed | `new TPM_HANDLE(nvIndex)` at all NV call sites; verified end-to-end against a software TPM. |

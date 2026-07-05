@@ -8,12 +8,11 @@ import org.slf4j.LoggerFactory;
 import java.io.Console;
 import java.util.Arrays;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
- * Prompts the user at construction time for the pepper (and, optionally, the base64 TOTP seed),
- * then holds the material in memory for the process lifetime. Stronger against offline
- * exfiltration than env-var/file providers; still weak against live same-UID {@code ptrace}.
+ * Prompts the user at construction time for the pepper, then holds it in memory for the
+ * process lifetime. Stronger against offline exfiltration than env-var/file providers;
+ * still weak against live same-UID {@code ptrace}.
  *
  * <p>This provider uses {@link System#console()} which returns null in non-TTY environments —
  * it is therefore unsuitable for headless services. Use {@link FileKeyMaterialProvider} there.</p>
@@ -23,10 +22,9 @@ public final class InteractiveKeyMaterialProvider implements KeyMaterialProvider
     private static final Logger log = LoggerFactory.getLogger(InteractiveKeyMaterialProvider.class);
 
     private final char[] pepper;
-    private final byte[] totpSeed;
     private volatile boolean closed = false;
 
-    /** Reads pepper and optional TOTP seed from the console. */
+    /** Reads the pepper from the console. */
     public InteractiveKeyMaterialProvider() {
         Console console = System.console();
         if (console == null) {
@@ -38,42 +36,17 @@ public final class InteractiveKeyMaterialProvider implements KeyMaterialProvider
         if (pepper == null || pepper.length == 0) {
             throw new IllegalStateException("empty pepper entered");
         }
-        char[] seedLine = console.readPassword("TOTP seed (base64, empty for none): ");
-        if (seedLine == null || seedLine.length == 0) {
-            this.totpSeed = null;
-        } else {
-            byte[] decoded;
-            try {
-                decoded = java.util.Base64.getDecoder().decode(new String(seedLine));
-            } catch (IllegalArgumentException e) {
-                Arrays.fill(seedLine, '\0');
-                throw new IllegalStateException("TOTP seed was not valid base64", e);
-            }
-            Arrays.fill(seedLine, '\0');
-            this.totpSeed = decoded;
-        }
         log.info("InteractiveKeyMaterialProvider initialised; pepper held in JVM memory for the process lifetime.");
     }
 
     /** Package-private constructor for tests. */
-    InteractiveKeyMaterialProvider(char[] pepper, byte[] totpSeed) {
+    InteractiveKeyMaterialProvider(char[] pepper) {
         this.pepper = Objects.requireNonNull(pepper, "pepper").clone();
-        this.totpSeed = totpSeed == null ? null : totpSeed.clone();
     }
 
     @Override public char[] getPepper() {
         if (closed) throw new IllegalStateException("provider closed");
         return pepper.clone();
-    }
-
-    @Override
-    public Optional<byte[]> getTotpSeed() {
-        return totpSeed == null ? Optional.empty() : Optional.of(totpSeed.clone());
-    }
-
-    @Override
-    public Mode mode() {
-        return totpSeed == null ? Mode.NO_TOTP : Mode.STORED_STEP;
     }
 
     @Override
@@ -88,11 +61,10 @@ public final class InteractiveKeyMaterialProvider implements KeyMaterialProvider
         );
     }
 
-    /** Scrubs the in-memory pepper and TOTP seed. */
+    /** Scrubs the in-memory pepper. */
     @Override
     public void close() {
         Arrays.fill(pepper, '\0');
-        if (totpSeed != null) Arrays.fill(totpSeed, (byte) 0);
         closed = true;
     }
 }

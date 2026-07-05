@@ -14,16 +14,15 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /**
- * Reads pepper (and optional TOTP seed) from a filesystem path. Enforces POSIX mode 0600
- * and owner-readable-only semantics at construction. Optionally checks that the file is
+ * Reads the pepper from a filesystem path. Enforces POSIX mode 0600 and
+ * owner-readable-only semantics at construction. Optionally checks that the file is
  * owned by a UID different from the running process (real cross-UID defense).
  *
- * <p>File format: two base64 lines — first line is the pepper, optional second line is
- * the TOTP seed. Blank lines are ignored.</p>
+ * <p>File format: the first non-blank base64 line is the pepper. Any further lines are
+ * ignored (a second line used to carry the removed TOTP seed). Blank lines are ignored.</p>
  */
 public final class FileKeyMaterialProvider implements KeyMaterialProvider {
 
@@ -33,7 +32,6 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
     private final boolean requireDifferentOwner;
 
     private volatile byte[] cachedPepper;
-    private volatile byte[] cachedSeed;
     /** True only once the POSIX 0600/owner check actually ran and passed; false on non-POSIX filesystems. */
     private volatile boolean posixEnforced = false;
     private volatile boolean closed = false;
@@ -108,7 +106,6 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
             String[] lines = new String(raw, StandardCharsets.US_ASCII).split("\r?\n");
             Arrays.fill(raw, (byte) 0);
             byte[] pepperBytes = null;
-            byte[] seedBytes = null;
             for (String line : lines) {
                 String trimmed = line.strip();
                 if (trimmed.isEmpty()) continue;
@@ -118,9 +115,10 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
                 } catch (IllegalArgumentException e) {
                     throw new IllegalStateException("key-material file contains non-base64 line", e);
                 }
-                if (pepperBytes == null) pepperBytes = decoded;
-                else if (seedBytes == null) seedBytes = decoded;
-                else {
+                if (pepperBytes == null) {
+                    pepperBytes = decoded;
+                } else {
+                    // Extra lines (e.g. the removed TOTP-seed second line) are ignored.
                     Arrays.fill(decoded, (byte) 0);
                     break;
                 }
@@ -129,7 +127,6 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
                 throw new IllegalStateException("pepper line missing in " + path);
             }
             this.cachedPepper = pepperBytes;
-            this.cachedSeed = seedBytes;
         } catch (IOException e) {
             throw new IllegalStateException("cannot read key-material file: " + path, e);
         }
@@ -142,17 +139,6 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
         char[] out = new char[snap.length];
         for (int i = 0; i < snap.length; i++) out[i] = (char) (snap[i] & 0xff);
         return out;
-    }
-
-    @Override
-    public Optional<byte[]> getTotpSeed() {
-        byte[] snap = cachedSeed;
-        return snap == null ? Optional.empty() : Optional.of(snap.clone());
-    }
-
-    @Override
-    public Mode mode() {
-        return cachedSeed == null ? Mode.NO_TOTP : Mode.STORED_STEP;
     }
 
     @Override
@@ -189,13 +175,11 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
         );
     }
 
-    /** Scrubs the cached pepper and TOTP seed. */
+    /** Scrubs the cached pepper. */
     @Override
     public void close() {
         byte[] p = cachedPepper;
         if (p != null) Arrays.fill(p, (byte) 0);
-        byte[] s = cachedSeed;
-        if (s != null) Arrays.fill(s, (byte) 0);
         closed = true;
     }
 }

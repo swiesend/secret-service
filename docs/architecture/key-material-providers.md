@@ -1,6 +1,6 @@
 # Key material providers
 
-The **pepper** is the root of every wrapping key. A `KeyMaterialProvider` supplies it (and an optional TOTP seed) and honestly declares its `ThreatCoverage`. Providers **compose** as decorators, so you stack a source with optional stretching. The pepper is handed out as a fresh `char[]` the caller zeroes; providers holding state scrub themselves on `close()`.
+The **pepper** is the root of every wrapping key. A `KeyMaterialProvider` supplies it and honestly declares its `ThreatCoverage`. Providers **compose** as decorators, so you stack a source with optional stretching. The pepper is handed out as a fresh `char[]` the caller zeroes; providers holding state scrub themselves on `close()`.
 
 Source: `KeyMaterialProvider` (SPI) and `providers/*`; `Tpm2KeyMaterialProvider`, `Tpm2Provisioner`, `Tpm2SealedBlob` (tpm2).
 
@@ -15,13 +15,12 @@ flowchart LR
     end
     subgraph decorators["Optional decorators"]
       argon["Argon2KeyMaterialProvider<br/>Argon2id stretch (EMBEDDED/INTERACTIVE/SENSITIVE)"]
-      nototp["NoTotpKeyMaterialProvider<br/>force NO_TOTP"]
     end
     hc["HardenedCollection"]
 
     env --> argon
     file --> argon
-    argon --> nototp --> hc
+    argon --> hc
     tpm --> hc
     classDef weak fill:#611,stroke:#b33,color:#fee;
     classDef strong fill:#173,stroke:#2b6,color:#efe;

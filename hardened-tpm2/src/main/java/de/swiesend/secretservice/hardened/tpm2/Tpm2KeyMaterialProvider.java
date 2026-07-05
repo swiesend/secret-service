@@ -26,7 +26,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -131,12 +130,6 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
         if (closed) throw new IllegalStateException("provider closed");
         return cachedPepper.clone();
     }
-
-    @Override
-    public Optional<byte[]> getTotpSeed() { return Optional.empty(); }
-
-    @Override
-    public Mode mode() { return Mode.NO_TOTP; }
 
     @Override
     public ThreatCoverage threatCoverage() {

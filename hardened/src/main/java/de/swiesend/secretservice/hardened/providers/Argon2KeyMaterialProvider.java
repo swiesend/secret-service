@@ -13,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Wrapper {@link KeyMaterialProvider} that runs Argon2id over the underlying provider's
@@ -178,12 +177,6 @@ public final class Argon2KeyMaterialProvider implements KeyMaterialProvider {
         if (closed) throw new IllegalStateException("Argon2KeyMaterialProvider is closed");
         return cachedStretchedPepper.clone();
     }
-
-    @Override
-    public Optional<byte[]> getTotpSeed() { return inner.getTotpSeed(); }
-
-    @Override
-    public Mode mode() { return inner.mode(); }
 
     @Override
     public ThreatCoverage threatCoverage() {

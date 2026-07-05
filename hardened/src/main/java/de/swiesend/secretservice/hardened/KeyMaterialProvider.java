@@ -1,13 +1,10 @@
 package de.swiesend.secretservice.hardened;
 
-import java.util.Optional;
-
 /**
  * Pluggable source of wrapping-key material for the hardened layer.
  *
- * <p>Implementations supply the pepper (mandatory) and, optionally, a TOTP seed.
- * Each implementation must honestly declare its {@link ThreatCoverage} so the builder
- * can refuse weak defaults in production.</p>
+ * <p>Implementations supply the pepper. Each implementation must honestly declare its
+ * {@link ThreatCoverage} so the builder can refuse weak defaults in production.</p>
  *
  * <p>Callers receive fresh byte/char arrays that they are expected to zero after use.
  * Callbacks inside {@code HardenedCollection} do this automatically.</p>
@@ -17,6 +14,14 @@ import java.util.Optional;
  * The default {@link #close()} is a no-op for stateless providers; implementations
  * that hold state should override it. {@link HardenedCollection#close()} propagates
  * to its provider so a try-with-resources on the wrapper is sufficient.</p>
+ *
+ * <p><b>History:</b> earlier alphas carried an optional TOTP factor here
+ * ({@code getTotpSeed()}, {@code currentStep()}, a {@code Mode} enum). It was removed:
+ * the {@code STORED_STEP} mode was security theater in every configuration (the step was
+ * stored beside the ciphertext and the seed co-located with the pepper, so any attacker
+ * holding the key material recomputed the factor), and {@code LIVE_CODE} was only a
+ * liveness window — never a possession factor — because the SPI exposed the raw seed to
+ * the process. See the 2026-07 security audit, finding F-5.</p>
  */
 public interface KeyMaterialProvider extends AutoCloseable {
 
@@ -28,25 +33,6 @@ public interface KeyMaterialProvider extends AutoCloseable {
      * @throws IllegalStateException if the pepper cannot be obtained (fail-closed)
      */
     char[] getPepper();
-
-    /**
-     * Retrieve the TOTP seed. Empty means time-binding is disabled for this provider.
-     *
-     * @return a fresh copy of the seed, or {@code Optional.empty()} for {@code NO_TOTP} mode
-     */
-    default Optional<byte[]> getTotpSeed() { return Optional.empty(); }
-
-    /**
-     * TOTP step counter to use. Default is the current 30-second step.
-     */
-    default long currentStep() { return Totp.currentStep(); }
-
-    /**
-     * Mode this provider operates in. Auto-selects based on {@link #getTotpSeed()} presence.
-     */
-    default Mode mode() {
-        return getTotpSeed().isPresent() ? Mode.STORED_STEP : Mode.NO_TOTP;
-    }
 
     /**
      * Honest self-assessment of the protection this provider actually delivers.
@@ -61,21 +47,4 @@ public interface KeyMaterialProvider extends AutoCloseable {
      */
     @Override
     default void close() {}
-
-    enum Mode {
-        /** No time-binding; salt + pepper + KEM only. The honest choice when no live TOTP is available. */
-        NO_TOTP,
-        /**
-         * Step counter is stored in the authenticated envelope; read derives {@code HOTP(seed, stored_step)}.
-         * <p><b>Security theater:</b> the stored step travels with the ciphertext and the seed co-locates
-         * with the pepper, so anyone who can read the item plus the key-material source recomputes the
-         * factor. It adds no defense against an attacker who already holds the ciphertext; prefer
-         * {@link #LIVE_CODE} for real time-binding or {@link #NO_TOTP} to bind nothing honestly.
-         * {@code HardenedCollection} logs a warning at construction when this mode is selected.
-         */
-        STORED_STEP,
-        /** Step counter is not stored; read must occur within +/-1 step. The only mode that binds time. */
-        LIVE_CODE
-    }
 }
-

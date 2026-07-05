@@ -1,7 +1,6 @@
 package de.swiesend.secretservice.hardened;
 
 import de.swiesend.secretservice.hardened.providers.EnvVarKeyMaterialProvider;
-import de.swiesend.secretservice.hardened.providers.NoTotpKeyMaterialProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,9 +27,7 @@ class HardenedCollectionTest {
     void setUp() {
         fake = new FakeCollection();
         String pepper = "a-test-pepper-that-is-reasonably-long-for-derivation";
-        provider = new NoTotpKeyMaterialProvider(
-                new EnvVarKeyMaterialProvider(pepper, null, null)
-        );
+        provider = new EnvVarKeyMaterialProvider(pepper);
     }
 
     private HardenedCollection build() {
@@ -129,8 +126,6 @@ class HardenedCollectionTest {
         java.util.concurrent.atomic.AtomicBoolean providerClosed = new java.util.concurrent.atomic.AtomicBoolean(false);
         KeyMaterialProvider counting = new KeyMaterialProvider() {
             @Override public char[] getPepper() { return "p3pper-of-decent-length-yo!".toCharArray(); }
-            @Override public Optional<byte[]> getTotpSeed() { return Optional.empty(); }
-            @Override public Mode mode() { return Mode.NO_TOTP; }
             @Override public ThreatCoverage threatCoverage() {
                 return new ThreatCoverage(
                         ThreatCoverage.Level.PARTIAL, ThreatCoverage.Level.REAL,
@@ -175,7 +170,7 @@ class HardenedCollectionTest {
         assertEquals("secret", h.withSecret(path, String::new).orElse(null), "sanity: reads before tamper");
 
         byte[] envBytes = Base64.getDecoder().decode(fake.rawItems().get(path).rawSecret());
-        envBytes[5] = Envelope.FLAG_LIVE_TOTP; // flip the flags byte (was 0); still parses, but AAD changes
+        envBytes[5] = 0x40; // flip the flags byte (was 0); still parses, but AAD changes
         fake.overwriteRawSecret(path, Base64.getEncoder().encodeToString(envBytes));
 
         assertTrue(h.withSecret(path, String::new).isEmpty(),
@@ -201,13 +196,13 @@ class HardenedCollectionTest {
 
     @Test
     void legacyV1EnvelopeIsRejectedGracefully() {
-        // Format v1 (unauthenticated item-id/TOTP, narrow AAD) is no longer supported. A stale v1
+        // Format v1 (unauthenticated item-id, narrow AAD) is no longer supported. A stale v1
         // item must be rejected gracefully -- withSecret returns empty rather than throwing -- so a
         // leftover alpha item never crashes a read.
         HardenedCollection h = build();
         byte[] env = new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
                 new byte[Envelope.SALT_LEN], "legacy-epoch".getBytes(), "legacy-id".getBytes(),
-                Envelope.TOTP_MODE_NONE, 0L, new byte[0], new byte[Envelope.NONCE_LEN], new byte[32]).toBytes();
+                new byte[0], new byte[Envelope.NONCE_LEN], new byte[32]).toBytes();
         env[4] = Envelope.VERSION_1; // downgrade the version byte -> an unsupported v1 envelope
         Map<String, String> attrs = new HashMap<>();
         attrs.put(HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1);
@@ -365,9 +360,7 @@ class HardenedCollectionTest {
         HardenedCollection h = build();
         String path = h.createItem("x", "the-secret").orElseThrow();
 
-        KeyMaterialProvider wrongProvider = new NoTotpKeyMaterialProvider(
-                new EnvVarKeyMaterialProvider("a-different-pepper", null, null)
-        );
+        KeyMaterialProvider wrongProvider = new EnvVarKeyMaterialProvider("a-different-pepper");
         HardenedCollection other = HardenedCollection.builder(fake, wrongProvider)
                 .acknowledgeSecurityTheater(true)
                 .build();
@@ -407,7 +400,6 @@ class HardenedCollectionTest {
         assertEquals("aes-256-gcm", s.aeadAlgorithm());
         assertEquals("hkdf-sha256", s.kdfAlgorithm());
         assertFalse(s.resistsSameUidAttacker(), "EnvVar provider must report theater");
-        assertEquals("none", s.timeBindingLabel());
     }
 
     @Test
@@ -542,86 +534,24 @@ class HardenedCollectionTest {
     }
 
     @Test
-    void storedStepTotpRoundTripsWithSameSeed() {
-        byte[] seed = "1234567890abcdef".getBytes();
-        KeyMaterialProvider totpProvider = new KeyMaterialProvider() {
-            final String pepperStr = "pepper-for-totp-test-xxxxx";
-            @Override public char[] getPepper() { return pepperStr.toCharArray(); }
-            @Override public Optional<byte[]> getTotpSeed() { return Optional.of(seed.clone()); }
-            @Override public long currentStep() { return 12345L; }
-            @Override public Mode mode() { return Mode.STORED_STEP; }
-            @Override public ThreatCoverage threatCoverage() {
-                return new ThreatCoverage(
-                        ThreatCoverage.Level.NONE, ThreatCoverage.Level.REAL,
-                        ThreatCoverage.Level.REAL, ThreatCoverage.Level.NOT_APPLICABLE,
-                        "test provider");
-            }
-        };
-        HardenedCollection h = HardenedCollection.builder(fake, totpProvider)
-                .acknowledgeSecurityTheater(true)
-                .build();
+    void preRemovalTotpEnvelopeFailsClosedWithClearMessage() {
+        // Envelopes written by pre-removal releases with a TOTP mode carry a non-zero
+        // (ex totp_mode) reserved byte. Their DEKs mixed a TOTP code this library can no
+        // longer derive, so the parse must fail closed -- withSecret returns empty, never
+        // garbage plaintext and never an exception.
+        HardenedCollection h = build();
+        String path = h.createItem("t", "value").orElseThrow();
+        byte[] envBytes = Base64.getDecoder().decode(fake.rawItems().get(path).rawSecret());
+        // The reserved (ex totp_mode) byte sits after magic+ver+flags+kem_id, salt, epoch, item-id.
+        int off = Envelope.MAGIC.length + 3 + 1 + Envelope.SALT_LEN;
+        int epochLen = envBytes[off] & 0xff;
+        off += 1 + epochLen;
+        int itemLen = envBytes[off] & 0xff;
+        off += 1 + itemLen;
+        envBytes[off] = 0x01; // pre-removal TOTP_MODE_STORED_STEP
+        fake.overwriteRawSecret(path, Base64.getEncoder().encodeToString(envBytes));
 
-        String path = h.createItem("t", "value-with-totp").orElseThrow();
-        assertEquals("value-with-totp", h.withSecret(path, String::new).orElse(null));
-    }
-
-    /** TOTP provider whose step is externally controlled and optionally advances on every call. */
-    static final class SteppingTotpProvider implements KeyMaterialProvider {
-        final byte[] seed = "1234567890abcdef".getBytes();
-        final Mode mode;
-        long step;
-        boolean advanceOnEveryCall;
-
-        SteppingTotpProvider(Mode mode, long step) { this.mode = mode; this.step = step; }
-
-        @Override public char[] getPepper() { return "pepper-for-totp-test-xxxxx".toCharArray(); }
-        @Override public Optional<byte[]> getTotpSeed() { return Optional.of(seed.clone()); }
-        @Override public long currentStep() { return advanceOnEveryCall ? step++ : step; }
-        @Override public Mode mode() { return mode; }
-        @Override public ThreatCoverage threatCoverage() {
-            return new ThreatCoverage(
-                    ThreatCoverage.Level.NONE, ThreatCoverage.Level.REAL,
-                    ThreatCoverage.Level.REAL, ThreatCoverage.Level.NOT_APPLICABLE,
-                    "test provider");
-        }
-    }
-
-    @Test
-    void liveCodeToleratesOneStepDriftButNotTwo() {
-        // LIVE_CODE promises reads succeed "within +/-1 step". Write at step N; a read one step
-        // later must still recover the secret (the read tries N, N-1, N+1), but a read two steps
-        // later must fail -- the tolerance window is exactly +/-1.
-        SteppingTotpProvider provider = new SteppingTotpProvider(KeyMaterialProvider.Mode.LIVE_CODE, 1000L);
-        HardenedCollection h = HardenedCollection.builder(fake, provider)
-                .acknowledgeSecurityTheater(true)
-                .build();
-        String path = h.createItem("t", "live-secret").orElseThrow();
-
-        provider.step = 1001L; // one step after the write
-        assertEquals("live-secret", h.withSecret(path, String::new).orElse(null),
-                "LIVE_CODE read one step after the write must succeed (+/-1 tolerance)");
-
-        provider.step = 1002L; // two steps after the write -- outside the window
         assertTrue(h.withSecret(path, String::new).isEmpty(),
-                "LIVE_CODE read two steps after the write must fail -- tolerance is only +/-1");
-    }
-
-    @Test
-    void storedStepSurvivesStepRolloverDuringWrite() {
-        // Regression: createItem used to call provider.currentStep() twice (once for DEK
-        // derivation, once for the hardened.totp.step attribute). If the step rolled over
-        // between the calls, the stored step no longer matched the derivation step and the
-        // item became permanently undecryptable. The stepping provider advances the step on
-        // EVERY call, so any double-call during write breaks the round-trip.
-        SteppingTotpProvider provider = new SteppingTotpProvider(KeyMaterialProvider.Mode.STORED_STEP, 12345L);
-        provider.advanceOnEveryCall = true;
-        HardenedCollection h = HardenedCollection.builder(fake, provider)
-                .acknowledgeSecurityTheater(true)
-                .build();
-
-        String path = h.createItem("t", "survives-rollover").orElseThrow();
-        char[] expected = "survives-rollover".toCharArray();
-        assertEquals(Boolean.TRUE, h.withSecret(path, secret -> Arrays.equals(secret, expected)).orElse(null),
-                "item written across a step rollover must stay readable in STORED_STEP mode");
+                "a pre-removal TOTP envelope must fail closed on read");
     }
 }

@@ -15,7 +15,7 @@ import java.util.Optional;
  */
 public enum KemId {
 
-    /** No KEM: DEK from pepper + TOTP + salt only. Only appears on legacy alpha envelopes. */
+    /** No KEM: DEK from pepper + salt only. Only appears on legacy alpha envelopes. */
     NONE(Envelope.KEM_ID_NONE, "none", false),
     /** Classical X25519-only KEM, epoch-ratcheted for forward secrecy. */
     X25519(Envelope.KEM_ID_X25519, "x25519", false),

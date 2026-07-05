@@ -52,7 +52,7 @@ public interface HardenedCollectionInterface extends AutoCloseable {
      *                   of {@code candidate} after the call.
      * @return {@code Optional.of(true)} on match, {@code Optional.of(false)} on mismatch,
      *         {@code Optional.empty()} if the item does not exist, is not a hardened
-     *         item, or could not be decrypted (wrong pepper / wrong TOTP / tampered).
+     *         item, or could not be decrypted (wrong pepper / tampered).
      * @throws NullPointerException if {@code objectPath} or {@code candidate} is null
      */
     Optional<Boolean> matchesSecret(String objectPath, char[] candidate);
@@ -80,7 +80,7 @@ public interface HardenedCollectionInterface extends AutoCloseable {
      * values are zeroed when the callback returns or throws.
      *
      * <p><b>Fail-fast contract:</b> if any single item fails to decrypt (wrong pepper,
-     * wrong TOTP seed, tampered envelope, stale epoch, &hellip;) the method returns
+     * tampered envelope, stale epoch, &hellip;) the method returns
      * {@link Optional#empty()} and never invokes the callback -- it does <i>not</i> hand
      * you a silently-truncated map.</p>
      *

@@ -1,7 +1,6 @@
 package de.swiesend.secretservice.hardened;
 
 import de.swiesend.secretservice.hardened.providers.EnvVarKeyMaterialProvider;
-import de.swiesend.secretservice.hardened.providers.NoTotpKeyMaterialProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,9 +20,8 @@ class HardenedHealthCheckTest {
     @BeforeEach
     void setUp() {
         fake = new FakeCollection();
-        KeyMaterialProvider weak = new NoTotpKeyMaterialProvider(
-                new EnvVarKeyMaterialProvider(
-                        "test-pepper-with-enough-length-for-derivation", null, null));
+        KeyMaterialProvider weak = new EnvVarKeyMaterialProvider(
+                "test-pepper-with-enough-length-for-derivation");
         collection = HardenedCollection.builder(fake, weak)
                 .acknowledgeSecurityTheater(true)
                 .build();

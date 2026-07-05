@@ -1,6 +1,5 @@
 package de.swiesend.secretservice.hardened.providers;
 
-import de.swiesend.secretservice.hardened.KeyMaterialProvider;
 import de.swiesend.secretservice.hardened.ThreatCoverage;
 import org.junit.jupiter.api.Test;
 
@@ -16,45 +15,17 @@ class EnvVarKeyMaterialProviderTest {
     @Test
     void failsClosedOnMissingPepper() {
         assertThrows(IllegalStateException.class,
-                () -> new EnvVarKeyMaterialProvider(null, null, null));
+                () -> new EnvVarKeyMaterialProvider(null));
         assertThrows(IllegalStateException.class,
-                () -> new EnvVarKeyMaterialProvider("", null, null));
-    }
-
-    @Test
-    void noTotpModeWhenSeedAbsent() {
-        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper-val", null, null);
-        assertEquals(KeyMaterialProvider.Mode.NO_TOTP, p.mode());
-        assertTrue(p.getTotpSeed().isEmpty());
-    }
-
-    @Test
-    void storedStepModeWhenSeedPresent() {
-        String seed = Base64.getEncoder().encodeToString("seed".getBytes());
-        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper-val", seed, null);
-        assertEquals(KeyMaterialProvider.Mode.STORED_STEP, p.mode());
-        assertTrue(p.getTotpSeed().isPresent());
-    }
-
-    @Test
-    void modeOverrideHonored() {
-        String seed = Base64.getEncoder().encodeToString("seed".getBytes());
-        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper", seed, "LIVE_CODE");
-        assertEquals(KeyMaterialProvider.Mode.LIVE_CODE, p.mode());
+                () -> new EnvVarKeyMaterialProvider(""));
     }
 
     @Test
     void threatCoverageDeclaresTheaterVsSameUid() {
-        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper", null, null);
+        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper");
         ThreatCoverage tc = p.threatCoverage();
         assertEquals(ThreatCoverage.Level.NONE, tc.sameUid());
         assertTrue(tc.isSecurityTheaterVsSameUid());
-    }
-
-    @Test
-    void rejectsNonBase64Seed() {
-        assertThrows(IllegalStateException.class,
-                () -> new EnvVarKeyMaterialProvider("pepper", "not!base64!!", null));
     }
 
     @Test
@@ -67,7 +38,7 @@ class EnvVarKeyMaterialProviderTest {
 
     @Test
     void closeScrubsAndBlocksGetPepper() {
-        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper-value", null, null);
+        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper-value");
         char[] before = p.getPepper();
         assertEquals("pepper-value", new String(before));
         p.close();

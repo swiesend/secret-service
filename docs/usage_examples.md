@@ -83,13 +83,12 @@ import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.hardened.HardenedCollection;
 import de.swiesend.secretservice.hardened.providers.EnvVarKeyMaterialProvider;
-import de.swiesend.secretservice.hardened.providers.NoTotpKeyMaterialProvider;
 
 try (SecretService service = SecretService.create().orElseThrow();
      CollectionInterface base = service.collection("default", null).orElseThrow();
      HardenedCollection coll = HardenedCollection.builder(
              base,
-             new NoTotpKeyMaterialProvider(new EnvVarKeyMaterialProvider()))
+             new EnvVarKeyMaterialProvider())
              .acknowledgeSecurityTheater(true)   // env-var pepper is class-A theatre; required for CI/dev
              .build()) {
 
@@ -177,7 +176,7 @@ boolean ok = coll.rotateEpoch();
 ```
 HardenedCollection initialised: provider=Tpm2KeyMaterialProvider,
   threatCoverage=[sameUid=PARTIAL, crossUid=REAL, offline=REAL, networkHndl=NOT_APPLICABLE],
-  acknowledgedTheater=false, totpMode=NO_TOTP, epoch=...
+  acknowledgedTheater=false, epoch=...
 ```
 
 ---
@@ -201,14 +200,6 @@ public final class VaultKeyMaterialProvider implements KeyMaterialProvider {
 
     @Override public char[] getPepper() {
         return cachedPepper.clone();   // caller zeros the clone; cache stays put
-    }
-
-    @Override public Optional<byte[]> getTotpSeed() {
-        return Optional.empty();       // no TOTP factor in this implementation
-    }
-
-    @Override public Mode mode() {
-        return Mode.NO_TOTP;
     }
 
     @Override public ThreatCoverage threatCoverage() {
@@ -300,7 +291,6 @@ A `~44-character` base64 pepper (default flow) or your supplied bytes (operator-
 import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.hardened.HardenedCollection;
-import de.swiesend.secretservice.hardened.providers.NoTotpKeyMaterialProvider;
 import de.swiesend.secretservice.hardened.tpm2.Tpm2KeyMaterialProvider;
 import java.io.Console;
 import java.nio.file.Path;
@@ -313,8 +303,7 @@ try (Tpm2KeyMaterialProvider tpm = Tpm2KeyMaterialProvider.forPlatformTpm(
             sealPassword);
      SecretService service = SecretService.create().orElseThrow();
      CollectionInterface base = service.collection("default", null).orElseThrow();
-     HardenedCollection coll = HardenedCollection.builder(
-             base, new NoTotpKeyMaterialProvider(tpm)).build()) {
+     HardenedCollection coll = HardenedCollection.builder(base, tpm).build()) {
 
     base.unlock();
 
@@ -352,18 +341,16 @@ Don't reference `Tpm2KeyMaterialProvider` directly from generic code paths — t
 ```java
 import de.swiesend.secretservice.hardened.KeyMaterialProvider;
 import de.swiesend.secretservice.hardened.providers.EnvVarKeyMaterialProvider;
-import de.swiesend.secretservice.hardened.providers.NoTotpKeyMaterialProvider;
 import de.swiesend.secretservice.hardened.tpm2.Tpm2Availability;
 import de.swiesend.secretservice.hardened.tpm2.Tpm2KeyMaterialProvider;
 
 KeyMaterialProvider provider;
 if (Tpm2Availability.isAvailable() && Files.exists(blobPath)) {
     char[] sealPw = System.console().readPassword("TPM unseal password: ");
-    provider = new NoTotpKeyMaterialProvider(
-            Tpm2KeyMaterialProvider.forPlatformTpm(blobPath, sealPw));
+    provider = Tpm2KeyMaterialProvider.forPlatformTpm(blobPath, sealPw);
 } else {
     log.warn(Tpm2Availability.installationHint());   // names the Maven coordinates
-    provider = new NoTotpKeyMaterialProvider(new EnvVarKeyMaterialProvider());
+    provider = new EnvVarKeyMaterialProvider();
 }
 ```
 

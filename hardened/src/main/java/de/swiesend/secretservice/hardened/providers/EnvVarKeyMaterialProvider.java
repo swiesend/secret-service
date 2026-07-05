@@ -8,12 +8,9 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Locale;
-import java.util.Optional;
 
 /**
- * Reads the pepper from {@code SECRET_SERVICE_PEPPER} and an optional TOTP seed from
- * {@code SECRET_SERVICE_TOTP_SEED} (base64).
+ * Reads the pepper from {@code SECRET_SERVICE_PEPPER}.
  *
  * <p><b>Security note — intentional theater against same-UID attackers:</b> any process
  * running as the same UID can read {@code /proc/<pid>/environ} and recover these values.
@@ -34,53 +31,29 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
     private static final Logger log = LoggerFactory.getLogger(EnvVarKeyMaterialProvider.class);
 
     public static final String ENV_PEPPER = "SECRET_SERVICE_PEPPER";
-    public static final String ENV_TOTP_SEED = "SECRET_SERVICE_TOTP_SEED";
-    public static final String ENV_MODE = "SECRET_SERVICE_TOTP_MODE"; // NO_TOTP | STORED_STEP | LIVE_CODE
 
     // The pepper lives here as a char[]. getPepper() clones it on each call so callers
     // can zero their copy; the field itself is still subject to the class Javadoc's
     // unzeroable-backing caveat because the source String (from System.getenv) lives
     // outside this instance and cannot be scrubbed.
     private final char[] pepperChars;
-    private final byte[] totpSeed;
-    private final Mode mode;
     private volatile boolean closed = false;
 
     public EnvVarKeyMaterialProvider() {
-        this(System.getenv(ENV_PEPPER), System.getenv(ENV_TOTP_SEED), System.getenv(ENV_MODE));
+        this(System.getenv(ENV_PEPPER));
     }
 
     /**
-     * Construct with explicit values (useful for tests and for callers that source env
-     * material from a custom location). Semantics match the env-var path: pepper is
-     * mandatory, seed is optional base64, mode overrides the default.
+     * Construct with an explicit value (useful for tests and for callers that source env
+     * material from a custom location). Semantics match the env-var path: pepper is mandatory.
      */
-    public EnvVarKeyMaterialProvider(String rawPepper, String rawSeed, String rawMode) {
+    public EnvVarKeyMaterialProvider(String rawPepper) {
         if (rawPepper == null || rawPepper.isEmpty()) {
             throw new IllegalStateException(
                 "SECRET_SERVICE_PEPPER is unset. EnvVarKeyMaterialProvider fails closed rather than "
                         + "silently using a weak or empty pepper. Set the env var, or choose a different provider.");
         }
         this.pepperChars = rawPepper.toCharArray();
-        if (rawSeed == null || rawSeed.isEmpty()) {
-            this.totpSeed = null;
-            this.mode = Mode.NO_TOTP;
-        } else {
-            try {
-                this.totpSeed = Base64.getDecoder().decode(rawSeed);
-            } catch (IllegalArgumentException e) {
-                throw new IllegalStateException(ENV_TOTP_SEED + " is not valid base64", e);
-            }
-            Mode parsed = Mode.STORED_STEP;
-            if (rawMode != null) {
-                try {
-                    parsed = Mode.valueOf(rawMode.trim().toUpperCase(Locale.ROOT));
-                } catch (IllegalArgumentException ignore) {
-                    log.warn("SECRET_SERVICE_TOTP_MODE={} not recognised; defaulting to STORED_STEP", rawMode);
-                }
-            }
-            this.mode = parsed;
-        }
         log.warn("SECURITY WARNING: EnvVarKeyMaterialProvider in use. Env-var pepper is readable via "
                 + "/proc/<pid>/environ by any same-UID process. Suitable for CI/development only; "
                 + "threat_coverage.sameUid=NONE.");
@@ -90,16 +63,6 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
     public char[] getPepper() {
         if (closed) throw new IllegalStateException("provider closed");
         return pepperChars.clone();  // fresh; caller zeros in a finally block
-    }
-
-    @Override
-    public Optional<byte[]> getTotpSeed() {
-        return totpSeed == null ? Optional.empty() : Optional.of(totpSeed.clone());
-    }
-
-    @Override
-    public Mode mode() {
-        return mode;
     }
 
     @Override
@@ -115,14 +78,13 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
     }
 
     /**
-     * Scrubs the provider's {@code char[]}/{@code byte[]} copies of the pepper and TOTP seed.
-     * Note the unzeroable-backing caveat in the class Javadoc: the original {@code System.getenv}
-     * String is outside this instance and cannot be cleared here.
+     * Scrubs the provider's {@code char[]} copy of the pepper. Note the unzeroable-backing
+     * caveat in the class Javadoc: the original {@code System.getenv} String is outside this
+     * instance and cannot be cleared here.
      */
     @Override
     public void close() {
         Arrays.fill(pepperChars, '\0');
-        if (totpSeed != null) Arrays.fill(totpSeed, (byte) 0);
         closed = true;
     }
 

@@ -20,11 +20,11 @@ class EnvelopeTest {
 
     private static final byte[] EMPTY = new byte[0];
 
-    /** A minimal valid v2 envelope (no KEM, no TOTP) for the poke/validation tests. */
+    /** A minimal valid v2 envelope (no KEM) for the poke/validation tests. */
     private static Envelope simple() {
         return new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
                 bytes(16, 1), "e".getBytes(), "item-1".getBytes(),
-                Envelope.TOTP_MODE_NONE, 0L, EMPTY, bytes(12, 2), bytes(32, 3));
+                EMPTY, bytes(12, 2), bytes(32, 3));
     }
 
     @Test
@@ -36,22 +36,18 @@ class EnvelopeTest {
         byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
         byte[] ct = bytes(64, 0x33);
         Envelope original = new Envelope(Envelope.VERSION_2,
-                (byte) (Envelope.FLAG_PQ_HYBRID | Envelope.FLAG_STORED_STEP_TOTP),
+                Envelope.FLAG_PQ_HYBRID,
                 Envelope.KEM_ID_X25519_MLKEM768,
-                salt, epoch, itemId, Envelope.TOTP_MODE_STORED_STEP, 123456789L, kemCt, nonce, ct);
+                salt, epoch, itemId, kemCt, nonce, ct);
 
         Envelope parsed = Envelope.fromBytes(original.toBytes());
 
         assertEquals(Envelope.VERSION_2, parsed.version());
         assertTrue(parsed.hasFlag(Envelope.FLAG_PQ_HYBRID));
-        assertTrue(parsed.hasFlag(Envelope.FLAG_STORED_STEP_TOTP));
-        assertFalse(parsed.hasFlag(Envelope.FLAG_LIVE_TOTP));
         assertEquals(Envelope.KEM_ID_X25519_MLKEM768, parsed.kemId());
         assertArrayEquals(salt, parsed.salt());
         assertArrayEquals(epoch, parsed.epochId());
         assertArrayEquals(itemId, parsed.itemId());
-        assertEquals(Envelope.TOTP_MODE_STORED_STEP, parsed.totpMode());
-        assertEquals(123456789L, parsed.totpStep());
         assertArrayEquals(kemCt, parsed.kemCiphertext());
         assertArrayEquals(nonce, parsed.nonce());
         assertArrayEquals(ct, parsed.aeadCiphertext());
@@ -64,7 +60,7 @@ class EnvelopeTest {
         byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
         byte[] ct = bytes(48, 0x33);
         Envelope original = new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                salt, epoch, "id".getBytes(), Envelope.TOTP_MODE_NONE, 0L, EMPTY, nonce, ct);
+                salt, epoch, "id".getBytes(), EMPTY, nonce, ct);
         Envelope parsed = Envelope.fromBytes(original.toBytes());
         assertEquals(Envelope.KEM_ID_NONE, parsed.kemId());
         assertArrayEquals(EMPTY, parsed.kemCiphertext());
@@ -88,12 +84,12 @@ class EnvelopeTest {
         // kem_id == NONE but kem_ct non-empty -- reject
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(), Envelope.TOTP_MODE_NONE, 0L,
+                bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 bytes(8, 9), bytes(12, 2), bytes(32, 3)));
         // kem_id != NONE but kem_ct empty -- reject
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_X25519_MLKEM768,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(), Envelope.TOTP_MODE_NONE, 0L,
+                bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(12, 2), bytes(32, 3)));
     }
 
@@ -106,7 +102,7 @@ class EnvelopeTest {
         byte[] ct = bytes(32, 0x33);
         byte[] kemCtForPq = bytes(64, 0x55);
         Envelope none = new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                salt, epoch, id, Envelope.TOTP_MODE_NONE, 0L, EMPTY, nonce, ct);
+                salt, epoch, id, EMPTY, nonce, ct);
         assertEquals(Envelope.KEM_ID_NONE, Envelope.fromBytes(none.toBytes()).kemId());
         for (byte kid : new byte[]{
                 Envelope.KEM_ID_X25519,
@@ -114,7 +110,7 @@ class EnvelopeTest {
                 Envelope.KEM_ID_X25519_HQC192,
                 (byte) 0x7f}) {  // arbitrary unknown id -- agility check
             Envelope env = new Envelope(Envelope.VERSION_2, (byte) 0, kid, salt, epoch, id,
-                    Envelope.TOTP_MODE_NONE, 0L, kemCtForPq, nonce, ct);
+                    kemCtForPq, nonce, ct);
             assertEquals(kid, Envelope.fromBytes(env.toBytes()).kemId());
         }
     }
@@ -153,11 +149,19 @@ class EnvelopeTest {
     }
 
     @Test
-    void rejectsInvalidTotpMode() {
-        assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(), (byte) 0x7f, 0L,
-                EMPTY, bytes(12, 2), bytes(32, 3)));
+    void rejectsEnvelopeWrittenWithTotp() {
+        // Simulate a pre-removal envelope that carried a TOTP mode: flip the reserved
+        // (ex totp_mode) byte, which sits right after the item-id in the v2 layout.
+        byte[] env = simple().toBytes();
+        int reservedOffset = Envelope.MAGIC.length + 3 // version + flags + kem_id
+                + 1 + Envelope.SALT_LEN                // salt_len + salt
+                + 1 + "e".getBytes().length            // epoch_len + epoch
+                + 1 + "item-1".getBytes().length;      // item_id_len + item_id
+        env[reservedOffset] = 0x01; // pre-removal TOTP_MODE_STORED_STEP
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> Envelope.fromBytes(env));
+        assertTrue(e.getMessage().contains("TOTP"),
+                "rejection message should explain the TOTP removal; was: " + e.getMessage());
     }
 
     @Test
@@ -194,27 +198,27 @@ class EnvelopeTest {
         // bad salt len
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(15, 1), "e".getBytes(), "i".getBytes(), Envelope.TOTP_MODE_NONE, 0L,
+                bytes(15, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(12, 2), bytes(32, 3)));
         // bad nonce len
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(), Envelope.TOTP_MODE_NONE, 0L,
+                bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(11, 2), bytes(32, 3)));
         // empty epoch
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), new byte[0], "i".getBytes(), Envelope.TOTP_MODE_NONE, 0L,
+                bytes(16, 1), new byte[0], "i".getBytes(),
                 EMPTY, bytes(12, 2), bytes(32, 3)));
         // empty item id
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), new byte[0], Envelope.TOTP_MODE_NONE, 0L,
+                bytes(16, 1), "e".getBytes(), new byte[0],
                 EMPTY, bytes(12, 2), bytes(32, 3)));
         // empty aead ct
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
                 Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(), Envelope.TOTP_MODE_NONE, 0L,
+                bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(12, 2), new byte[0]));
     }
 }

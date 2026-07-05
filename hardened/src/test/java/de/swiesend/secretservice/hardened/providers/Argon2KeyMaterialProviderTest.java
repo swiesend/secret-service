@@ -27,8 +27,6 @@ class Argon2KeyMaterialProviderTest {
                 if (closed) throw new IllegalStateException("inner closed");
                 return cached.clone();
             }
-            @Override public Optional<byte[]> getTotpSeed() { return Optional.empty(); }
-            @Override public Mode mode() { return Mode.NO_TOTP; }
             @Override public ThreatCoverage threatCoverage() {
                 return new ThreatCoverage(
                         ThreatCoverage.Level.NONE,    // class A

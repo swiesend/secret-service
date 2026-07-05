@@ -22,8 +22,6 @@ class EpochKeystoreTest {
     private static KeyMaterialProvider provider(String pepper) {
         return new KeyMaterialProvider() {
             @Override public char[] getPepper() { return pepper.toCharArray(); }
-            @Override public Optional<byte[]> getTotpSeed() { return Optional.empty(); }
-            @Override public Mode mode() { return Mode.NO_TOTP; }
             @Override public ThreatCoverage threatCoverage() {
                 return new ThreatCoverage(
                         ThreatCoverage.Level.PARTIAL, ThreatCoverage.Level.REAL,

@@ -17,7 +17,6 @@ mvn test -pl hardened-tpm2 -am -Psystem-test   # TPM paths (needs a TPM/simulato
 | [hybrid-kem.md](hybrid-kem.md) | X25519 (+ optional ML-KEM-768) KEM | Encapsulate/decapsulate agree; hybrid is honest |
 | [epoch-keystore-and-forward-secrecy.md](epoch-keystore-and-forward-secrecy.md) | Per-epoch keypairs, create-then-delete persistence, `rotateEpoch` | No data loss on crash; destroyed epochs are unreadable |
 | [anti-rollback-anchor.md](anti-rollback-anchor.md) | `GenerationAnchor` + TPM NV monotonic counter | A rolled-back keystore is refused (fail-closed) |
-| [totp-time-binding.md](totp-time-binding.md) | `NO_TOTP` / `STORED_STEP` / `LIVE_CODE` | Read binds to the write-time step, ±1 for live codes |
 | [key-material-providers.md](key-material-providers.md) | Provider SPI, Argon2 stretching, TPM sealing | Pepper never at rest in cleartext; wrong password fails |
 
 ## Component overview
@@ -29,7 +28,7 @@ flowchart TB
         hc["HardenedCollection<br/>(decorator)"]
         kem["HybridKem<br/>X25519 (+ ML-KEM-768)"]
         eks["EpochKeystore<br/>per-epoch keypairs"]
-        kmp["KeyMaterialProvider (SPI)<br/>pepper + optional TOTP seed"]
+        kmp["KeyMaterialProvider (SPI)<br/>pepper"]
         anchor["GenerationAnchor (SPI)<br/>anti-rollback floor"]
     end
     subgraph tpm2["secret-service-hardened-tpm2 (optional)"]
@@ -44,7 +43,7 @@ flowchart TB
     app -->|"createItem / withSecret"| hc
     hc -->|"derive DEK, seal/open"| kem
     hc -->|"epoch keypairs"| eks
-    hc -->|"getPepper / getTotpSeed"| kmp
+    hc -->|"getPepper"| kmp
     eks -->|"generation floor"| anchor
     kmp -.implemented by.-> tprov
     anchor -.implemented by.-> tanchor
