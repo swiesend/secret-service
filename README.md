@@ -1,6 +1,7 @@
 # Secret Service
 
 [![Maven Central](https://img.shields.io/maven-central/v/de.swiesend/secret-service.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22de.swiesend%22%20AND%20a:%22secret-service%22)
+[![Documentation](https://img.shields.io/badge/docs-swiesend.github.io%2Fsecret--service-teal)](https://swiesend.github.io/secret-service/)
 
 A _Java_ library for storing secrets in a keyring over the _DBus_.
 
