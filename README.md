@@ -17,7 +17,7 @@ For KDE systems there is the [`kdewallet`](https://github.com/purejava/kdewallet
 
 ## Security Issues
 
-> **Deployment guidance**: for the full threat model, OS-level mitigations (D-Bus policies, MAC, systemd hardening, LUKS), and per-distribution-format recommendations (`.deb`/`.rpm`, OCI, Flatpak, Snap, …), see [`docs/threat_models_and_mitigation.md`](docs/threat_models_and_mitigation.md).
+> **Deployment guidance**: for the full threat model, OS-level mitigations (D-Bus policies, MAC, systemd hardening, LUKS), and per-distribution-format recommendations (`.deb`/`.rpm`, OCI, Flatpak, Snap, …), see the [Security & deployment guide](docs/security/index.md).
 
 ### CVE-2018-19358 (Vulnerability)
 
@@ -54,16 +54,16 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
 
 **Most consumers need only the core artifact.** Read the scope before adopting this: the hardened layer encrypts secret *bodies* before they reach the daemon — AES-256-GCM envelopes with per-item keys derived from an application *pepper* — so an attacker who holds the keyring bytes but not the pepper sees only ciphertext. It is **defense-in-depth, not a same-UID boundary.**
 
-- It does **not** defend against a same-UID live process — **class A**, the CVE-2018-19358 case above. Because the decrypting key must be available to your own process, no in-process encryption can. Class A needs a *different security principal*: OS-level isolation (MAC policy, sandboxing) or a hardware token that performs the crypto (see §3–§4 of the [threat-model doc](docs/threat_models_and_mitigation.md)).
+- It does **not** defend against a same-UID live process — **class A**, the CVE-2018-19358 case above. Because the decrypting key must be available to your own process, no in-process encryption can. Class A needs a *different security principal*: OS-level isolation (MAC policy, sandboxing) or a hardware token that performs the crypto (see the [defense mechanism inventory](docs/security/defense-mechanisms.md) and [D-Bus policy](docs/security/dbus-policy.md)).
 - The whole scheme's root of trust is the pepper. Its real value materializes only when the pepper lives somewhere an attacker who has the keyring cannot also reach — i.e. **`secret-service-hardened-tpm2` (TPM-sealed pepper), and, to mean anything against a capable attacker, together with measured boot, a MAC policy confining `/dev/tpmrm0`, JVM hardening, and disciplined backup-retention rotation.** With an env-var or co-located file pepper on a single-tenant desktop, it adds little a full-disk-encrypted laptop does not already provide.
-- With the TPM provider **you never store the pepper at all** — it exists at rest only as a TPM-wrapped blob (`pepper.tpm2blob`, mode 0600) that is cryptographically useless without that physical chip *and* the unseal password, with wrong guesses rate-limited in hardware (dictionary-attack lockout). The secret-management problem shrinks to *how the unseal password reaches the process*: prompt the user (strongest), the login keyring (pragmatic autostart — the hardware factor survives an offline thief), or a 0600 file (floor). **Never argv, never env vars.** Ranked options and the reasoning: [`docs/usage_examples.md` §9.1](docs/usage_examples.md#91-where-does-the-unseal-password-live-on-a-desktop).
+- With the TPM provider **you never store the pepper at all** — it exists at rest only as a TPM-wrapped blob (`pepper.tpm2blob`, mode 0600) that is cryptographically useless without that physical chip *and* the unseal password, with wrong guesses rate-limited in hardware (dictionary-attack lockout). The secret-management problem shrinks to *how the unseal password reaches the process*: prompt the user (strongest), the login keyring (pragmatic autostart — the hardware factor survives an offline thief), or a 0600 file (floor). **Never argv, never env vars.** Ranked options and the reasoning: [Where does the unseal password live on a desktop?](docs/usage/tpm2.md#where-does-the-unseal-password-live-on-a-desktop).
 
-Where it genuinely pays off ([threat catalogue](docs/threat_models_and_mitigation.md#2-threat-catalogue)):
+Where it genuinely pays off ([threat catalogue](docs/security/threat-catalogue.md)):
 
 - the host is multi-tenant (shared users, CI runners, sidecar containers) — **class B**; or
 - the keyring file can leave the host (cloud backup, off-host `rsync`, container/filesystem snapshot) — **class C** (real only with a pepper independent of that disk/backup), and **class D** (harvest-now-decrypt-later) when you also set `.enablePostQuantum(true)` (hybrid X25519 + ML-KEM-768, with forward secrecy via `rotateEpoch()` — itself rollback-resistant only with a `GenerationAnchor`).
 
-Before adopting the hardened layer, walk the [“Do I need this?” decision tree](docs/threat_models_and_mitigation.md#11-do-i-need-this): if your host is single-tenant and the keyring never leaves it, you likely do not need it.
+Before adopting the hardened layer, walk the [“Do I need this?” decision tree](docs/security/index.md#do-i-need-this): if your host is single-tenant and the keyring never leaves it, you likely do not need it.
 
 **KeePassXC**
 
@@ -105,7 +105,7 @@ Since `3.0.0-alpha` the project is a Maven reactor with **three separately publi
 </dependency>
 ```
 
-A `mvn dependency:tree` for that single declaration shows four transitive deps and nothing from the hardened or TPM modules. See [`docs/threat_models_and_mitigation.md`](docs/threat_models_and_mitigation.md) §7 to decide whether you also need the optional layers.
+A `mvn dependency:tree` for that single declaration shows four transitive deps and nothing from the hardened or TPM modules. See [Desktop App consumer scenarios](docs/security/desktop-deployment.md) to decide whether you also need the optional layers.
 
 **Optional: app-layer encryption** (adds AES-256-GCM envelopes; requires JDK 25):
 
@@ -172,7 +172,7 @@ The 2.x line continues to ship as a single artifact for consumers who don't want
 
 The functional API uses instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle management.
 
-> **Worked code samples**: end-to-end examples for core, hardened, and hardened-tpm2 — including custom `KeyMaterialProvider` implementations, the `Tpm2Provisioner` CLI flows, and `enablePostQuantum(true)` / `rotateEpoch()` — live in [`docs/usage_examples.md`](docs/usage_examples.md).
+> **Worked code samples**: end-to-end examples for core, hardened, and hardened-tpm2 — including custom `KeyMaterialProvider` implementations, the `Tpm2Provisioner` CLI flows, and `enablePostQuantum(true)` / `rotateEpoch()` — live in the [usage guides](docs/usage/core.md) ([core](docs/usage/core.md), [hardened](docs/usage/hardened.md), [TPM 2.0](docs/usage/tpm2.md)).
 
 #### Basic Usage
 

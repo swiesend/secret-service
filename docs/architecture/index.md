@@ -56,7 +56,7 @@ The daemon only ever sees a base64 **envelope** (ciphertext + metadata), never t
 
 ## Threat-class mapping
 
-See [`../threat_models_and_mitigation.md`](../threat_models_and_mitigation.md) for the full catalogue.
+See the [threat catalogue](../security/threat-catalogue.md) for the full catalogue.
 
 ```mermaid
 flowchart LR
