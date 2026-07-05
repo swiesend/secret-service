@@ -329,6 +329,20 @@ try (Tpm2KeyMaterialProvider tpm = Tpm2KeyMaterialProvider.forPlatformTpm(
 
 `Builder` accepts `Tpm2KeyMaterialProvider` without `acknowledgeSecurityTheater(true)` because its `threatCoverage().sameUid()` is `PARTIAL` (real same-UID defense requires an external MAC policy; see §3 of `threat_models_and_mitigation.md`).
 
+### 9.1 Where does the unseal password live on a desktop?
+
+First, the reframe: **with the TPM provider you don't store the pepper.** It exists at rest only as `pepper.tpm2blob` — TPM-wrapped material that is useless without (a) that physical chip (the seal is `fixedTPM`, non-migratable) and (b) the unseal password, with wrong guesses rate-limited by the TPM's dictionary-attack lockout. The blob needs ordinary hygiene only (mode 0600, which `Tpm2SealedBlob` enforces on write *and* read). The remaining question is how the *unseal password* reaches your process at startup. Ranked for a desktop:
+
+1. **Prompt the user (strongest).** `Console.readPassword` / pinentry at launch, zero the `char[]` after constructing the provider (the §9 example does exactly this). Nothing persisted anywhere; suits high-value, interactively launched apps. Cost: no unattended autostart.
+2. **The login keyring (pragmatic autostart).** Store the unseal password in the *default* collection, which unlocks at session start. Analyze it per threat class and it holds up: an offline thief (class C) gets keyring files + blob but **cannot unseal without the physical TPM** — the hardware factor fully survives; cross-UID (class B) is unchanged; a same-UID attacker (class A) can read the password over D-Bus, but class A was already `PARTIAL` for this provider, so nothing is lost. Keep it in a *different* collection than your hardened items.
+3. **systemd credentials (background services).** `LoadCredentialEncrypted=` with `systemd-creds encrypt`, which can itself TPM-bind the credential. Caveat: user-scoped credentials (`systemd-creds --user`) need systemd ≥ 256; on 255 (e.g. Ubuntu 24.04) this works for system services only.
+4. **A 0600 file (acceptable floor).** Protects cross-UID only; offline protection still comes from the TPM — unlike a raw pepper file, the password file alone is not the whole secret.
+5. **Environment variable — never.** `/proc/<pid>/environ` is readable by every same-UID process, and env leaks into `systemctl show`, crash dumps, and children. The same reasoning that makes `EnvVarKeyMaterialProvider` CI/dev-only applies. (Command-line flags are worse still — the provisioner removed `--password <plaintext>` for this reason.)
+
+**Why not store it in KeePassXC?** Tempting, but an anti-pattern here. (a) *Availability coupling*: a locked `.kdbx` at startup means your app fails closed — an unlock-ordering dependency that breaks autostart. (b) *Co-location*: only one provider owns `org.freedesktop.secrets` at a time, so if KeePassXC is your Secret Service backend, the password would sit in the same store as the ciphertexts it protects. (c) The one genuine thing KeePassXC adds — its human-in-the-loop access prompt — you get more simply via option 1.
+
+**Access-control facts worth knowing.** `/dev/tpmrm0` ships `crw-rw---- tss tss`, so only root or `tss`-group members can talk to the TPM at all — grant a service `SupplementaryGroups=tss` rather than running it privileged. And device access is *not* read access: the TPM is an authorization oracle, not a readable store. Hierarchy seeds never leave the chip, unsealing requires the object's own auth value, and the NV generation counter is provisioned `AUTHREAD|AUTHWRITE`. What the TPM cannot do is tell your app apart from malware running as the same user — that is the `sameUid=PARTIAL` rating, and closing it takes a MAC policy confining `/dev/tpmrm0` to your binary (§3.4–§3.5, §3.12 of `threat_models_and_mitigation.md`).
+
 ---
 
 ## 10. TPM 2.0: graceful fallback when TSS.Java is missing

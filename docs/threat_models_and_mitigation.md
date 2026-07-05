@@ -340,6 +340,16 @@ Plus, in JVM startup: enable `mlockall` via JNA in your application's `main()` (
 
 **Limitations.** The portal exposes Secret Service-shaped operations only; advanced operations (custom collections, attribute search) are not supported. The hardened wrapper layer this library provides cannot run inside the portal-sandboxed mode because the portal hides the underlying daemon.
 
+### 3.14 Unseal-password delivery (TPM provider)
+
+**What it does.** With `Tpm2KeyMaterialProvider` the pepper is never stored — at rest there is only the TPM-wrapped blob, useless without the physical chip plus the unseal password (wrong guesses hardware-rate-limited by the DA lockout). The remaining design decision is how the *unseal password* reaches the process at startup; the choice determines how much of the TPM's class-C guarantee survives operational reality.
+
+**Threat coverage.** The password is one of two factors, so its handling never has to carry class C alone: even a leaked password is useless off-host. Delivery choice mainly affects whether class B can read it (file modes) and whether a human is in the loop against class A.
+
+**How to apply.** Ranked for a desktop (full reasoning in `usage_examples.md` §9.1): (1) interactive prompt — nothing persisted, human-in-the-loop, no autostart; (2) login keyring — autostart-friendly, and the offline thief still lacks the TPM, so class C survives; class A was already `PARTIAL`; (3) systemd `LoadCredentialEncrypted=` for services (user-scoped credentials need systemd ≥ 256); (4) a 0600 file as the floor. Never argv (see the `Tpm2Provisioner` history) and never env vars (`/proc/<pid>/environ`, §2.1). Do **not** park the password in a KeePassXC database: a locked `.kdbx` fails your startup closed, and if KeePassXC is also the Secret Service backend the password co-locates with the ciphertexts it protects.
+
+**Limitations.** None of these mediate class A — a same-UID process reads the password wherever the legitimate process can (or the unsealed pepper from the JVM heap, §2.1). Same-UID confinement remains the job of MAC policy on `/dev/tpmrm0` (§3.4, §3.5, §3.12).
+
 ---
 
 ## 4. D-Bus policy in detail
