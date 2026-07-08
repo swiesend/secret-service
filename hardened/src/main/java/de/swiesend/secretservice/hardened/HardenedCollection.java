@@ -92,8 +92,10 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     private final EpochKeystore keystore;
     private final GenerationAnchor generationAnchor;
     private final byte aeadId;
+    private final boolean memoryLocked;
 
     private volatile String epochId;
+    private volatile java.time.Instant epochCreated;
 
     private HardenedCollection(Builder b) {
         this.wrapped = Objects.requireNonNull(b.wrapped, "wrapped collection");
@@ -103,6 +105,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         this.kem = new HybridKem(b.enablePostQuantum);
         this.generationAnchor = b.generationAnchor;
         this.aeadId = Objects.requireNonNull(b.aead, "aead").id();
+        this.memoryLocked = b.lockMemory && MemoryLock.lockAll();
         this.keystore = new EpochKeystore(this.wrapped, this.provider, this.generationAnchor);
 
         ThreatCoverage tc = provider.threatCoverage();
@@ -114,6 +117,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             );
         }
         this.epochId = b.epochId != null ? b.epochId : newEpochId();
+        this.epochCreated = java.time.Instant.now();
 
         // Operator-visible posture line: one INFO record per HardenedCollection instance names the
         // provider, the threat coverage it claims, whether the security-theater gate was bypassed,
@@ -159,6 +163,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         private String epochId;
         private GenerationAnchor generationAnchor;
         private AeadId aead = AeadId.AES_256_GCM;
+        private boolean lockMemory = false;
 
         Builder(CollectionInterface wrapped, KeyMaterialProvider provider) {
             this.wrapped = Objects.requireNonNull(wrapped, "wrapped collection");
@@ -173,6 +178,15 @@ public final class HardenedCollection implements HardenedCollectionInterface {
          * cipher stay readable regardless of the current default.
          */
         public Builder aead(AeadId aead) { this.aead = Objects.requireNonNull(aead, "aead"); return this; }
+
+        /**
+         * Attempt to lock all process memory ({@code mlockall}) so pepper/DEK buffers cannot swap to
+         * disk. Off by default: it is a whole-process operation that can fail on a low
+         * {@code RLIMIT_MEMLOCK}, and silent operation needs
+         * {@code --enable-native-access=de.swiesend.secretservice.hardened}. When enabled,
+         * {@link HardenedStatus#memoryLocked()} reports whether the lock actually took.
+         */
+        public Builder lockMemory(boolean b) { this.lockMemory = b; return this; }
 
         /**
          * Enables hybrid X25519 + ML-KEM-768 wrapping. The KEM shared secret participates in the
@@ -447,9 +461,11 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         Optional<List<String>> paths = wrapped.getItems(Map.of(ATTR_VERSION, ATTR_VERSION_V1));
         if (paths.isEmpty()) {
             this.epochId = next;
+            this.epochCreated = java.time.Instant.now();
             return true;
         }
         this.epochId = next;
+        this.epochCreated = java.time.Instant.now();
         boolean allOk = true;
         for (String path : paths.get()) {
             // Skip the keystore item -- it lives under hardened.kind=epoch-keystore and is
@@ -663,9 +679,9 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     public HardenedStatus status() {
         return new HardenedStatus(
                 epochId,
-                java.time.Instant.now(),
+                epochCreated,
                 kem.postQuantumAvailable(),
-                false,
+                memoryLocked,
                 provider.threatCoverage(),
                 kem.algorithmLabel(),
                 Aead.label(aeadId),

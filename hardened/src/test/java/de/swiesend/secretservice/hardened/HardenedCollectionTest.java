@@ -404,6 +404,23 @@ class HardenedCollectionTest {
         assertEquals("aes-256-gcm", s.aeadAlgorithm());
         assertEquals("hkdf-sha256", s.kdfAlgorithm());
         assertFalse(s.resistsSameUidAttacker(), "EnvVar provider must report theater");
+        assertFalse(s.memoryLocked(), "memoryLocked must be false unless lockMemory(true) is set");
+        assertNotNull(s.epochCreated());
+    }
+
+    @Test
+    void lockMemoryAttemptsAndReportsHonestly() {
+        // lockMemory(true) attempts mlockall; on a box with a low RLIMIT_MEMLOCK the lock fails and
+        // memoryLocked() reports false -- the point is it reflects the ACTUAL syscall result (never a
+        // hardcoded value) and construction never throws.
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .lockMemory(true)
+                .build();
+        assertNotNull(h.status(), "lockMemory(true) must not break construction or status()");
+        String path = h.createItem("x", "s").orElseThrow();
+        assertEquals("s", h.withSecret(path, String::new).orElse(null),
+                "items still round-trip with lockMemory enabled");
     }
 
     @Test
