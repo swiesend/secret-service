@@ -170,7 +170,7 @@ class HardenedCollectionTest {
         assertEquals("secret", h.withSecret(path, String::new).orElse(null), "sanity: reads before tamper");
 
         byte[] envBytes = Base64.getDecoder().decode(fake.rawItems().get(path).rawSecret());
-        envBytes[5] = 0x40; // flip the flags byte (was 0); still parses, but AAD changes
+        envBytes[5] = Envelope.FLAG_PQ_HYBRID; // flip the flags byte (was 0); still parses, but AAD changes
         fake.overwriteRawSecret(path, Base64.getEncoder().encodeToString(envBytes));
 
         assertTrue(h.withSecret(path, String::new).isEmpty(),
@@ -195,19 +195,23 @@ class HardenedCollectionTest {
     }
 
     @Test
-    void legacyV1EnvelopeIsRejectedGracefully() {
-        // Format v1 (unauthenticated item-id, narrow AAD) is no longer supported. A stale v1
-        // item must be rejected gracefully -- withSecret returns empty rather than throwing -- so a
-        // leftover alpha item never crashes a read.
+    void legacyV1AndV2EnvelopesAreRejectedGracefully() {
+        // Formats v1/v2 (pre-suite-selector) are no longer supported. A stale legacy item must be
+        // rejected gracefully -- withSecret returns empty rather than throwing -- so a leftover
+        // alpha item never crashes a read.
         HardenedCollection h = build();
-        byte[] env = new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                new byte[Envelope.SALT_LEN], "legacy-epoch".getBytes(), "legacy-id".getBytes(),
-                new byte[0], new byte[Envelope.NONCE_LEN], new byte[32]).toBytes();
-        env[4] = Envelope.VERSION_1; // downgrade the version byte -> an unsupported v1 envelope
-        Map<String, String> attrs = new HashMap<>();
-        attrs.put(HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1);
-        fake.seedRaw("/legacy/v1", "legacy", Base64.getEncoder().encodeToString(env), attrs);
-        assertTrue(h.withSecret("/legacy/v1", String::new).isEmpty());
+        for (byte legacy : new byte[]{Envelope.VERSION_1, Envelope.VERSION_2}) {
+            byte[] env = new Envelope(Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM,
+                    Envelope.KDF_ID_HKDF_SHA256, Envelope.KEM_ID_NONE, new byte[Envelope.SALT_LEN],
+                    "legacy-epoch".getBytes(), "legacy-id".getBytes(),
+                    new byte[0], new byte[Envelope.NONCE_LEN], new byte[32]).toBytes();
+            env[4] = legacy; // downgrade the version byte -> an unsupported legacy envelope
+            Map<String, String> attrs = new HashMap<>();
+            attrs.put(HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1);
+            String path = "/legacy/v" + legacy;
+            fake.seedRaw(path, "legacy", Base64.getEncoder().encodeToString(env), attrs);
+            assertTrue(h.withSecret(path, String::new).isEmpty());
+        }
     }
 
     @Test
@@ -534,24 +538,17 @@ class HardenedCollectionTest {
     }
 
     @Test
-    void preRemovalTotpEnvelopeFailsClosedWithClearMessage() {
-        // Envelopes written by pre-removal releases with a TOTP mode carry a non-zero
-        // (ex totp_mode) reserved byte. Their DEKs mixed a TOTP code this library can no
-        // longer derive, so the parse must fail closed -- withSecret returns empty, never
-        // garbage plaintext and never an exception.
-        HardenedCollection h = build();
-        String path = h.createItem("t", "value").orElseThrow();
-        byte[] envBytes = Base64.getDecoder().decode(fake.rawItems().get(path).rawSecret());
-        // The reserved (ex totp_mode) byte sits after magic+ver+flags+kem_id, salt, epoch, item-id.
-        int off = Envelope.MAGIC.length + 3 + 1 + Envelope.SALT_LEN;
-        int epochLen = envBytes[off] & 0xff;
-        off += 1 + epochLen;
-        int itemLen = envBytes[off] & 0xff;
-        off += 1 + itemLen;
-        envBytes[off] = 0x01; // pre-removal TOTP_MODE_STORED_STEP
-        fake.overwriteRawSecret(path, Base64.getEncoder().encodeToString(envBytes));
-
-        assertTrue(h.withSecret(path, String::new).isEmpty(),
-                "a pre-removal TOTP envelope must fail closed on read");
+    void chaCha20Poly1305RoundTrips() {
+        // The AEAD is selectable; ChaCha20-Poly1305 items round-trip and stamp aead_id=0x02.
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .aead(AeadId.CHACHA20_POLY1305)
+                .build();
+        String path = h.createItem("c", "chacha-secret").orElseThrow();
+        FakeCollection.Item stored = fake.rawItems().get(path);
+        Envelope env = Envelope.fromBytes(Base64.getDecoder().decode(stored.rawSecret()));
+        assertEquals(Envelope.AEAD_ID_CHACHA20_POLY1305, env.aeadId());
+        assertEquals("chacha20-poly1305", stored.attrs().get(HardenedCollection.ATTR_AEAD));
+        assertEquals("chacha-secret", h.withSecret(path, String::new).orElse(null));
     }
 }

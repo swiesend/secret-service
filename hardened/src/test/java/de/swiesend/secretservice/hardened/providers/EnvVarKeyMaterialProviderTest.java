@@ -14,10 +14,14 @@ class EnvVarKeyMaterialProviderTest {
 
     @Test
     void failsClosedOnMissingPepper() {
-        assertThrows(IllegalStateException.class,
-                () -> new EnvVarKeyMaterialProvider(null));
-        assertThrows(IllegalStateException.class,
-                () -> new EnvVarKeyMaterialProvider(""));
+        assertThrows(IllegalStateException.class, () -> new EnvVarKeyMaterialProvider((String) null));
+        assertThrows(IllegalStateException.class, () -> new EnvVarKeyMaterialProvider(""));
+    }
+
+    @Test
+    void returnsThePepper() {
+        EnvVarKeyMaterialProvider p = new EnvVarKeyMaterialProvider("pepper-val");
+        assertEquals("pepper-val", new String(p.getPepper()));
     }
 
     @Test
@@ -42,7 +46,6 @@ class EnvVarKeyMaterialProviderTest {
         char[] before = p.getPepper();
         assertEquals("pepper-value", new String(before));
         p.close();
-        // The provider's own copy is zeroed and further access fails closed.
         assertThrows(IllegalStateException.class, p::getPepper);
     }
 }

@@ -5,9 +5,6 @@ import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharsetDecoder;
@@ -33,7 +30,7 @@ import java.util.function.Function;
  * Application-layer encryption decorator around a {@link CollectionInterface}.
  *
  * <p>On write, the plaintext is encrypted with AES-256-GCM under a per-item DEK derived via
- * HKDF-SHA256 from {pepper, KEM shared secret, per-item salt, epoch id, item id}. The
+ * HKDF-SHA256 from {pepper, optional TOTP code, per-item salt, epoch id, item id}. The
  * resulting {@link Envelope} (with AEAD ciphertext and tag) is base64-encoded and handed to
  * the wrapped collection as if it were the plaintext. The existing transport encryption
  * then wraps the ciphertext for the D-Bus hop.</p>
@@ -67,16 +64,13 @@ import java.util.function.Function;
  *       (reintroducing a destroyed epoch) is prevented only when a {@link GenerationAnchor} is
  *       configured (see {@link Builder#generationAnchor}).</li>
  * </ul>
- *
- * <p><b>History:</b> earlier alphas offered an optional TOTP factor in the DEK derivation. It was
- * removed as security theater (audit finding F-5): the seed co-located with the pepper by
- * construction of the SPI, so it never added an independent factor, and the stored-step variant
- * shipped its own input beside the ciphertext. Envelopes written with a TOTP mode are rejected on
- * read; envelopes written without one (the only honest mode) remain fully readable.</p>
  */
 public final class HardenedCollection implements HardenedCollectionInterface {
 
     private static final Logger log = LoggerFactory.getLogger(HardenedCollection.class);
+
+    /** Shared CSPRNG for salts and nonces; SecureRandom is thread-safe. */
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     static final String ATTR_VERSION    = "hardened.version";
     static final String ATTR_EPOCH      = "hardened.epoch";
@@ -87,10 +81,8 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     static final String ATTR_VERSION_V1 = "1";
 
     private static final String KDF_ALG   = "hkdf-sha256";
-    private static final String AEAD_ALG  = "aes-256-gcm";
-    private static final int AEAD_KEY_LEN = 32;
-    private static final int AEAD_TAG_BITS = 128;
-    private static final String HKDF_INFO_TAG = "secret-service/hardened/v2";
+    private static final int AEAD_KEY_LEN = Aead.KEY_LEN;
+    private static final String HKDF_INFO_TAG = "secret-service/hardened/v3";
 
     private final CollectionInterface wrapped;
     private final KeyMaterialProvider provider;
@@ -99,6 +91,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     private final HybridKem kem;
     private final EpochKeystore keystore;
     private final GenerationAnchor generationAnchor;
+    private final byte aeadId;
 
     private volatile String epochId;
 
@@ -109,6 +102,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         this.allowMigration = b.allowMigration;
         this.kem = new HybridKem(b.enablePostQuantum);
         this.generationAnchor = b.generationAnchor;
+        this.aeadId = Objects.requireNonNull(b.aead, "aead").id();
         this.keystore = new EpochKeystore(this.wrapped, this.provider, this.generationAnchor);
 
         ThreatCoverage tc = provider.threatCoverage();
@@ -121,16 +115,17 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
         this.epochId = b.epochId != null ? b.epochId : newEpochId();
 
-        // Operator-visible posture line: one INFO record per HardenedCollection instance
-        // names the provider, the threat coverage it claims, and whether the security-theater
-        // gate was bypassed. Skim logs to verify your deployment is in the posture you intended.
+        // Operator-visible posture line: one INFO record per HardenedCollection instance names the
+        // provider, the threat coverage it claims, whether the security-theater gate was bypassed,
+        // the AEAD suite, and whether an anti-rollback anchor is present. Skim logs to verify your
+        // deployment is in the posture you intended.
         boolean hasAnchor = generationAnchor != null;
         log.info(
             "HardenedCollection initialised: provider={}, threatCoverage=[sameUid={}, crossUid={}, offline={}, networkHndl={}], "
-                + "acknowledgedTheater={}, generationAnchor={}, epoch={}",
+                + "acknowledgedTheater={}, aead={}, generationAnchor={}, epoch={}",
             provider.getClass().getSimpleName(),
             tc.sameUid(), tc.crossUid(), tc.offline(), tc.networkHndl(),
-            acknowledgeSecurityTheater, hasAnchor ? "present" : "none", epochId);
+            acknowledgeSecurityTheater, Aead.label(aeadId), hasAnchor ? "present" : "none", epochId);
         if (acknowledgeSecurityTheater) {
             log.warn(
                 "HardenedCollection: acknowledgeSecurityTheater=true is set. The configured provider "
@@ -163,6 +158,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         private boolean allowMigration = false;
         private String epochId;
         private GenerationAnchor generationAnchor;
+        private AeadId aead = AeadId.AES_256_GCM;
 
         Builder(CollectionInterface wrapped, KeyMaterialProvider provider) {
             this.wrapped = Objects.requireNonNull(wrapped, "wrapped collection");
@@ -170,6 +166,13 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
 
         public Builder acknowledgeSecurityTheater(boolean b) { this.acknowledgeSecurityTheater = b; return this; }
+
+        /**
+         * Selects the AEAD cipher for new items (default {@link AeadId#AES_256_GCM}). The choice is
+         * recorded in the authenticated {@code aead_id} envelope byte, so items written under either
+         * cipher stay readable regardless of the current default.
+         */
+        public Builder aead(AeadId aead) { this.aead = Objects.requireNonNull(aead, "aead"); return this; }
 
         /**
          * Enables hybrid X25519 + ML-KEM-768 wrapping. The KEM shared secret participates in the
@@ -242,7 +245,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
         char[] pepper = provider.getPepper();
         byte[] salt = new byte[Envelope.SALT_LEN];
-        new SecureRandom().nextBytes(salt);
+        RANDOM.nextBytes(salt);
         byte[] epochBytes = epochId.getBytes(StandardCharsets.US_ASCII);
         String itemId = UUID.randomUUID().toString();
 
@@ -264,28 +267,28 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             byte[] kemCt = encap.kemCiphertext();
             kemSecret = encap.sharedSecret();
             dek = deriveDek(pepper, salt, epochBytes, idBytes, kemSecret);
-            new SecureRandom().nextBytes(nonce);
+            RANDOM.nextBytes(nonce);
 
             byte flags = 0;
             if (kemId.carriesPqCiphertext()) flags |= Envelope.FLAG_PQ_HYBRID;
 
-            // AAD binds the whole header (version, flags, kem_id, salt, epoch, item-id, reserved
-            // fields, kem_ct, nonce), so item identity is authenticated by the AEAD rather than
-            // trusted from mutable D-Bus attributes on read.
-            byte[] aad = Envelope.associatedData(Envelope.VERSION_2, flags, kemId.id(), salt, epochBytes,
-                    idBytes, kemCt, nonce);
+            // AAD binds the whole header (version, flags, aead_id, kdf_id, kem_id, salt, epoch,
+            // item-id, kem_ct, nonce), so item identity and the cipher suite are authenticated by the
+            // AEAD rather than trusted from mutable D-Bus attributes on read.
+            byte[] aad = Envelope.associatedData(Envelope.VERSION_3, flags, aeadId,
+                    Envelope.KDF_ID_HKDF_SHA256, kemId.id(), salt, epochBytes, idBytes, kemCt, nonce);
             byte[] aeadCt;
             try {
-                aeadCt = aeadEncrypt(dek, nonce, plaintext, aad);
+                aeadCt = Aead.encrypt(aeadId, dek, nonce, plaintext, aad);
             } catch (GeneralSecurityException e) {
-                throw new IllegalStateException("AES-GCM encryption failed", e);
+                throw new IllegalStateException("AEAD encryption failed", e);
             }
 
-            Envelope env = new Envelope(Envelope.VERSION_2, flags, kemId.id(), salt, epochBytes,
-                    idBytes, kemCt, nonce, aeadCt);
+            Envelope env = new Envelope(Envelope.VERSION_3, flags, aeadId, Envelope.KDF_ID_HKDF_SHA256,
+                    kemId.id(), salt, epochBytes, idBytes, kemCt, nonce, aeadCt);
             envelopeB64 = Base64.getEncoder().encodeToString(env.toBytes());
         } catch (IllegalStateException e) {
-            // KEM failure (e.g. an epoch keypair could not be loaded/persisted) or AES-GCM
+            // KEM failure (e.g. an epoch keypair could not be loaded/persisted) or AEAD
             // failure: report as an empty Optional, never a thrown exception.
             log.warn("createItem: could not seal item '{}': {}", label, e.toString());
             return Optional.empty();
@@ -300,7 +303,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         merged.put(ATTR_VERSION, ATTR_VERSION_V1);
         merged.put(ATTR_EPOCH, epochId);
         merged.put(ATTR_KDF, KDF_ALG);
-        merged.put(ATTR_AEAD, AEAD_ALG);
+        merged.put(ATTR_AEAD, Aead.label(aeadId));
         merged.put(ATTR_KEM, kemId.label());
         merged.put(ATTR_KEM_ID, String.format("0x%02x", kemId.id() & 0xff));
         merged.put("hardened.item.id", itemId);
@@ -665,7 +668,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 false,
                 provider.threatCoverage(),
                 kem.algorithmLabel(),
-                AEAD_ALG,
+                Aead.label(aeadId),
                 KDF_ALG
         );
     }
@@ -707,9 +710,14 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     // ---------- internals ----------
 
     private char[] decryptToChars(Envelope env, String objectPath) {
-        // Item identity comes from the AUTHENTICATED envelope, not from mutable D-Bus
-        // attributes: it is covered by the AEAD associated data, so tampering fails
+        // Item identity and cipher suite come from the AUTHENTICATED envelope, not from mutable
+        // D-Bus attributes: they are covered by the AEAD associated data, so tampering fails
         // decryption rather than steering it.
+        if (!Aead.isSupported(env.aeadId()) || env.kdfId() != Envelope.KDF_ID_HKDF_SHA256) {
+            log.warn("decrypt: {} names an unsupported cipher suite (aead_id=0x{}, kdf_id=0x{}); refusing.",
+                    objectPath, Integer.toHexString(env.aeadId() & 0xff), Integer.toHexString(env.kdfId() & 0xff));
+            return null;
+        }
         byte[] idBytes = env.itemId();
         char[] pepper = provider.getPepper();
         byte[] kemSecret;
@@ -727,11 +735,12 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         byte[] dek = null;
         byte[] plain = null;
         try {
+            byte[] ad = env.associatedData();
             dek = deriveDek(pepper, env.salt(), env.epochId(), idBytes, kemSecret);
-            plain = aeadDecrypt(dek, env.nonce(), env.aeadCiphertext(), env.associatedData());
+            plain = Aead.decrypt(env.aeadId(), dek, env.nonce(), env.aeadCiphertext(), ad);
             return utf8ToChars(plain);
         } catch (GeneralSecurityException e) {
-            log.warn("decrypt: AEAD failure for {}", objectPath);
+            log.warn("decrypt: AEAD authentication failed for {}", objectPath);
             return null;
         } finally {
             if (dek != null) Arrays.fill(dek, (byte) 0);
@@ -801,13 +810,11 @@ public final class HardenedCollection implements HardenedCollectionInterface {
      * are concatenated into the HKDF <em>input keying material</em> and mixed by
      * {@code HKDF-Extract(salt, IKM)}; the public per-item context (a domain tag, the epoch id, and
      * the item id) goes into {@code HKDF-Expand}'s {@code info}. This is the textbook shape: an
-     * attacker must know every secret input to reconstruct the DEK, and the length-prefixed IKM
-     * keeps an absent KEM input distinct from a present-but-empty one, so a with-KEM and a
-     * without-KEM derivation can never collide. {@code kemSecret} may be {@code null}/empty for
-     * KEM-less (legacy) items.
+     * attacker must know every secret input to reconstruct the DEK, and the length-prefixed IKM keeps
+     * an absent KEM input distinct from a present-but-empty one, so a with-KEM and a without-KEM
+     * derivation can never collide. {@code kemSecret} may be {@code null}/empty for KEM-less items.
      */
-    private static byte[] deriveDek(char[] pepper, byte[] salt, byte[] epoch,
-                                    byte[] itemId, byte[] kemSecret) {
+    private static byte[] deriveDek(char[] pepper, byte[] salt, byte[] epoch, byte[] itemId, byte[] kemSecret) {
         byte[] pepperBytes = charsToUtf8(CharBuffer.wrap(pepper));
         byte[] kem = kemSecret == null ? new byte[0] : kemSecret;
         byte[] ikm = buildIkm(pepperBytes, kem);
@@ -822,17 +829,11 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
     }
 
-    /**
-     * Length-prefixed concatenation of the secret keying inputs: pepper || kemSecret, followed by a
-     * zero-length reserved slot. The trailing {@code (short) 0} is the length prefix of the removed
-     * TOTP-code input; keeping it preserves byte-identical IKM (and therefore identical DEKs) for
-     * every envelope written without TOTP before the removal.
-     */
+    /** Length-prefixed concatenation of the secret keying inputs: pepper || kemSecret. */
     private static byte[] buildIkm(byte[] pepper, byte[] kemSecret) {
-        ByteBuffer buf = ByteBuffer.allocate(2 + pepper.length + 2 + kemSecret.length + 2);
+        ByteBuffer buf = ByteBuffer.allocate(2 + pepper.length + 2 + kemSecret.length);
         buf.putShort((short) pepper.length).put(pepper);
         buf.putShort((short) kemSecret.length).put(kemSecret);
-        buf.putShort((short) 0); // reserved (ex TOTP-code slot); keeps pre-removal DEKs derivable
         return buf.array();
     }
 
@@ -846,37 +847,18 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         return buf.array();
     }
 
-    private static byte[] aeadEncrypt(byte[] key, byte[] nonce, byte[] plaintext, byte[] aad)
-            throws GeneralSecurityException {
-        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-        c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(AEAD_TAG_BITS, nonce));
-        c.updateAAD(aad);
-        return c.doFinal(plaintext);
-    }
-
-    private static byte[] aeadDecrypt(byte[] key, byte[] nonce, byte[] ciphertext, byte[] aad)
-            throws GeneralSecurityException {
-        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-        c.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(AEAD_TAG_BITS, nonce));
-        c.updateAAD(aad);
-        return c.doFinal(ciphertext);
-    }
-
     private static byte[] charsToUtf8(CharSequence cs) {
         CharsetEncoder enc = StandardCharsets.UTF_8.newEncoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT);
         CharBuffer cb = CharBuffer.wrap(cs);
-        ByteBuffer out = ByteBuffer.allocate(Math.max(16, cs.length() * 4));
-        ByteBuffer tmp = ByteBuffer.allocate(out.capacity());
+        ByteBuffer tmp = ByteBuffer.allocate(Math.max(16, cs.length() * 4));
         CoderResult r = enc.encode(cb, tmp, true);
         if (r.isError()) throw new IllegalArgumentException("secret is not valid UTF-16");
         tmp.flip();
         byte[] bytes = new byte[tmp.remaining()];
         tmp.get(bytes);
-        // best-effort zero of the intermediate buffer
-        Arrays.fill(tmp.array(), (byte) 0);
-        Arrays.fill(out.array(), (byte) 0);
+        Arrays.fill(tmp.array(), (byte) 0); // best-effort zero of the intermediate buffer
         return bytes;
     }
 

@@ -20,11 +20,11 @@ class EnvelopeTest {
 
     private static final byte[] EMPTY = new byte[0];
 
-    /** A minimal valid v2 envelope (no KEM) for the poke/validation tests. */
+    /** A minimal valid v3 envelope (no KEM) for the poke/validation tests. */
     private static Envelope simple() {
-        return new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "item-1".getBytes(),
-                EMPTY, bytes(12, 2), bytes(32, 3));
+        return new Envelope(Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM,
+                Envelope.KDF_ID_HKDF_SHA256, Envelope.KEM_ID_NONE,
+                bytes(16, 1), "e".getBytes(), "item-1".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3));
     }
 
     @Test
@@ -35,15 +35,16 @@ class EnvelopeTest {
         byte[] kemCt = bytes(1090, 0x44);   // size of a real ML-KEM ciphertext + X25519 spki
         byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
         byte[] ct = bytes(64, 0x33);
-        Envelope original = new Envelope(Envelope.VERSION_2,
-                Envelope.FLAG_PQ_HYBRID,
-                Envelope.KEM_ID_X25519_MLKEM768,
-                salt, epoch, itemId, kemCt, nonce, ct);
+        Envelope original = new Envelope(Envelope.VERSION_3, Envelope.FLAG_PQ_HYBRID,
+                Envelope.AEAD_ID_CHACHA20_POLY1305, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_X25519_MLKEM768, salt, epoch, itemId, kemCt, nonce, ct);
 
         Envelope parsed = Envelope.fromBytes(original.toBytes());
 
-        assertEquals(Envelope.VERSION_2, parsed.version());
+        assertEquals(Envelope.VERSION_3, parsed.version());
         assertTrue(parsed.hasFlag(Envelope.FLAG_PQ_HYBRID));
+        assertEquals(Envelope.AEAD_ID_CHACHA20_POLY1305, parsed.aeadId());
+        assertEquals(Envelope.KDF_ID_HKDF_SHA256, parsed.kdfId());
         assertEquals(Envelope.KEM_ID_X25519_MLKEM768, parsed.kemId());
         assertArrayEquals(salt, parsed.salt());
         assertArrayEquals(epoch, parsed.epochId());
@@ -59,7 +60,8 @@ class EnvelopeTest {
         byte[] epoch = "epoch-classical".getBytes();
         byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
         byte[] ct = bytes(48, 0x33);
-        Envelope original = new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
+        Envelope original = new Envelope(Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM,
+                Envelope.KDF_ID_HKDF_SHA256, Envelope.KEM_ID_NONE,
                 salt, epoch, "id".getBytes(), EMPTY, nonce, ct);
         Envelope parsed = Envelope.fromBytes(original.toBytes());
         assertEquals(Envelope.KEM_ID_NONE, parsed.kemId());
@@ -75,21 +77,30 @@ class EnvelopeTest {
         assertTrue(aad.length < full.length, "AAD is the header, shorter than the whole envelope");
         assertArrayEquals(Arrays.copyOf(full, aad.length), aad,
                 "associatedData() must equal the header prefix of toBytes()");
-        // The trailing bytes are exactly the AEAD ciphertext.
         assertArrayEquals(e.aeadCiphertext(), Arrays.copyOfRange(full, aad.length, full.length));
     }
 
     @Test
+    void suiteSelectorBytesRoundTripUnknownValues() {
+        // aead_id and kdf_id round-trip arbitrary (future/unknown) values without a format change,
+        // mirroring kem_id agility. Rejection of an unsupported suite happens at decrypt time.
+        Envelope e = new Envelope(Envelope.VERSION_3, (byte) 0, (byte) 0x7e, (byte) 0x7f,
+                Envelope.KEM_ID_X25519, bytes(16, 1), "e".getBytes(), "i".getBytes(),
+                bytes(48, 9), bytes(12, 2), bytes(32, 3));
+        Envelope parsed = Envelope.fromBytes(e.toBytes());
+        assertEquals((byte) 0x7e, parsed.aeadId());
+        assertEquals((byte) 0x7f, parsed.kdfId());
+    }
+
+    @Test
     void kemIdAndKemCtMustBeConsistent() {
-        // kem_id == NONE but kem_ct non-empty -- reject
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(),
+                Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_NONE, bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 bytes(8, 9), bytes(12, 2), bytes(32, 3)));
-        // kem_id != NONE but kem_ct empty -- reject
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_X25519_MLKEM768,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(),
+                Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_X25519_MLKEM768, bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(12, 2), bytes(32, 3)));
     }
 
@@ -101,27 +112,18 @@ class EnvelopeTest {
         byte[] nonce = bytes(Envelope.NONCE_LEN, 0x22);
         byte[] ct = bytes(32, 0x33);
         byte[] kemCtForPq = bytes(64, 0x55);
-        Envelope none = new Envelope(Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                salt, epoch, id, EMPTY, nonce, ct);
+        Envelope none = new Envelope(Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM,
+                Envelope.KDF_ID_HKDF_SHA256, Envelope.KEM_ID_NONE, salt, epoch, id, EMPTY, nonce, ct);
         assertEquals(Envelope.KEM_ID_NONE, Envelope.fromBytes(none.toBytes()).kemId());
         for (byte kid : new byte[]{
                 Envelope.KEM_ID_X25519,
                 Envelope.KEM_ID_X25519_MLKEM768,
                 Envelope.KEM_ID_X25519_HQC192,
-                (byte) 0x7f}) {  // arbitrary unknown id -- agility check
-            Envelope env = new Envelope(Envelope.VERSION_2, (byte) 0, kid, salt, epoch, id,
-                    kemCtForPq, nonce, ct);
+                (byte) 0x7f}) {
+            Envelope env = new Envelope(Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM,
+                    Envelope.KDF_ID_HKDF_SHA256, kid, salt, epoch, id, kemCtForPq, nonce, ct);
             assertEquals(kid, Envelope.fromBytes(env.toBytes()).kemId());
         }
-    }
-
-    @Test
-    void kemIdLabelIsSensible() {
-        assertEquals("none", Envelope.kemIdLabel(Envelope.KEM_ID_NONE));
-        assertEquals("x25519", Envelope.kemIdLabel(Envelope.KEM_ID_X25519));
-        assertEquals("x25519+ml-kem-768", Envelope.kemIdLabel(Envelope.KEM_ID_X25519_MLKEM768));
-        assertEquals("x25519+hqc-192", Envelope.kemIdLabel(Envelope.KEM_ID_X25519_HQC192));
-        assertTrue(Envelope.kemIdLabel((byte) 0x7f).startsWith("kem-id-0x"));
     }
 
     @Test
@@ -139,29 +141,15 @@ class EnvelopeTest {
     }
 
     @Test
-    void rejectsLegacyV1WithReadableMessage() {
-        byte[] env = simple().toBytes();
-        env[4] = Envelope.VERSION_1; // pretend it is an old v1 envelope
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> Envelope.fromBytes(env));
-        assertTrue(e.getMessage().contains("v1"),
-                "v1 rejection message should name the legacy format; was: " + e.getMessage());
-    }
-
-    @Test
-    void rejectsEnvelopeWrittenWithTotp() {
-        // Simulate a pre-removal envelope that carried a TOTP mode: flip the reserved
-        // (ex totp_mode) byte, which sits right after the item-id in the v2 layout.
-        byte[] env = simple().toBytes();
-        int reservedOffset = Envelope.MAGIC.length + 3 // version + flags + kem_id
-                + 1 + Envelope.SALT_LEN                // salt_len + salt
-                + 1 + "e".getBytes().length            // epoch_len + epoch
-                + 1 + "item-1".getBytes().length;      // item_id_len + item_id
-        env[reservedOffset] = 0x01; // pre-removal TOTP_MODE_STORED_STEP
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> Envelope.fromBytes(env));
-        assertTrue(e.getMessage().contains("TOTP"),
-                "rejection message should explain the TOTP removal; was: " + e.getMessage());
+    void rejectsLegacyV1AndV2WithReadableMessage() {
+        for (byte legacy : new byte[]{Envelope.VERSION_1, Envelope.VERSION_2}) {
+            byte[] env = simple().toBytes();
+            env[4] = legacy;
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> Envelope.fromBytes(env));
+            assertTrue(e.getMessage().contains("legacy"),
+                    "v" + legacy + " rejection should name the legacy format; was: " + e.getMessage());
+        }
     }
 
     @Test
@@ -181,7 +169,8 @@ class EnvelopeTest {
     @Test
     void rejectsInvalidSaltLengthField() {
         byte[] env = simple().toBytes();
-        env[7] = 8; // fake salt_len = 8 (real is 16); salt_len is still at offset 7 in v2
+        // magic(4)+version(1)+flags(1)+aead_id(1)+kdf_id(1)+kem_id(1) = salt_len at offset 9
+        env[9] = 8;
         assertThrows(IllegalArgumentException.class, () -> Envelope.fromBytes(env));
     }
 
@@ -197,28 +186,28 @@ class EnvelopeTest {
     void constructorValidatesLengths() {
         // bad salt len
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(15, 1), "e".getBytes(), "i".getBytes(),
+                Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_NONE, bytes(15, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(12, 2), bytes(32, 3)));
         // bad nonce len
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(),
+                Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_NONE, bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(11, 2), bytes(32, 3)));
         // empty epoch
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), new byte[0], "i".getBytes(),
+                Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_NONE, bytes(16, 1), new byte[0], "i".getBytes(),
                 EMPTY, bytes(12, 2), bytes(32, 3)));
         // empty item id
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), new byte[0],
+                Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_NONE, bytes(16, 1), "e".getBytes(), new byte[0],
                 EMPTY, bytes(12, 2), bytes(32, 3)));
         // empty aead ct
         assertThrows(IllegalArgumentException.class, () -> new Envelope(
-                Envelope.VERSION_2, (byte) 0, Envelope.KEM_ID_NONE,
-                bytes(16, 1), "e".getBytes(), "i".getBytes(),
+                Envelope.VERSION_3, (byte) 0, Envelope.AEAD_ID_AES256_GCM, Envelope.KDF_ID_HKDF_SHA256,
+                Envelope.KEM_ID_NONE, bytes(16, 1), "e".getBytes(), "i".getBytes(),
                 EMPTY, bytes(12, 2), new byte[0]));
     }
 }

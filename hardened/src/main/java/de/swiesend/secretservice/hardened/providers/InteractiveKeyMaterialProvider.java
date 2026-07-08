@@ -10,9 +10,9 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Prompts the user at construction time for the pepper, then holds it in memory for the
- * process lifetime. Stronger against offline exfiltration than env-var/file providers;
- * still weak against live same-UID {@code ptrace}.
+ * Prompts the user at construction time for the pepper, then holds it in memory for the process
+ * lifetime. Stronger against offline exfiltration than env-var/file providers; still weak against
+ * live same-UID {@code ptrace}.
  *
  * <p>This provider uses {@link System#console()} which returns null in non-TTY environments —
  * it is therefore unsuitable for headless services. Use {@link FileKeyMaterialProvider} there.</p>

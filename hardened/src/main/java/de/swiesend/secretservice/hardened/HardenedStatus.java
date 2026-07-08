@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * Runtime status of a {@code HardenedCollection}: which factors are active, which attacker
- * classes are covered, and whether post-quantum hybrid is in effect.
+ * Runtime status of a {@code HardenedCollection}: which attacker classes are covered, the active
+ * cipher suite, whether post-quantum hybrid is in effect, and whether the process memory is locked.
  */
 public record HardenedStatus(
         String epochId,

@@ -17,12 +17,11 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Reads the pepper from a filesystem path. Enforces POSIX mode 0600 and
- * owner-readable-only semantics at construction. Optionally checks that the file is
- * owned by a UID different from the running process (real cross-UID defense).
+ * Reads the pepper from a filesystem path. Enforces POSIX mode 0600 and owner-readable-only
+ * semantics at construction. Optionally checks that the file is owned by a UID different from the
+ * running process (real cross-UID defense).
  *
- * <p>File format: the first non-blank base64 line is the pepper. Any further lines are
- * ignored (a second line used to carry the removed TOTP seed). Blank lines are ignored.</p>
+ * <p>File format: the first non-blank line is the base64-encoded pepper. Blank lines are ignored.</p>
  */
 public final class FileKeyMaterialProvider implements KeyMaterialProvider {
 
@@ -109,19 +108,12 @@ public final class FileKeyMaterialProvider implements KeyMaterialProvider {
             for (String line : lines) {
                 String trimmed = line.strip();
                 if (trimmed.isEmpty()) continue;
-                byte[] decoded;
                 try {
-                    decoded = Base64.getDecoder().decode(trimmed);
+                    pepperBytes = Base64.getDecoder().decode(trimmed);
                 } catch (IllegalArgumentException e) {
                     throw new IllegalStateException("key-material file contains non-base64 line", e);
                 }
-                if (pepperBytes == null) {
-                    pepperBytes = decoded;
-                } else {
-                    // Extra lines (e.g. the removed TOTP-seed second line) are ignored.
-                    Arrays.fill(decoded, (byte) 0);
-                    break;
-                }
+                break; // first non-blank base64 line is the pepper
             }
             if (pepperBytes == null || pepperBytes.length == 0) {
                 throw new IllegalStateException("pepper line missing in " + path);

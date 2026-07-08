@@ -13,14 +13,14 @@ import java.util.Base64;
  * Reads the pepper from {@code SECRET_SERVICE_PEPPER}.
  *
  * <p><b>Security note — intentional theater against same-UID attackers:</b> any process
- * running as the same UID can read {@code /proc/<pid>/environ} and recover these values.
+ * running as the same UID can read {@code /proc/<pid>/environ} and recover the pepper.
  * This provider is therefore suitable only for CI and development. Its
  * {@link ThreatCoverage#sameUid()} reports {@code NONE} so the builder refuses it in
  * production unless {@code acknowledgeSecurityTheater(true)} is set.</p>
  *
  * <p><b>Unzeroable backing:</b> {@code System.getenv()} has already materialised the pepper
  * as an immutable {@link String} inside the JVM environment map before this provider sees
- * it. We copy it to a local {@code byte[]} so subsequent access does not bounce through
+ * it. We copy it to a local {@code char[]} so subsequent access does not bounce through
  * another {@code String}, but the original env-var String is outside our control and stays
  * in memory until GC decides. This is consistent with, and a reason for, the
  * {@code sameUid=NONE} rating — if you need real memory hygiene, use a provider whose
@@ -44,8 +44,8 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
     }
 
     /**
-     * Construct with an explicit value (useful for tests and for callers that source env
-     * material from a custom location). Semantics match the env-var path: pepper is mandatory.
+     * Construct with an explicit pepper (useful for tests and for callers that source the pepper
+     * from a custom location). Fails closed if the pepper is null or empty.
      */
     public EnvVarKeyMaterialProvider(String rawPepper) {
         if (rawPepper == null || rawPepper.isEmpty()) {
@@ -78,9 +78,9 @@ public final class EnvVarKeyMaterialProvider implements KeyMaterialProvider {
     }
 
     /**
-     * Scrubs the provider's {@code char[]} copy of the pepper. Note the unzeroable-backing
-     * caveat in the class Javadoc: the original {@code System.getenv} String is outside this
-     * instance and cannot be cleared here.
+     * Scrubs the provider's {@code char[]} copy of the pepper. Note the unzeroable-backing caveat
+     * in the class Javadoc: the original {@code System.getenv} String is outside this instance and
+     * cannot be cleared here.
      */
     @Override
     public void close() {
