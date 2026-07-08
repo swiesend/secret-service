@@ -555,6 +555,19 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void rotateEpochRetainsPreviousEpochOnPartialFailure() {
+        // When a rewrap fails mid-rotation, rotateEpoch must report failure AND keep the previous
+        // epoch's keys alive (retainOnly is skipped), so a straggler that could not be rewrapped
+        // stays readable instead of being stranded.
+        HardenedCollection h = build();
+        String p1 = h.createItem("a", "one").orElseThrow();
+        fake.setNextCreateItemFails(true); // the rewrap's createItem will fail
+        assertFalse(h.rotateEpoch(), "a partial rewrap failure must make rotateEpoch return false");
+        assertEquals("one", h.withSecret(p1, String::new).orElse(null),
+                "a straggler under the previous epoch stays readable when rotation partially fails");
+    }
+
+    @Test
     void chaCha20Poly1305RoundTrips() {
         // The AEAD is selectable; ChaCha20-Poly1305 items round-trip and stamp aead_id=0x02.
         HardenedCollection h = HardenedCollection.builder(fake, provider)

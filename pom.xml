@@ -73,6 +73,7 @@
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>
+        <jazzer.version>0.22.1</jazzer.version>
     </properties>
 
     <dependencyManagement>
@@ -143,6 +144,11 @@
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter-engine</artifactId>
                 <version>${junit-jupiter.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.code-intelligence</groupId>
+                <artifactId>jazzer-junit</artifactId>
+                <version>${jazzer.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

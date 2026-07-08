@@ -67,6 +67,12 @@
             <artifactId>junit-jupiter-engine</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Coverage-guided fuzzing of the Envelope parser. Test scope only; never shipped. -->
+        <dependency>
+            <groupId>com.code-intelligence</groupId>
+            <artifactId>jazzer-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
