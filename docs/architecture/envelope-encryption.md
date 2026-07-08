@@ -1,6 +1,6 @@
 # Envelope encryption (write / read)
 
-Each secret body is sealed in an **AES-256-GCM envelope** under a per-item data-encryption key (DEK). The DEK is derived fresh per item with HKDF-SHA256 from: the application **pepper**, a per-item random **salt**, the **epoch id**, the **item id**, and the **KEM shared secret**. No key is stored; the DEK is recomputed on read from the same inputs. (An optional TOTP factor existed in earlier alphas and was removed as security theater — audit F-5; envelopes written with it are rejected on read.)
+Each secret body is sealed in an **AEAD envelope** (AES-256-GCM by default, or ChaCha20-Poly1305) under a per-item data-encryption key (DEK). The DEK is derived fresh per item with HKDF-SHA256: the secret inputs — the application **pepper** and the **KEM shared secret** — form the HKDF input keying material mixed with a per-item random **salt**; the public context (a domain tag, the **epoch id**, the **item id**) is the HKDF info. No key is stored; the DEK is recomputed on read from the same inputs.
 
 Source: `HardenedCollection.createItem` / `decryptToChars` / `deriveDek`, `Envelope`.
 
@@ -14,7 +14,7 @@ flowchart LR
     end
 ```
 
-Alongside the body, non-secret attributes travel as item metadata: `hardened.version`, `hardened.epoch`, `hardened.kem`, `hardened.kem.id`, `hardened.item.id`. The `kem_id == NONE  ⇔  kem_ct is empty` invariant is enforced by the `Envelope` constructor. The header retains 9 reserved bytes (ex TOTP mode/step, must be zero) so pre-removal non-TOTP envelopes keep decrypting.
+Alongside the body, non-secret **index metadata** travels as item attributes: `hardened.version`, `hardened.epoch`, `hardened.aead`, `hardened.kdf`, `hardened.kem`, `hardened.kem.id`, `hardened.item.id`. These are non-authoritative — the item id and cipher suite are read from the authenticated envelope header, never from the attributes. The `kem_id == NONE  ⇔  kem_ct is empty` invariant is enforced by the `Envelope` constructor.
 
 ## Write — `createItem`
 
@@ -31,16 +31,16 @@ sequenceDiagram
     HC->>KMP: getPepper()
     HC->>KEM: encapsulateForWrite(epochId)
     KEM-->>HC: (kem_ct, kem_shared_secret)
-    Note over HC: DEK = HKDF-SHA256(<br/>extract(salt, ikm=pepper||kemSecret),<br/>expand(info = TAG || epoch || itemId))
-    HC->>HC: aead_ct = AES-256-GCM(DEK, nonce, plaintext,<br/>AAD = full header)
-    HC->>HC: envelope = magic|ver|flags|kem_id|salt|epoch|item_id|kem_ct|nonce|aead_ct
+    Note over HC: DEK = HKDF-SHA256(<br/>salt=per-item salt, ikm=pepper || kemSecret,<br/>info = TAG || epoch || itemId)
+    HC->>HC: aead_ct = AEAD(DEK, nonce, plaintext,<br/>AAD = full envelope header)
+    HC->>HC: envelope = magic|ver|flags|aead_id|kdf_id|kem_id|salt|epoch|item_id|kem_ct|nonce|aead_ct
     HC->>HC: zero pepper, DEK, plaintext, kemSecret
     HC->>Col: createItem(label, base64(envelope), hardened.* attrs)
     Col-->>HC: item path
     HC-->>App: Optional<path>   (Optional.empty on any crypto/keystore failure)
 ```
 
-The whole sealing body runs in one `try/finally` so **every** key buffer is zeroed even on an exception path, and the method returns `Optional.empty()` rather than throwing on a KEM/AES failure (fail-safe contract).
+The whole sealing body runs in one `try/finally` so **every** key buffer is zeroed even on an exception path, and the method returns `Optional.empty()` rather than throwing on a KEM/AEAD failure (fail-safe contract). The AEAD is selectable via `Builder.aead(AeadId)` (AES-256-GCM default, or ChaCha20-Poly1305) and recorded in the authenticated `aead_id` byte.
 
 ## Read — `getSecret` / `withSecret`
 
@@ -62,12 +62,12 @@ sequenceDiagram
     HC->>KEM: decapsulateForRead(env)  (epoch private key)
     KEM-->>HC: kem_shared_secret  (or fail-closed if epoch destroyed)
     HC->>KMP: getPepper()
-    HC->>HC: DEK = HKDF(...), then plaintext = AES-256-GCM-open(DEK, nonce, aead_ct, AAD)
-    alt GCM tag verifies
+    HC->>HC: DEK = HKDF(...), then plaintext = AEAD-open by env.aead_id (DEK, nonce, aead_ct, AAD = full header)
+    alt tag verifies
         HC->>App: callback(char[] plaintext)
         HC->>HC: zero plaintext + all key buffers (finally)
-    else tag fails
-        HC->>HC: Optional.empty() (fail closed)
+    else tag fails / unsupported suite
+        HC-->>App: Optional.empty() (fail closed)
     end
 ```
 
@@ -85,5 +85,5 @@ The plaintext is handed to the callback as a `char[]` and zeroed in a `finally` 
 | Foreign / plaintext items in a shared collection are refused | `refusesPlaintextItemInSharedCollection`, `withSecretsScopesToHardenedItemsOnly` |
 | Envelope round-trips every field; rejects bad magic/version/lengths | `EnvelopeTest.roundTripPreservesAllFields_*`, `magicIsRequired`, `rejectsUnsupportedVersion`, `rejectsTruncatedInput`, `rejectsInvalidSaltLengthField`, `rejectsTooShortAeadCiphertext` |
 | `kem_id`/`kem_ct` consistency invariant holds | `EnvelopeTest.kemIdAndKemCtMustBeConsistent` |
-| Pre-removal TOTP envelopes fail closed with a clear message | `preRemovalTotpEnvelopeFailsClosedWithClearMessage`, `EnvelopeTest.rejectsEnvelopeWrittenWithTotp` |
+| Reads survive a step rollover during write | `storedStepSurvivesStepRolloverDuringWrite` |
 | `matchesSecret` is constant-time and plaintext-free | `matchesSecretReturnsTrueForEquality`, `...FalseForMismatch`, `constantTimeEqualsIsLengthIndependentOfFirstMismatchIndex` |

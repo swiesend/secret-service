@@ -13,7 +13,7 @@ mvn test -pl hardened-tpm2 -am -Psystem-test   # TPM paths (needs a TPM/simulato
 
 | Doc | Mechanism | Key property shown |
 |-----|-----------|--------------------|
-| [envelope-encryption.md](envelope-encryption.md) | Per-item AES-256-GCM envelope, HKDF-derived DEK | Round-trips; fails closed on wrong key material or tampering |
+| [envelope-encryption.md](envelope-encryption.md) | Per-item AEAD envelope (AES-256-GCM or ChaCha20-Poly1305), HKDF-derived DEK | Round-trips; fails closed on wrong key material or tampering |
 | [hybrid-kem.md](hybrid-kem.md) | X25519 (+ optional ML-KEM-768) KEM | Encapsulate/decapsulate agree; hybrid is honest |
 | [epoch-keystore-and-forward-secrecy.md](epoch-keystore-and-forward-secrecy.md) | Per-epoch keypairs, create-then-delete persistence, `rotateEpoch` | No data loss on crash; destroyed epochs are unreadable |
 | [anti-rollback-anchor.md](anti-rollback-anchor.md) | `GenerationAnchor` + TPM NV monotonic counter | A rolled-back keystore is refused (fail-closed) |
