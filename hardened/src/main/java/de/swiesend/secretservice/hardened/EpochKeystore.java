@@ -1,6 +1,6 @@
 package de.swiesend.secretservice.hardened;
 
-import at.favre.lib.hkdf.HKDF;
+import de.swiesend.secretservice.Hkdf;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -355,12 +355,7 @@ final class EpochKeystore {
         byte[] pepperBytes = new byte[enc.remaining()];
         enc.get(pepperBytes);
         try {
-            byte[] prk = HKDF.fromHmacSha256().extract(KEK_FIXED_SALT, pepperBytes);
-            try {
-                return HKDF.fromHmacSha256().expand(prk, KEK_INFO, KEK_LEN);
-            } finally {
-                Arrays.fill(prk, (byte) 0);
-            }
+            return Hkdf.extractThenExpandSha256(KEK_FIXED_SALT, pepperBytes, KEK_INFO, KEK_LEN);
         } finally {
             Arrays.fill(pepperBytes, (byte) 0);
             Arrays.fill(pepper, '\0');

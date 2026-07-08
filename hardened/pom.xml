@@ -37,10 +37,6 @@
             <artifactId>secret-service</artifactId>
         </dependency>
         <dependency>
-            <groupId>at.favre.lib</groupId>
-            <artifactId>hkdf</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>

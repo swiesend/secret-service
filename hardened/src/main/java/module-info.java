@@ -10,7 +10,6 @@
  */
 module de.swiesend.secretservice.hardened {
     requires transitive de.swiesend.secretservice;
-    requires at.favre.lib.hkdf;
     requires org.slf4j;
     requires static org.bouncycastle.provider;  // optional: Argon2KeyMaterialProvider only
     requires java.management;   // ManagementFactory in HardenedHealthCheck

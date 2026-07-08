@@ -1,6 +1,6 @@
 package de.swiesend.secretservice.hardened;
 
-import at.favre.lib.hkdf.HKDF;
+import de.swiesend.secretservice.Hkdf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -309,10 +309,8 @@ public final class HybridKem {
         System.arraycopy(ssClassical, 0, ikm, 0, ssClassical.length);
         System.arraycopy(ssPq, 0, ikm, ssClassical.length, ssPq.length);
         byte[] info = HKDF_INFO_TAG.getBytes(StandardCharsets.UTF_8);
-        byte[] prk = HKDF.fromHmacSha256().extract((byte[]) null, ikm);
-        byte[] combined = HKDF.fromHmacSha256().expand(prk, info, 32);
+        byte[] combined = Hkdf.extractThenExpandSha256(null, ikm, info, 32);
         Arrays.fill(ikm, (byte) 0);
-        Arrays.fill(prk, (byte) 0);
         return combined;
     }
 

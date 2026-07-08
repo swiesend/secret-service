@@ -1,6 +1,6 @@
 package de.swiesend.secretservice.hardened;
 
-import at.favre.lib.hkdf.HKDF;
+import de.swiesend.secretservice.Hkdf;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -813,9 +813,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         byte[] ikm = buildIkm(pepperBytes, kem);
         try {
             byte[] info = buildInfo(epoch, itemId);
-            byte[] prk = HKDF.fromHmacSha256().extract(salt, ikm);
-            byte[] dek = HKDF.fromHmacSha256().expand(prk, info, AEAD_KEY_LEN);
-            Arrays.fill(prk, (byte) 0);
+            byte[] dek = Hkdf.extractThenExpandSha256(salt, ikm, info, AEAD_KEY_LEN);
             Arrays.fill(info, (byte) 0);
             return dek;
         } finally {
