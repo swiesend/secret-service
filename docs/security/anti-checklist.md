@@ -45,7 +45,9 @@ Things nothing in this document defends against. List them here so a downstream 
 - [JEP 496: Quantum-Resistant Module-Lattice-Based KEM](https://openjdk.org/jeps/496)
 - [NIST FIPS 203 — ML-KEM](https://csrc.nist.gov/pubs/fips/203/final)
 - [NIST SP 800-38D — AES-GCM](https://csrc.nist.gov/publications/detail/sp/800-38d/final)
+- [RFC 8439 — ChaCha20-Poly1305](https://datatracker.ietf.org/doc/html/rfc8439)
 - [RFC 5869 — HKDF](https://datatracker.ietf.org/doc/html/rfc5869)
+- [JEP 510: Key Derivation Function API](https://openjdk.org/jeps/510)
 - [TCG TPM 2.0 Library Specification](https://trustedcomputinggroup.org/resource/tpm-library-specification/)
 
 **Linux man pages**

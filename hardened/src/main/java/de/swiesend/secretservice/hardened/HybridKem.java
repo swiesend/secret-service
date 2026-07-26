@@ -45,8 +45,8 @@ import java.util.Arrays;
  *
  * <p>Decapsulation consumes the same {@code kemCiphertext} layout and uses the
  * stored epoch private keys. Destroying those keys on {@code rotateEpoch()}
- * renders all prior envelopes unreadable -- the forward-secrecy primitive for
- * time-binding via epoch ratcheting.</p>
+ * renders all prior envelopes unreadable -- the forward-secrecy primitive
+ * provided by epoch ratcheting.</p>
  */
 public final class HybridKem {
 

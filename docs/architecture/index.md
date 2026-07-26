@@ -66,7 +66,7 @@ flowchart LR
     D["Class D<br/>harvest-now-decrypt-later"]:::yes
 
     A -->|"NOT defended by the wrapper<br/>(needs OS isolation)"| osiso["MAC / systemd / namespaces"]
-    B -->|"envelope opacity"| env["AES-256-GCM body encryption"]
+    B -->|"envelope opacity"| env["AEAD body encryption<br/>(AES-256-GCM / ChaCha20-Poly1305)"]
     C -->|"pepper not on disk (or TPM-sealed)<br/>+ envelope opacity"| pep["KeyMaterialProvider / TPM"]
     D -->|"enablePostQuantum(true)<br/>+ rotateEpoch() forward secrecy"| pq["HybridKem + EpochKeystore"]
 

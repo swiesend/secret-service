@@ -61,7 +61,7 @@ Legend:
 | **JVM memory hygiene** |  |  |  |  |  |  |  |
 | `-XX:+DisableAttachMechanism` | ✓ launcher | ✓ launcher | ✓ env | ✓ env | ✓ env | ✓ unit | ✓ env |
 | `-XX:-HeapDumpOnOutOfMemoryError` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `mlockall(MCL_CURRENT|FUTURE)` via JNA | ◐ needs cap | ✓ | ◐ | ✗ | ✓ | ✓ | ◐ |
+| `mlockall(MCL_CURRENT|FUTURE)` via `lockMemory(true)` (FFM) | ◐ needs cap | ✓ | ◐ | ✗ | ✓ | ✓ | ◐ |
 | `RLIMIT_CORE=0` / `ulimit -c 0` | ✓ launcher | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `prctl(PR_SET_DUMPABLE, 0)` | ✓ in main() | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **D-Bus posture** |  |  |  |  |  |  |  |
@@ -74,7 +74,7 @@ Legend:
 | Secure Boot + measured boot chain | ✓ | ✓ | — | — | — | ✓ | — |
 | Dictionary-attack lockout (no `noDA` on seal) | ✓ baked into provider | ✓ | ✓ | — | ✓ | ✓ | — |
 | **Application-layer (this library)** |  |  |  |  |  |  |  |
-| AES-256-GCM envelope (hardened wrapper) | ✓ | ✓ | ✓ | ◐ via portal-only path | ✓ | ✓ | ✓ |
+| AEAD envelope — AES-256-GCM / ChaCha20-Poly1305 (hardened wrapper) | ✓ | ✓ | ✓ | ◐ via portal-only path | ✓ | ✓ | ✓ |
 | Hybrid PQ KEM (X25519 + ML-KEM-768) — `enablePostQuantum(true)` | — class D rare | — | — usually | — | — | ✓ if archived (forward-secret via rotateEpoch) | ◐ if logs persist |
 | `withSecret` / `matchesSecret` callback API | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `EnvVarKeyMaterialProvider` (theatre, but appropriate in CI) | ✗ class A | ✗ | ◐ honest CI default | ◐ portal substitute | ◐ | ✗ | **✓** primary CI path |

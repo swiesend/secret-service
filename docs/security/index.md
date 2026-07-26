@@ -24,7 +24,7 @@ It is structured as **threats first, then defenses, then deployment recipes**:
 The `secret-service` library is a Java client for the [freedesktop Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/). It does two things:
 
 - **Transport encryption**: a Diffie–Hellman + AES-128-CBC session between the client and the daemon (gnome-keyring-daemon, KeePassXC, …) so the D-Bus wire is opaque to a passive listener. Standard, mandatory, already there in core.
-- **Optional application-layer encryption** via `secret-service-hardened`: AES-256-GCM envelopes whose DEK is derived from a pluggable `KeyMaterialProvider` (env var, file, TPM2). This is the ciphertext-at-rest layer that the daemon itself cannot decrypt.
+- **Optional application-layer encryption** via `secret-service-hardened`: AEAD envelopes (AES-256-GCM or ChaCha20-Poly1305, selectable via `Builder.aead(AeadId)`) whose per-item DEK is derived through the native `javax.crypto.KDF` (HKDF-SHA256) from a pluggable `KeyMaterialProvider` (env var, file, TPM2). This is the ciphertext-at-rest layer that the daemon itself cannot decrypt.
 
 This document is about the **Linux-side guards** that surround such a JVM process: what threats they address, how to apply them, and which packaging format makes them easiest to apply.
 

@@ -10,9 +10,11 @@ Source: `HardenedCollection.createItem` / `decryptToChars` / `deriveDek`, `Envel
 flowchart LR
     subgraph env["Envelope bytes (then base64 → item secret body)"]
       direction LR
-      magic["magic<br/>'SSv1' (4)"] --> ver["version<br/>(1)"] --> flags["flags<br/>(1)"] --> kid["kem_id<br/>(1)"] --> salt["salt<br/>(16)"] --> epoch["epoch_len(1)+epoch_id"] --> kemct["kem_ct_len(2)+kem_ct<br/>(0 iff kem_id=NONE)"] --> nonce["nonce<br/>(12)"] --> ct["aead_ct<br/>(GCM tag included)"]
+      magic["magic<br/>'SSv1' (4)"] --> ver["version<br/>3 (1)"] --> flags["flags<br/>(1)"] --> aid["aead_id<br/>(1)"] --> kdid["kdf_id<br/>(1)"] --> kid["kem_id<br/>(1)"] --> salt["salt<br/>(16)"] --> epoch["epoch_len(1)+epoch_id"] --> item["item_id_len(1)+item_id"] --> kemct["kem_ct_len(2)+kem_ct<br/>(0 iff kem_id=NONE)"] --> nonce["nonce<br/>(12)"] --> ct["aead_ct<br/>(AEAD tag included)"]
     end
 ```
+
+The 4-byte `magic` is the fixed family tag `SSv1` (unchanged across revisions); the authoritative format version is the separate 1-byte `version` field, currently **3**. Parsing rejects v1 and v2 (`fromBytes` accepts only v3). The `aead_id` / `kdf_id` / `kem_id` selector bytes name the cipher suite so a new AEAD, KDF, or KEM lands without a format migration.
 
 Alongside the body, non-secret **index metadata** travels as item attributes: `hardened.version`, `hardened.epoch`, `hardened.aead`, `hardened.kdf`, `hardened.kem`, `hardened.kem.id`, `hardened.item.id`. These are non-authoritative — the item id and cipher suite are read from the authenticated envelope header, never from the attributes. The `kem_id == NONE  ⇔  kem_ct is empty` invariant is enforced by the `Envelope` constructor.
 
@@ -85,5 +87,7 @@ The plaintext is handed to the callback as a `char[]` and zeroed in a `finally` 
 | Foreign / plaintext items in a shared collection are refused | `refusesPlaintextItemInSharedCollection`, `withSecretsScopesToHardenedItemsOnly` |
 | Envelope round-trips every field; rejects bad magic/version/lengths | `EnvelopeTest.roundTripPreservesAllFields_*`, `magicIsRequired`, `rejectsUnsupportedVersion`, `rejectsTruncatedInput`, `rejectsInvalidSaltLengthField`, `rejectsTooShortAeadCiphertext` |
 | `kem_id`/`kem_ct` consistency invariant holds | `EnvelopeTest.kemIdAndKemCtMustBeConsistent` |
-| Reads survive a step rollover during write | `storedStepSurvivesStepRolloverDuringWrite` |
+| Tampering any header byte fails AEAD authentication (full-header AAD) | `tamperingWithEnvelopeHeaderFailsAuthentication` |
+| ChaCha20-Poly1305 items round-trip and stamp `aead_id` | `chaCha20Poly1305RoundTrips`, `AeadTest.*` |
+| Envelope parser survives arbitrary/adversarial input (fuzzed) | `EnvelopeFuzzTest.fromBytesOnlyThrowsIllegalArgument` |
 | `matchesSecret` is constant-time and plaintext-free | `matchesSecretReturnsTrueForEquality`, `...FalseForMismatch`, `constantTimeEqualsIsLengthIndependentOfFirstMismatchIndex` |

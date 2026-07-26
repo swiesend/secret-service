@@ -107,7 +107,7 @@ The EpochKeystore lives as an item inside the wrapped collection (label `__harde
 
 **Lost the TPM hardware** (motherboard swap, firmware reset):
 1. Provision a *new* `pepper.tpm2blob` on the new TPM with a *new* seal password.
-2. If you escrowed the old pepper, decrypt items off-host (a small tool that runs the wrapper's HKDF + AES-GCM with the old pepper), re-encrypt under the new pepper, re-import into the keyring.
+2. If you escrowed the old pepper, decrypt items off-host (a small tool that runs the wrapper's HKDF-SHA256 — native `javax.crypto.KDF` — plus the AEAD each envelope names in its `aead_id`, i.e. AES-256-GCM or ChaCha20-Poly1305, with the old pepper), re-encrypt under the new pepper, re-import into the keyring.
 3. If you did not escrow, items are gone. Class-C (laptop theft) is exactly the threat model TPM binding defends — losing your own laptop hits this same code path.
 
 **Lost the keyring file** but kept pepper + TPM:

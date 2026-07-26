@@ -29,8 +29,9 @@ import java.util.function.Function;
 /**
  * Application-layer encryption decorator around a {@link CollectionInterface}.
  *
- * <p>On write, the plaintext is encrypted with AES-256-GCM under a per-item DEK derived via
- * HKDF-SHA256 from {pepper, optional TOTP code, per-item salt, epoch id, item id}. The
+ * <p>On write, the plaintext is encrypted with an AEAD (AES-256-GCM or ChaCha20-Poly1305) under a
+ * per-item DEK derived via HKDF-SHA256 from {pepper, KEM shared secret, per-item salt, epoch id,
+ * item id}. The
  * resulting {@link Envelope} (with AEAD ciphertext and tag) is base64-encoded and handed to
  * the wrapped collection as if it were the plaintext. The existing transport encryption
  * then wraps the ciphertext for the D-Bus hop.</p>

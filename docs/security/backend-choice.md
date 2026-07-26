@@ -36,7 +36,7 @@ The library's CHANGELOG already notes that `org.gnome.keyring` is deferred-loade
 
 The hardened wrapper runs the *envelope*, not the *daemon*. It treats whichever Secret Service implementation is on the bus as opaque storage. Two stacking effects:
 
-1. **gnome-keyring + hardened**: items in `~/.local/share/keyrings/login.keyring` become opaque AES-256-GCM ciphertext. Even when the keyring is unlocked (which it always is on a logged-in GNOME desktop), the daemon cannot decrypt them. A class-A attacker who walks up to the bus and asks for an item gets ciphertext, not plaintext. They still need to ptrace the JVM or open `/dev/tpmrm0` to advance — and that's where MAC + memory hygiene help.
+1. **gnome-keyring + hardened**: items in `~/.local/share/keyrings/login.keyring` become opaque AEAD ciphertext (AES-256-GCM or ChaCha20-Poly1305). Even when the keyring is unlocked (which it always is on a logged-in GNOME desktop), the daemon cannot decrypt them. A class-A attacker who walks up to the bus and asks for an item gets ciphertext, not plaintext. They still need to ptrace the JVM or open `/dev/tpmrm0` to advance — and that's where MAC + memory hygiene help.
 
 2. **KeePassXC + hardened**: triple defense. KeePassXC asks the user before exposing any item to a previously-unknown bus client (defeats class A passively); the hardened envelope is opaque to KeePassXC itself (defeats class A even if the user clicks "allow"); the TPM unseal is bound to the host (defeats class C even if the .kdbx file is exfiltrated). Each layer has independent failure modes — no single misconfiguration loses everything.
 

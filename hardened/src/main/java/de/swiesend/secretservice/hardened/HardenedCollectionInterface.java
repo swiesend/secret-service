@@ -95,7 +95,7 @@ public interface HardenedCollectionInterface extends AutoCloseable {
     /** Rotate the collection epoch: rewrap every hardened item under a fresh epoch id. */
     boolean rotateEpoch();
 
-    /** Current runtime status: epoch, time binding, threat coverage, algorithms. */
+    /** Current runtime status: epoch, cipher suite, threat coverage, memory-lock state. */
     HardenedStatus status();
 
     @Override

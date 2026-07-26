@@ -126,10 +126,11 @@ sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/sdX
 LimitCORE=0
 LimitMEMLOCK=infinity
 AmbientCapabilities=CAP_IPC_LOCK
-Environment="JAVA_TOOL_OPTIONS=-XX:+DisableAttachMechanism -XX:-HeapDumpOnOutOfMemoryError"
+# --enable-native-access lets the library's FFM mlock call run without a warning (see below)
+Environment="JAVA_TOOL_OPTIONS=--enable-native-access=de.swiesend.secretservice.hardened -XX:+DisableAttachMechanism -XX:-HeapDumpOnOutOfMemoryError"
 ```
 
-Plus, in JVM startup: enable `mlockall` via JNA in your application's `main()` (the library doesn't auto-mlock; that decision belongs to the consumer).
+Plus, in application code: opt into memory locking with `HardenedCollection.builder(...).lockMemory(true)`. The library then calls `mlockall(MCL_CURRENT | MCL_FUTURE)` through the JDK Foreign Function & Memory API (best-effort, off by default because it locks the whole process). For it to take effect you need (a) `--enable-native-access=de.swiesend.secretservice.hardened` on the JVM command line — otherwise the restricted native call still runs but the JVM prints a native-access warning — and (b) an adequate `RLIMIT_MEMLOCK` (`LimitMEMLOCK=infinity` above, or `CAP_IPC_LOCK`). Whether the lock actually took is reported by `coll.status().memoryLocked()` — never a hardcoded value, so you can assert on it in a health check.
 
 **Limitations.** `mlockall` doesn't help against live RAM extraction (cold-boot, JTAG). Attach-mechanism disable doesn't block `ptrace` — that's MAC's job.
 

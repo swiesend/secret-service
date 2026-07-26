@@ -53,7 +53,7 @@ sha256sum yourapp-3.0.0.tar.gz > yourapp-3.0.0.tar.gz.sha256
 
 **What your users get.** Even less than [Plain binary archive (`tar.gz` / `zip`)](#plain-binary-archive-targz-zip) — no launcher means no place for `ulimit -c 0` or `-XX:+DisableAttachMechanism` unless the user reads your README and types them in by hand.
 
-**Library configuration.** Same as [Plain binary archive (`tar.gz` / `zip`)](#plain-binary-archive-targz-zip). Add a runtime `mlockall` call via JNA early in `main()` so memory hygiene at least partially holds without operator help — see [Memory hygiene (mlockall, no swap, no core dumps, no attach)](defense-mechanisms.md#memory-hygiene-mlockall-no-swap-no-core-dumps-no-attach) for details and the `CAP_IPC_LOCK` requirement.
+**Library configuration.** Same as [Plain binary archive (`tar.gz` / `zip`)](#plain-binary-archive-targz-zip). Enable memory locking with `HardenedCollection.builder(...).lockMemory(true)` so memory hygiene at least partially holds without operator help — this uses the JDK FFM `mlockall`, so add `--enable-native-access=de.swiesend.secretservice.hardened` and grant `CAP_IPC_LOCK` / a sufficient `RLIMIT_MEMLOCK`; see [Memory hygiene (mlockall, no swap, no core dumps, no attach)](defense-mechanisms.md#memory-hygiene-mlockall-no-swap-no-core-dumps-no-attach) for details.
 
 **Class coverage.** Same as [Plain binary archive (`tar.gz` / `zip`)](#plain-binary-archive-targz-zip), *minus* the launcher-set JVM flags. Effectively no improvement over a vanilla `java -jar`.
 

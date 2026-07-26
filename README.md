@@ -53,10 +53,10 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
 
 **Application-layer encryption (`secret-service-hardened`)**
 
-**Most consumers need only the core artifact.** Read the scope before adopting this: the hardened layer encrypts secret *bodies* before they reach the daemon — AES-256-GCM envelopes with per-item keys derived from an application *pepper* — so an attacker who holds the keyring bytes but not the pepper sees only ciphertext. It is **defense-in-depth, not a same-UID boundary.**
+**Most consumers need only the core artifact.** Read the scope before adopting this: the hardened layer encrypts secret *bodies* before they reach the daemon — AEAD envelopes (AES-256-GCM by default, or ChaCha20-Poly1305 via `Builder.aead(AeadId)`) with per-item keys derived from an application *pepper* — so an attacker who holds the keyring bytes but not the pepper sees only ciphertext. It is **defense-in-depth, not a same-UID boundary.**
 
 - It does **not** defend against a same-UID live process — **class A**, the CVE-2018-19358 case above. Because the decrypting key must be available to your own process, no in-process encryption can. Class A needs a *different security principal*: OS-level isolation (MAC policy, sandboxing) or a hardware token that performs the crypto (see the [defense mechanism inventory](docs/security/defense-mechanisms.md) and [D-Bus policy](docs/security/dbus-policy.md)).
-- The whole scheme's root of trust is the pepper. Its real value materializes only when the pepper lives somewhere an attacker who has the keyring cannot also reach — i.e. **`secret-service-hardened-tpm2` (TPM-sealed pepper), and, to mean anything against a capable attacker, together with measured boot, a MAC policy confining `/dev/tpmrm0`, JVM hardening, and disciplined backup-retention rotation.** With an env-var or co-located file pepper on a single-tenant desktop, it adds little a full-disk-encrypted laptop does not already provide.
+- The whole scheme's root of trust is the pepper. Its real value materializes only when the pepper lives somewhere an attacker who has the keyring cannot also reach — i.e. **`secret-service-hardened-tpm2` (TPM-sealed pepper), and, to mean anything against a capable attacker, together with measured boot, a MAC policy confining `/dev/tpmrm0`, [JVM hardening](docs/usage/hardened.md#cipher-suite-and-jvm-hardening) (incl. `lockMemory(true)`), and disciplined backup-retention rotation.** With an env-var or co-located file pepper on a single-tenant desktop, it adds little a full-disk-encrypted laptop does not already provide.
 - With the TPM provider **you never store the pepper at all** — it exists at rest only as a TPM-wrapped blob (`pepper.tpm2blob`, mode 0600) that is cryptographically useless without that physical chip *and* the unseal password, with wrong guesses rate-limited in hardware (dictionary-attack lockout). The secret-management problem shrinks to *how the unseal password reaches the process*: prompt the user (strongest), the login keyring (pragmatic autostart — the hardware factor survives an offline thief), or a 0600 file (floor). **Never argv, never env vars.** Ranked options and the reasoning: [Where does the unseal password live on a desktop?](docs/usage/tpm2.md#where-does-the-unseal-password-live-on-a-desktop).
 
 Where it genuinely pays off ([threat catalogue](docs/security/threat-catalogue.md)):
@@ -92,8 +92,8 @@ Since `3.0.0-alpha` the project is a Maven reactor with **three separately publi
 
 | Artifact | JDK floor | Adds | Pulls extra runtime deps? |
 |---|---|---|---|
-| `de.swiesend:secret-service` | 25 | The classical Secret Service 0.2 client + transport encryption | hkdf, dbus-java, slf4j-api |
-| `de.swiesend:secret-service-hardened` | 25 | Optional app-layer AES-256-GCM envelopes, `KeyMaterialProvider` SPI, hybrid X25519 + ML-KEM-768 (native SunJCE) | none beyond core (BouncyCastle is `provided/optional`, only for the `Argon2KeyMaterialProvider`) |
+| `de.swiesend:secret-service` | 25 | The classical Secret Service 0.2 client + transport encryption | dbus-java, slf4j-api |
+| `de.swiesend:secret-service-hardened` | 25 | Optional app-layer AEAD envelopes (AES-256-GCM or ChaCha20-Poly1305), `KeyMaterialProvider` SPI, hybrid X25519 + ML-KEM-768 (native SunJCE) | none beyond core (BouncyCastle is `provided/optional`, only for the `Argon2KeyMaterialProvider`) |
 | `de.swiesend:secret-service-hardened-tpm2` | 25 | TPM-sealed pepper provider | none beyond hardened (TSS.Java is `provided/optional`) |
 
 **Most consumers want only the first row:**
@@ -106,9 +106,9 @@ Since `3.0.0-alpha` the project is a Maven reactor with **three separately publi
 </dependency>
 ```
 
-A `mvn dependency:tree` for that single declaration shows four transitive deps and nothing from the hardened or TPM modules. See [Desktop App consumer scenarios](docs/security/desktop-deployment.md) to decide whether you also need the optional layers.
+A `mvn dependency:tree` for that single declaration shows only the dbus-java and slf4j transitive deps and nothing from the hardened or TPM modules (the former `at.favre.lib:hkdf` was dropped in favour of the native JDK `javax.crypto.KDF`). See [Desktop App consumer scenarios](docs/security/desktop-deployment.md) to decide whether you also need the optional layers.
 
-**Optional: app-layer encryption** (adds AES-256-GCM envelopes; requires JDK 25):
+**Optional: app-layer encryption** (adds AEAD envelopes — AES-256-GCM or ChaCha20-Poly1305; requires JDK 25):
 
 ```xml
 <dependency>

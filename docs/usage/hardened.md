@@ -1,10 +1,10 @@
 # Hardened usage
 
-Samples for the opt-in `secret-service-hardened` artifact: AES-256-GCM application-layer envelopes, `matchesSecret`, batch reads, post-quantum + epoch rotation, and custom `KeyMaterialProvider`s. Read [Do I need this?](../security/index.md#do-i-need-this) first — most consumers need only the [core artifact](core.md).
+Samples for the opt-in `secret-service-hardened` artifact: application-layer AEAD envelopes (AES-256-GCM or ChaCha20-Poly1305), `matchesSecret`, batch reads, post-quantum + epoch rotation, and custom `KeyMaterialProvider`s. Read [Do I need this?](../security/index.md#do-i-need-this) first — most consumers need only the [core artifact](core.md).
 
 ## Minimal opt-in wrapper
 
-Adds AES-256-GCM application-layer envelopes on top of any `CollectionInterface`. JDK 25 + `de.swiesend:secret-service-hardened`.
+Adds application-layer AEAD envelopes on top of any `CollectionInterface`. JDK 25 + `de.swiesend:secret-service-hardened`.
 
 ```java
 import de.swiesend.secretservice.functional.SecretService;
@@ -31,6 +31,24 @@ try (SecretService service = SecretService.create().orElseThrow();
 `SECRET_SERVICE_PEPPER` must be set in the environment (`EnvVarKeyMaterialProvider` fails closed if absent). For production, replace with a [`Tpm2KeyMaterialProvider`](tpm2.md) or a [custom provider](#implement-a-custom-keymaterialprovider).
 
 `acknowledgeSecurityTheater(true)` is required because `EnvVarKeyMaterialProvider` reports `sameUid=NONE`. Removing it for production is the deliberate moment to switch to a stronger provider.
+
+### Cipher suite and JVM hardening
+
+The AEAD is selectable; AES-256-GCM is the default, ChaCha20-Poly1305 is available (both recorded in the authenticated envelope, so items stay readable regardless of the current default):
+
+```java
+import de.swiesend.secretservice.hardened.AeadId;
+
+HardenedCollection coll = HardenedCollection.builder(base, provider)
+        .aead(AeadId.CHACHA20_POLY1305)  // default is AeadId.AES_256_GCM
+        .lockMemory(true)                // best-effort mlockall so pepper/DEK buffers cannot swap
+        .build();
+
+// status().memoryLocked() reports whether the lock actually took (never a hardcoded value):
+boolean locked = coll.status().memoryLocked();
+```
+
+`lockMemory(true)` calls `mlockall` through the JDK Foreign Function & Memory API. It is off by default (it locks the whole process). For it to work, launch with `--enable-native-access=de.swiesend.secretservice.hardened` (otherwise the call still runs but the JVM prints a native-access warning) and ensure an adequate `RLIMIT_MEMLOCK` (`ulimit -l`, or `LimitMEMLOCK=infinity` / `CAP_IPC_LOCK` under systemd). See the [memory-hygiene inventory](../security/defense-mechanisms.md#memory-hygiene-mlockall-no-swap-no-core-dumps-no-attach).
 
 ---
 
@@ -111,12 +129,12 @@ HardenedCollection initialised: provider=Tpm2KeyMaterialProvider,
 
 ## Implement a custom `KeyMaterialProvider`
 
-Bring your own pepper source — typical use cases: HashiCorp Vault, AWS Secrets Manager, Linux kernel keyring, a hardware token via PKCS#11. Implement four methods:
+Bring your own pepper source — typical use cases: HashiCorp Vault, AWS Secrets Manager, Linux kernel keyring, a hardware token via PKCS#11. Implement two methods — `getPepper()` and `threatCoverage()` — and, if you cache material, override `close()` to scrub it:
 
 ```java
 import de.swiesend.secretservice.hardened.KeyMaterialProvider;
 import de.swiesend.secretservice.hardened.ThreatCoverage;
-import java.util.Optional;
+import java.util.Arrays;
 
 public final class VaultKeyMaterialProvider implements KeyMaterialProvider {
     private final char[] cachedPepper;
@@ -139,6 +157,10 @@ public final class VaultKeyMaterialProvider implements KeyMaterialProvider {
                 ThreatCoverage.Level.NOT_APPLICABLE,
                 "Pepper fetched from Vault at startup; cached in JVM heap. Same-UID "
                         + "attacker reads JVM memory unless additional MAC is in place.");
+    }
+
+    @Override public void close() {
+        Arrays.fill(cachedPepper, '\0');   // HardenedCollection.close() propagates to here
     }
 }
 ```

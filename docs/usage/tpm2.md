@@ -94,6 +94,8 @@ try (Tpm2KeyMaterialProvider tpm = Tpm2KeyMaterialProvider.forPlatformTpm(
 
 `Builder` accepts `Tpm2KeyMaterialProvider` without `acknowledgeSecurityTheater(true)` because its `threatCoverage().sameUid()` is `PARTIAL` (real same-UID defense requires an external MAC policy; see the [defense mechanism inventory](../security/defense-mechanisms.md)).
 
+For memory hygiene, pair the provider with `.lockMemory(true)` so the unsealed pepper cannot swap to disk (mlock via the JDK FFM API; add `--enable-native-access=de.swiesend.secretservice.hardened` and grant `CAP_IPC_LOCK` / a sufficient `RLIMIT_MEMLOCK`). See [Hardened usage → Cipher suite and JVM hardening](hardened.md#cipher-suite-and-jvm-hardening).
+
 ### Where does the unseal password live on a desktop?
 
 First, the reframe: **with the TPM provider you don't store the pepper.** It exists at rest only as `pepper.tpm2blob` — TPM-wrapped material that is useless without (a) that physical chip (the seal is `fixedTPM`, non-migratable) and (b) the unseal password, with wrong guesses rate-limited by the TPM's dictionary-attack lockout. The blob needs ordinary hygiene only (mode 0600, which `Tpm2SealedBlob` enforces on write *and* read). The remaining question is how the *unseal password* reaches your process at startup. Ranked for a desktop:
