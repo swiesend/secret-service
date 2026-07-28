@@ -16,6 +16,8 @@ flowchart LR
 
 The 4-byte `magic` is the fixed family tag `SSv1` (unchanged across revisions); the authoritative format version is the separate 1-byte `version` field, currently **3**. Parsing rejects v1 and v2 (`fromBytes` accepts only v3). The `aead_id` / `kdf_id` / `kem_id` selector bytes name the cipher suite so a new AEAD, KDF, or KEM lands without a format migration.
 
+**Stability policy.** v3 is the frozen wire format for the release line — its exact byte layout is pinned by a committed regression fixture (`EnvelopeTest.v3WireFormatFixtureParsesToExactFields`), so an accidental change fails a test. A real format change must allocate a new `version` byte, keep v3 readable (or ship a re-wrap migration), and add a new fixture — never mutate v3 in place. The alpha v1/v2 formats were never released and are permanently rejected.
+
 Alongside the body, non-secret **index metadata** travels as item attributes: `hardened.version`, `hardened.epoch`, `hardened.aead`, `hardened.kdf`, `hardened.kem`, `hardened.kem.id`, `hardened.item.id`. These are non-authoritative — the item id and cipher suite are read from the authenticated envelope header, never from the attributes. The `kem_id == NONE  ⇔  kem_ct is empty` invariant is enforced by the `Envelope` constructor.
 
 ## Write — `createItem`

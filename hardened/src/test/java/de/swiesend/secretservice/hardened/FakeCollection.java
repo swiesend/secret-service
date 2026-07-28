@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
@@ -20,14 +22,18 @@ import java.util.function.Function;
  * {@code (label, rawSecret, attributes)} tuples keyed by synthetic object path.
  * Does not simulate transport encryption; {@code rawSecret} is whatever the
  * caller passed to {@code createItem}.
+ *
+ * <p>Thread-safe: {@code items} is a {@link ConcurrentHashMap} and object paths are unique
+ * {@link UUID}s, so concurrent {@code createItem}/read from a concurrency test is safe. (The
+ * compound get-then-put hooks like {@code overwriteRawSecret} are only used single-threaded.)</p>
  */
 final class FakeCollection implements CollectionInterface {
 
     record Item(String label, String rawSecret, Map<String, String> attrs) {}
 
-    private final Map<String, Item> items = new LinkedHashMap<>();
-    private boolean closed;
-    private boolean nextCreateFails = false;
+    private final Map<String, Item> items = new ConcurrentHashMap<>();
+    private volatile boolean closed;
+    private final AtomicBoolean nextCreateFails = new AtomicBoolean(false);
 
     Map<String, Item> rawItems() { return Collections.unmodifiableMap(items); }
 
@@ -41,7 +47,7 @@ final class FakeCollection implements CollectionInterface {
     }
 
     /** Test hook: next call to createItem returns Optional.empty() without mutating state. */
-    void setNextCreateItemFails(boolean v) { this.nextCreateFails = v; }
+    void setNextCreateItemFails(boolean v) { this.nextCreateFails.set(v); }
 
     /** Test hook: replace the stored secret body for an item (simulates tampering). */
     void overwriteRawSecret(String path, String newRawSecret) {
@@ -59,8 +65,7 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes) {
-        if (nextCreateFails) {
-            nextCreateFails = false;
+        if (nextCreateFails.getAndSet(false)) {
             return Optional.empty();
         }
         String path = "/org/freedesktop/secrets/collection/test/" + UUID.randomUUID();

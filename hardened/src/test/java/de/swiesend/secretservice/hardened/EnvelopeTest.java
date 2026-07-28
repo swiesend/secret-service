@@ -27,6 +27,36 @@ class EnvelopeTest {
                 bytes(16, 1), "e".getBytes(), "item-1".getBytes(), EMPTY, bytes(12, 2), bytes(32, 3));
     }
 
+    /**
+     * A frozen v3 envelope, base64-encoded. Do NOT regenerate this casually: it pins the v3 wire
+     * layout so an accidental change to the byte format fails loudly. v3 is the stable format for the
+     * release line; changing it requires a new version byte and a deliberate new fixture.
+     * Fields: version 3, aead_id AES-256-GCM, kdf_id HKDF-SHA256, kem_id X25519, salt=16×0x11,
+     * epoch="epoch-fixture", item_id="item-fixture", kem_ct=32×0x22, nonce=12×0x33, aead_ct=48×0x44.
+     */
+    private static final String V3_WIRE_FIXTURE =
+            "U1N2MQMAAQEDEBERERERERERERERERERERENZXBvY2gtZml4dHVyZQxpdGVtLWZpeHR1cmUAICIiIiIiIiIiIiIiIiIiIi"
+            + "IiIiIiIiIiIiIiIiIiIiIiMzMzMzMzMzMzMzMzRERERERERERERERERERERERERERERERERERERERERERERERERERERERE"
+            + "RERERERE";
+
+    @Test
+    void v3WireFormatFixtureParsesToExactFields() {
+        Envelope e = Envelope.fromBytes(java.util.Base64.getDecoder().decode(V3_WIRE_FIXTURE));
+        assertEquals(Envelope.VERSION_3, e.version());
+        assertEquals((byte) 0, e.flags());
+        assertEquals(Envelope.AEAD_ID_AES256_GCM, e.aeadId());
+        assertEquals(Envelope.KDF_ID_HKDF_SHA256, e.kdfId());
+        assertEquals(Envelope.KEM_ID_X25519, e.kemId());
+        assertArrayEquals(bytes(16, 0x11), e.salt());
+        assertArrayEquals("epoch-fixture".getBytes(), e.epochId());
+        assertArrayEquals("item-fixture".getBytes(), e.itemId());
+        assertArrayEquals(bytes(32, 0x22), e.kemCiphertext());
+        assertArrayEquals(bytes(12, 0x33), e.nonce());
+        assertArrayEquals(bytes(48, 0x44), e.aeadCiphertext());
+        // Re-serialisation is byte-stable against the frozen fixture.
+        assertEquals(V3_WIRE_FIXTURE, java.util.Base64.getEncoder().encodeToString(e.toBytes()));
+    }
+
     @Test
     void roundTripPreservesAllFields_withKemCt() {
         byte[] salt = bytes(Envelope.SALT_LEN, 0x11);

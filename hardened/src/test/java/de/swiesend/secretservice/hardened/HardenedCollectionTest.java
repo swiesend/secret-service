@@ -4,12 +4,19 @@ import de.swiesend.secretservice.hardened.providers.EnvVarKeyMaterialProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -118,6 +125,52 @@ class HardenedCollectionTest {
                 .filter(it -> "legacy".equals(it.attrs().get("source")))
                 .count();
         assertEquals(2, hardenedCount);
+    }
+
+    @Test
+    void migrationRecordsFailureAndLeavesPlainOriginalIntact() {
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .allowMigration(true)
+                .build();
+        // Warm up so the epoch keystore is already persisted; the injected failure then hits an
+        // item write during migration, not the one-time keystore persist.
+        h.createItem("warmup", "w").orElseThrow();
+        fake.seedPlain("/legacy/x", "leg-x", "plain-x", Map.of("source", "legacy"));
+        fake.seedPlain("/legacy/y", "leg-y", "plain-y", Map.of("source", "legacy"));
+
+        fake.setNextCreateItemFails(true); // one hardened write during migration will fail
+        HardenedCollection.MigrationReport r = h.migrateNonHardenedToHardenedForTest(
+                c -> "legacy".equals(c.attributes().get("source")));
+
+        assertEquals(1, r.failed(), "exactly one item's hardened write failed");
+        assertEquals(1, r.migrated(), "the other selected item migrated");
+        // The delete happens only after a durable hardened write, so the failed item's plain
+        // original must survive (no data loss).
+        long plainSurvivors = fake.rawItems().values().stream()
+                .filter(it -> "legacy".equals(it.attrs().get("source")))
+                .filter(it -> !"1".equals(it.attrs().get(HardenedCollection.ATTR_VERSION)))
+                .count();
+        assertEquals(1, plainSurvivors, "the failed item's plain original stays intact");
+        assertTrue(r.results().stream().anyMatch(res -> !res.success() && res.detail() != null),
+                "a failed MigrationResult with a detail message is recorded");
+    }
+
+    @Test
+    void migrationSkipsAlreadyHardenedItems() {
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSecurityTheater(true)
+                .allowMigration(true)
+                .build();
+        String existing = h.createItem("already", "hardened-value").orElseThrow(); // a real hardened item
+        fake.seedPlain("/legacy/p", "leg-p", "plain-p", Map.of("source", "legacy"));
+
+        HardenedCollection.MigrationReport r = h.migrateNonHardenedToHardenedForTest(c -> true);
+
+        assertEquals(1, r.migrated(), "only the plain item is migrated");
+        assertEquals(0, r.failed());
+        // The pre-existing hardened item is untouched and still readable (not re-wrapped).
+        assertEquals("hardened-value", h.withSecret(existing, String::new).orElse(null));
     }
 
     @Test
@@ -580,5 +633,46 @@ class HardenedCollectionTest {
         assertEquals(Envelope.AEAD_ID_CHACHA20_POLY1305, env.aeadId());
         assertEquals("chacha20-poly1305", stored.attrs().get(HardenedCollection.ATTR_AEAD));
         assertEquals("chacha-secret", h.withSecret(path, String::new).orElse(null));
+    }
+
+    @Test
+    void concurrentCreateAndReadIsThreadSafe() throws Exception {
+        // Cold start (no warm-up): many threads createItem at once, so the very first writes race
+        // epoch creation. EpochKeystore.getOrCreate is synchronized, so exactly one epoch must be
+        // created, every item must decrypt, and the keystore must not corrupt.
+        HardenedCollection h = build();
+        int threads = 8, perThread = 25;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<List<String>>> futures = new ArrayList<>();
+            for (int t = 0; t < threads; t++) {
+                final int tid = t;
+                futures.add(pool.submit(() -> {
+                    List<String> paths = new ArrayList<>();
+                    for (int i = 0; i < perThread; i++) {
+                        paths.add(h.createItem("k-" + tid + "-" + i, "secret-" + tid + "-" + i).orElseThrow());
+                    }
+                    return paths;
+                }));
+            }
+            List<String> allPaths = new ArrayList<>();
+            for (Future<List<String>> f : futures) allPaths.addAll(f.get(30, TimeUnit.SECONDS));
+
+            assertEquals(threads * perThread, allPaths.size(), "every concurrent createItem returned a path");
+            for (String p : allPaths) {
+                assertTrue(h.withSecret(p, String::new).orElse("").startsWith("secret-"),
+                        "concurrently written item " + p + " must decrypt to its own value");
+            }
+            // A single epoch across every item -> no split-brain keystore under the write storm.
+            Set<String> epochs = new HashSet<>();
+            for (FakeCollection.Item it : fake.rawItems().values()) {
+                String e = it.attrs().get(HardenedCollection.ATTR_EPOCH);
+                if (e != null) epochs.add(e);
+            }
+            assertEquals(1, epochs.size(), "all concurrent writes must land under a single epoch");
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS));
+        }
     }
 }

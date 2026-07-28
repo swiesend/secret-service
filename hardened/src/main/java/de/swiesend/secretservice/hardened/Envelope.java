@@ -31,10 +31,17 @@ import java.util.Objects;
  * are inspectable); the reader rejects an id it cannot execute at decrypt time. The redundant
  * {@link #FLAG_PQ_HYBRID} bit is preserved for quick inspection but {@code kem_id} is authoritative.</p>
  *
- * <h3>Version 3 only</h3>
+ * <h3>Version 3 only — the frozen wire format</h3>
  * <p>{@link #fromBytes(byte[])} accepts only {@link #VERSION_3}. The earlier alpha {@code VERSION_1}
  * (unauthenticated attributes) and {@code VERSION_2} (TOTP fields, no suite selectors) formats are
- * rejected. There is no persisted-format compatibility guarantee across alpha revisions.</p>
+ * rejected; they were never released, so there is nothing to migrate.</p>
+ *
+ * <p><b>Stability policy:</b> v3 is the <em>frozen</em> wire format for the release line. The exact
+ * byte layout is pinned by a committed regression fixture ({@code EnvelopeTest.v3WireFormatFixture*}),
+ * so an accidental change fails a test. A genuine format change must allocate a new {@code version}
+ * byte, keep v3 readable (or provide a re-wrap migration), and add a fresh fixture -- never mutate v3
+ * in place. New algorithms do <em>not</em> need a version bump: allocate a new {@code aead_id} /
+ * {@code kdf_id} / {@code kem_id} instead.</p>
  */
 public final class Envelope {
 

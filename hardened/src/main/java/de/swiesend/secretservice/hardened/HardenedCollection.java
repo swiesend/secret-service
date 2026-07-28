@@ -65,6 +65,15 @@ import java.util.function.Function;
  *       (reintroducing a destroyed epoch) is prevented only when a {@link GenerationAnchor} is
  *       configured (see {@link Builder#generationAnchor}).</li>
  * </ul>
+ *
+ * <h3>Thread-safety</h3>
+ * <p>Concurrent {@link #createItem}, {@link #withSecret}, {@link #withSecrets}, and
+ * {@link #matchesSecret} calls on a single instance are safe <em>as long as the wrapped
+ * {@link CollectionInterface} is thread-safe</em>: the epoch keystore's mutating methods are
+ * {@code synchronized} (so concurrent first-writes create exactly one epoch, not a split-brain), the
+ * shared {@code SecureRandom} is thread-safe, and each write uses fresh per-item key material. The
+ * epoch-mutating operations {@link #rotateEpoch} and {@link #migrateNonHardenedToHardened} must
+ * <b>not</b> run concurrently with writers on the same instance -- quiesce writes around them.</p>
  */
 public final class HardenedCollection implements HardenedCollectionInterface {
 

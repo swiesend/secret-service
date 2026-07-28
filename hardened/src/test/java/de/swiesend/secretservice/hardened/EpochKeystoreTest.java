@@ -135,13 +135,42 @@ class EpochKeystoreTest {
     static final class FakeAnchor implements GenerationAnchor {
         long value;
         boolean closed;
+        boolean throwOnRead;    // models an anchor I/O error (e.g. TPM unreachable) on read
+        boolean throwOnAdvance; // ... on advance
         FakeAnchor() {}
         FakeAnchor(long start) { this.value = start; }
-        @Override public long read() { return value; }
-        @Override public long advanceTo(long target) { if (target > value) value = target; return value; }
+        @Override public long read() {
+            if (throwOnRead) throw new IllegalStateException("anchor read failed (simulated TPM error)");
+            return value;
+        }
+        @Override public long advanceTo(long target) {
+            if (throwOnAdvance) throw new IllegalStateException("anchor advance failed (simulated TPM error)");
+            if (target > value) value = target;
+            return value;
+        }
         @Override public void close() { closed = true; }
         /** Test hook: rewind the counter to model a crash between write and advance. */
         void rewindTo(long v) { this.value = v; }
+    }
+
+    @Test
+    void anchorReadErrorFailsLoudNotAsSilentRollback() {
+        // The DoS-vs-rollback distinction (GenerationAnchor contract): a below-floor keystore is
+        // refused gracefully (get() returns empty, see anchorRefusesRolledBackKeystore), but an
+        // anchor whose read() THROWS is a hard failure -- the keystore must NOT silently proceed as
+        // if there were no anchor. It fails loudly so a broken anti-rollback anchor cannot be
+        // bypassed; at the HardenedCollection layer this surfaces as a fail-safe empty read.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        new EpochKeystore(fake, p, new FakeAnchor()).getOrCreate("e1", kem); // persist a keystore
+
+        FakeAnchor broken = new FakeAnchor();
+        broken.throwOnRead = true;
+        EpochKeystore reader = new EpochKeystore(fake, p, broken);
+        assertThrows(RuntimeException.class, () -> reader.get("e1"),
+                "an anchor I/O error must fail loudly, not be silently ignored (rollback protection intact)");
     }
 
     @Test
