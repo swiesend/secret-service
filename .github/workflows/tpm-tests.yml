@@ -85,7 +85,9 @@ jobs:
           # hardened + hardened-tpm2 default-suite tests. hardened uses an in-memory FakeCollection
           # (no daemon); the simulator-gated Tpm2KeyMaterialProviderTest / Tpm2GenerationAnchorTest
           # exercise the sim on localhost:2321. Install core+hardened first so the reactor resolves.
-          mvn -B -pl core,hardened install -DskipTests -Dgpg.skip=true
+          # -am is REQUIRED: without it the aggregator pom (de.swiesend:secret-service-parent) is not
+          # installed, and the second, separate reactor then cannot read secret-service's descriptor.
+          mvn -B -pl core,hardened -am install -DskipTests -Dgpg.skip=true
           mvn -B -pl hardened,hardened-tpm2 test -Pcoverage -Dgpg.skip=true
 
       - name: Upload JaCoCo coverage reports

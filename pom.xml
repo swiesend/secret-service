@@ -263,7 +263,10 @@
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.8.12</version>
+                    <!-- 0.8.12 cannot analyse Java 25 class files ("Unsupported class file major
+                         version 69"), which breaks -Pcoverage now that every module compiles with
+                         release 25. -->
+                    <version>0.8.15</version>
                 </plugin>
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
