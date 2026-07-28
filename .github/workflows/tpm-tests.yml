@@ -1,16 +1,18 @@
-name: TPM System Tests
+name: TPM Tests
 
-# Exercises HardenedTpm2SystemTest (@Tag("system-test")) end-to-end against a
-# software TPM 2.0 and gnome-keyring.
+# One workflow for everything that needs a TPM 2.0. It builds the Microsoft ms-tpm-20-ref reference
+# simulator ONCE on localhost:2321 and runs both TPM test scopes against it:
 #
-# It builds the Microsoft ms-tpm-20-ref TPM 2.0 reference simulator, runs it on
-# localhost:2321, and drives the test with -Dhardened.tpm2.backend=simulator
-# (TSS.Java's TCP simulator transport). No kernel module, device, or privilege is
-# required. The test is otherwise identical to a real-hardware run.
+#   1. The fast hardened + hardened-tpm2 unit/integration tests on the runner (FakeCollection-based,
+#      plus the simulator-gated Tpm2KeyMaterialProviderTest / Tpm2GenerationAnchorTest). No daemon,
+#      no container.
+#   2. HardenedTpm2SystemTest (@Tag("system-test")) end-to-end in a gnome-keyring container, driven
+#      with -Dhardened.tpm2.backend=simulator (TSS.Java's TCP simulator transport).
 #
-# It fails loudly rather than silently-skipping: it asserts the test ran 3
-# passing, non-skipped tests, so a missing simulator or keyring cannot make the
-# job falsely green.
+# The simulator uses the same 2321/2322 protocol TSS.Java's localTpmSimulator expects, so it serves
+# both scopes. The system-test step fails loudly rather than silently-skipping: it asserts the test
+# ran 3 passing, non-skipped tests, so a missing simulator or keyring cannot make the job falsely
+# green (this discipline is what would have caught the F-8 anchor bug).
 
 on:
   push:
@@ -24,12 +26,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  reference-simulator:
+  tpm-tests:
     runs-on: ubuntu-latest
-    name: tpm-system-tests (ms-tpm-20-ref simulator + gnome-keyring)
+    name: tpm-tests (ms-tpm-20-ref simulator; unit + gnome-keyring system test)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
 
       - name: Cache Maven repository
         uses: actions/cache@v4
@@ -71,10 +79,29 @@ jobs:
             [ "$i" -eq 30 ] && { echo "::error::simulator did not open port 2321"; cat /tmp/tpmsim/simulator.log || true; exit 1; }
           done
 
+      - name: Fast TPM unit/integration tests (runner, against the simulator)
+        run: |
+          set -euxo pipefail
+          # hardened + hardened-tpm2 default-suite tests. hardened uses an in-memory FakeCollection
+          # (no daemon); the simulator-gated Tpm2KeyMaterialProviderTest / Tpm2GenerationAnchorTest
+          # exercise the sim on localhost:2321. Install core+hardened first so the reactor resolves.
+          mvn -B -pl core,hardened install -DskipTests -Dgpg.skip=true
+          mvn -B -pl hardened,hardened-tpm2 test -Pcoverage -Dgpg.skip=true
+
+      - name: Upload JaCoCo coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-hardened
+          path: |
+            hardened/target/site/jacoco/**
+            hardened-tpm2/target/site/jacoco/**
+          if-no-files-found: ignore
+
       - name: Build gnome-keyring container
         run: docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-gnome-keyring .
 
-      - name: Run hardened-tpm2 system test (simulator-backed)
+      - name: Run hardened-tpm2 system test (simulator-backed, live gnome-keyring)
         run: |
           set -euxo pipefail
           # --network=host lets the containerised test reach the simulator on the host's localhost:2321.
@@ -86,7 +113,7 @@ jobs:
                 -Dtest=HardenedTpm2SystemTest -Dsurefire.failIfNoSpecifiedTests=false \
                 -Dhardened.tpm2.backend=simulator
 
-      - name: Assert the TPM test actually ran (guard against a silent skip)
+      - name: Assert the TPM system test actually ran (guard against a silent skip)
         run: |
           set -euxo pipefail
           report="hardened-tpm2/target/surefire-reports/de.swiesend.secretservice.hardened.tpm2.HardenedTpm2SystemTest.txt"
@@ -103,7 +130,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tpm-system-tests-simulator-diagnostics
+          name: tpm-tests-diagnostics
           path: |
             /tmp/tpmsim/simulator.log
             hardened-tpm2/target/surefire-reports/**
