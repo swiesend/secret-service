@@ -49,6 +49,7 @@ A new artifact, `de.swiesend:secret-service-hardened`, encrypts each secret at t
   - **`Tpm2Simulator`** connects to the TPM 2.0 reference simulator, in place of TSS.Java's `TpmFactory.localTpmSimulator()`. It starts the TPM only once the simulator has acknowledged power on, and closes the connection when a step fails. TSS.Java sends a length before each power signal, which the simulator takes for a signal of its own, so with TSS.Java's factory `Startup` can reach the simulator before it is on; the factory then leaves the connection open, which stalls the simulator for every later connection.
   - **`Tpm2KeyMaterialProvider`** unseals the pepper from the TPM, so the pepper never exists on disk in recoverable form. Dictionary-attack lockout is on. Its same-UID protection is rated PARTIAL: a process of the same user can ask the TPM to unseal, as the application does.
   - **`Tpm2Provisioner`**, the one-time CLI that seals a pepper to the TPM and defines the NV counter for the generation anchor. The pepper and the password come from stdin, an environment variable or a file descriptor, never from the command line. The sealed pepper is base64-encoded, which matters for escrow across hosts: seal the same escrowed line on every host.
+  - **`Tpm2GenerationAnchor`**, the `GenerationAnchor` backed by a TPM NV monotonic counter: hardware that an attacker who controls the filesystem cannot roll back.
 
 ## [3.0.0-alpha] - 2026-06-11
 
