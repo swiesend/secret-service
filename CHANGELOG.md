@@ -49,6 +49,7 @@ A new artifact, `de.swiesend:secret-service-hardened`, encrypts each secret at t
   - **`Tpm2Provisioner`**, the one-time CLI that seals a pepper to the TPM and defines the NV counter for the generation anchor. The pepper and the password come from stdin, an environment variable or a file descriptor, never from the command line. The sealed pepper is base64-encoded, which matters for escrow across hosts: seal the same escrowed line on every host.
   - **`Tpm2GenerationAnchor`**, the `GenerationAnchor` backed by a TPM NV monotonic counter: hardware that an attacker who controls the filesystem cannot roll back.
   - An end-to-end system test of the sealed-pepper path, against a real TPM or the reference simulator and a live Secret Service: provision, seal, unseal, write an item, read it back. It runs under `-Psystem-test`; `-Dhardened.tpm2.backend` selects the TPM.
+  - CI runs the TPM tests against the Microsoft ms-tpm-20-ref simulator, both the unit tests and the system test against gnome-keyring, and fails when the system test did not run its three tests.
 
 ## [3.0.0-alpha] - 2026-06-11
 
