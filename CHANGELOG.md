@@ -30,6 +30,13 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
     - Covered by `PerItemUnlockTest`, which drives a fake Secret Service that locks one item — no provider in CI reproduces the condition otherwise.
   - Tolerate gnome-keyring's asynchronously-injected `xdg:schema` attribute in the functional attribute tests: `createItemWithAttribute` compares by containment, and `getAttributes` compares only user-defined keys — the latter's strict assertion previously raced and flaked (~1 run in 10) [#68](https://github.com/swiesend/secret-service/pull/68).
 
+### Hardened modules (opt-in)
+
+A new artifact, `de.swiesend:secret-service-hardened`, encrypts each secret at the application layer before it reaches the keyring. The `secret-service` artifact does not depend on it.
+
+- `Added`:
+  - The `secret-service-hardened` module and its **envelope format, version 3**: a versioned binary record whose whole header is authenticated as AEAD associated data, so a changed selector byte fails authentication. Selector bytes for the AEAD, the KDF and the KEM make the suite agile without a format change. AES-256-GCM (default) and ChaCha20-Poly1305 ship, both JDK-native. Jazzer fuzzes the envelope parser.
+
 ## [3.0.0-alpha] - 2026-06-11
 
 Major release introducing a new functional API and an upgrade to dbus-java 5. Requires **JDK 17**. Delivered on the `develop-2.x.x` line (now merged to `main`).

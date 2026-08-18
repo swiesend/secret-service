@@ -26,6 +26,7 @@
 
     <modules>
         <module>core</module>
+        <module>hardened</module>
     </modules>
 
     <licenses>
@@ -70,13 +71,20 @@
         <!-- 3rd party dependencies -->
         <dbus-java.version>5.2.0</dbus-java.version>
         <slf4j.version>2.0.17</slf4j.version>
+        <bouncycastle.version>1.82</bouncycastle.version>
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>
+        <jazzer.version>0.22.1</jazzer.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>de.swiesend</groupId>
+                <artifactId>secret-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.github.hypfvieh</groupId>
                 <artifactId>dbus-java-core</artifactId>
@@ -110,6 +118,11 @@
                 <version>${slf4j.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter-api</artifactId>
                 <version>${junit-jupiter.version}</version>
@@ -118,6 +131,11 @@
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter-engine</artifactId>
                 <version>${junit-jupiter.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.code-intelligence</groupId>
+                <artifactId>jazzer-junit</artifactId>
+                <version>${jazzer.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
