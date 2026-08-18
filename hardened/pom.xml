@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.swiesend</groupId>
+        <artifactId>secret-service-parent</artifactId>
+        <version>3.0.0-alpha</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>secret-service-hardened</artifactId>
+    <packaging>jar</packaging>
+
+    <name>secret-service-hardened</name>
+    <description>
+        Opt-in application-layer encryption wrapper on top of secret-service.
+        Wraps a CollectionInterface with AES-256-GCM under an HKDF-derived DEK;
+        pluggable KeyMaterialProvider SPI with honest ThreatCoverage self-assessment.
+
+        JDK 25 floor: post-quantum ML-KEM-768 uses the stock SunJCE provider via the
+        standard javax.crypto.KEM API (JEP 496), so no third-party crypto provider is
+        needed for the KEM. Falls back cleanly to X25519-only if ML-KEM is unavailable.
+    </description>
+
+    <properties>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.swiesend</groupId>
+            <artifactId>secret-service</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Optional: required only by Argon2KeyMaterialProvider (Argon2id has no JDK-native
+             implementation). Accessed reflectively; `provided` + `optional` keeps it off the
+             downstream runtime classpath but on our compile/test classpaths so the Argon2 tests
+             run. Consumers add it to their own pom only if they use Argon2 pepper-stretching.
+             The post-quantum KEM no longer needs it (native SunJCE ML-KEM on JDK 24+). -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Coverage-guided fuzzing of the Envelope parser. Test scope only; never shipped. -->
+        <dependency>
+            <groupId>com.code-intelligence</groupId>
+            <artifactId>jazzer-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+        </plugins>
+    </build>
+    <!--
+        No compiler configuration here on purpose. The JDK floor is declared once, by the
+        aggregator's <maven.compiler.release>, and inherited. Repeating release/source/target
+        in every module means the next JDK bump has to find all of them, and a module that is
+        missed silently keeps compiling to the old level.
+    -->
+</project>
