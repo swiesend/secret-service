@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This is the unified instruction file for all AI agents (Claude Code, GitHub Copilot, etc.) working on the `secret-service` codebase. For the full design roadmap and historical context, see [`docs/vision.md`](../docs/vision.md).
+This is the unified instruction file for all AI agents (Claude Code, GitHub Copilot, etc.) working on the `secret-service` codebase. For the full design roadmap and historical context, see [`docs/roadmap.md`](../docs/roadmap.md).
 
 ## Project Overview
 
@@ -8,7 +8,7 @@ This is the unified instruction file for all AI agents (Claude Code, GitHub Copi
 
 - **Group/Artifact:** `de.swiesend:secret-service`
 - **License:** MIT
-- **JDK:** Requires JDK 17+ to build
+- **JDK:** Requires JDK 25 to build
 
 ## Build Commands
 
@@ -90,7 +90,6 @@ src/test/java/
 ```java
 module de.swiesend.secretservice {
     requires transitive org.freedesktop.dbus;
-    requires at.favre.lib.hkdf;
     requires org.slf4j;
     opens de.swiesend.secretservice to org.freedesktop.dbus;
     exports de.swiesend.secretservice;
@@ -108,7 +107,6 @@ module de.swiesend.secretservice {
 |---|---|---|
 | `dbus-java-core` | 5.2.0 | D-Bus communication |
 | `dbus-java-transport-native-unixsocket` | 5.2.0 | Unix socket transport |
-| `hkdf` (at.favre.lib) | 2.0.0 | HMAC-based key derivation |
 | `slf4j-api` | 2.0.17 | Logging |
 | `junit-jupiter` | 5.10.5 | Testing (test scope) |
 
@@ -133,6 +131,16 @@ All public API boundary methods validate parameters:
 - **Naming:** Standard Java conventions (PascalCase classes, camelCase methods, `get`/`set`/`is` prefixes)
 - **Error handling:** Custom exceptions in `errors/` package. D-Bus exceptions caught and logged via `MessageHandler`
 - **No code formatting tools** (no checkstyle, spotbugs, or editorconfig configured)
+
+## Working Conventions
+
+**Edit files with the Edit/Write tools, not with `sed -i` or `python3 - <<PY` heredocs.** The
+maintainer reads the session transcript to follow what changed: an `Edit` call renders as a
+reviewable diff, a heredoc renders as an opaque blob whose effect has to be reconstructed
+afterwards. On a security-sensitive repository that difference is the review.
+
+Reserve scripted edits for genuinely repetitive bulk work across many files — and say what the
+script will do before running it.
 
 ## Testing
 
@@ -166,6 +174,65 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Byte arrays holding secrets are zeroed after use
 - The library addresses CVE-2018-19358 (gnome-keyring prompt bypass)
 - `withSecret()` callback API guarantees zeroing even on exception paths
+
+## Documentation Conventions
+
+`docs/` is written **for humans** — consumers of the library and operators deploying it. Editorial
+rules, maintenance notes and reminders to yourself belong here in `AGENTS.md`, never on a page a
+reader is trying to learn from.
+
+### Every Java snippet in `docs/` must compile
+
+`.github/scripts/check_doc_snippets.py` extracts every ` ```java ` fence, wraps it, and compiles it
+against the built artifacts. It runs in `docs.yml` and fails the build on any error.
+
+```bash
+mvn -q -B -pl core,hardened,hardened-tpm2 -am install -DskipTests -Dgpg.skip=true
+mvn -q -B -pl core,hardened,hardened-tpm2 -am dependency:build-classpath \
+    -Dmdep.outputFile="$PWD/target/docs-cp.txt" -Dmdep.regenerateFile=true
+python3 .github/scripts/check_doc_snippets.py
+```
+
+- The workflow triggers on `*/src/main/**` as well as `docs/**`: prose breaks when the **API** moves,
+  not when the prose does. Keep it that way.
+- **Never stub a library symbol** in the script's `STUBS` block — that is exactly what the check
+  verifies. Only the reader's own symbols (`httpClient`, `grantAccess()`) or a variable carried over
+  from an earlier fence on the same page.
+- Opt out of one fence with `<!-- docs-compile: skip <reason> -->`. Currently used once.
+- `de.swiesend.secretservice.functional` is imported class-by-class in the harness, never by
+  wildcard: it contains a class named `System`, which a wildcard makes ambiguous with
+  `java.lang.System`.
+
+**Why it exists:** a scan that only asked "does this symbol appear anywhere in the sources" passed a
+**private** `unlock()` and left a non-compiling example on all three usage pages for months. Verify
+against the *declared type's public surface*, or better, just compile it.
+
+### One canonical home per threat-coverage verdict
+
+A verdict copied into two tables is a verdict that will eventually disagree with itself — that
+happened here, and the copies had already drifted before anyone noticed.
+
+| Verdict about… | Canonical home |
+|---|---|
+| a hardening mechanism (SELinux, seccomp, systemd, …) | its entry in `docs/security/defense-mechanisms.md` |
+| LUKS / full-disk encryption | `docs/security/full-disk-encryption.md` |
+| a distribution format (tar.gz, jpackage, Snap, OCI, …) | the format-vs-class table in `docs/security/sample-configurations.md` |
+| a backend (gnome-keyring, KeePassXC, stacking) | the class-by-class table in `docs/security/backend-choice.md` |
+
+Adding a verdict: put it in its home and link. Finding one stated twice: delete the copy, and check
+first whether the two had already diverged.
+
+### Style
+
+- Warnings and asides use a **bold lead-in** (`**Pitfalls.**`), not MkDocs admonitions — `admonition`
+  is enabled but nothing uses it, so introducing one is a style fork.
+- Never put markdown links inside a fenced code block; they render as literal text. Put them in prose
+  beneath the fence.
+- Explain *why*, not only *what* — the algorithm rationale lives in
+  `docs/architecture/index.md#why-these-primitives`, and much of it was promoted from Javadoc that
+  readers of the site never saw.
+- `mkdocs build --strict` fails on broken links and anchors; moving a heading changes its slug, so
+  update every inbound link in the same commit.
 
 ## Git Conventions
 
