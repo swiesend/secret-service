@@ -1,6 +1,7 @@
 # Secret Service
 
 [![Maven Central](https://img.shields.io/maven-central/v/de.swiesend/secret-service.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22de.swiesend%22%20AND%20a:%22secret-service%22)
+[![Documentation](https://img.shields.io/badge/docs-swiesend.github.io%2Fsecret--service-teal)](https://swiesend.github.io/secret-service/)
 
 A _Java_ library for storing secrets in a keyring over the _DBus_.
 
@@ -16,6 +17,8 @@ This library can be seen as the functional equivalent to the [`libsecret`](https
 For KDE systems there is the [`kdewallet`](https://github.com/purejava/kdewallet) client library, kindly provided by [@purejava](https://github.com/purejava).
 
 ## Security Issues
+
+> **Deployment guidance**: for the full threat model, OS-level mitigations (D-Bus policies, MAC, systemd hardening, LUKS), and per-distribution-format recommendations (`.deb`/`.rpm`, OCI, Flatpak, Snap, …), see the [Security & deployment guide](docs/security/index.md).
 
 ### CVE-2018-19358 (Vulnerability)
 
@@ -46,6 +49,22 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
   - [`moderate`] There are projects like [SOPS](https://github.com/getsops/sops) for secret-management to encrypt and edit files. But again oneself has to store the encryption keys securely.
   - [`easy`/`moderate`] Using disk encryption like [LUKS](https://gitlab.com/cryptsetup/cryptsetup) does not help against malicious applications, but at least against several scenarios with physical access. 
 - [`moderate`/`advanced`] Deliver your application in a secure sandbox.
+- [`moderate`/`advanced`] **Application-layer encryption** via the optional `secret-service-hardened` artifact (see below).
+
+**Application-layer encryption (`secret-service-hardened`)**
+
+**Most consumers need only the core artifact.** Read the scope before adopting this: the hardened layer encrypts secret *bodies* before they reach the daemon — AEAD envelopes (AES-256-GCM by default, or ChaCha20-Poly1305 via `Builder.aead(AeadId)`) with per-item keys derived from an application *pepper* — so an attacker who holds the keyring bytes but not the pepper sees only ciphertext. It is **defense-in-depth, not a same-UID boundary.**
+
+- It does **not** defend against a same-UID live process — **class A**, the CVE-2018-19358 case above. Because the decrypting key must be available to your own process, no in-process encryption can. Class A needs a *different security principal*: OS-level isolation (MAC policy, sandboxing) or a hardware token that performs the crypto (see the [defense mechanism inventory](docs/security/defense-mechanisms.md) and [D-Bus policy](docs/security/dbus-policy.md)).
+- The whole scheme's root of trust is the pepper. Its real value materializes only when the pepper lives somewhere an attacker who has the keyring cannot also reach — i.e. **`secret-service-hardened-tpm2` (TPM-sealed pepper), and, to mean anything against a capable attacker, together with measured boot, a MAC policy confining `/dev/tpmrm0`, [JVM hardening](docs/usage/hardened.md#cipher-suite-and-jvm-hardening) (incl. `lockMemory(true)`), and disciplined backup-retention rotation.** With an env-var or co-located file pepper on a single-tenant desktop, it adds little a full-disk-encrypted laptop does not already provide.
+- With the TPM provider **you never store the pepper at all** — it exists at rest only as a TPM-wrapped blob (`pepper.tpm2blob`, mode 0600) that is cryptographically useless without that physical chip *and* the unseal password, with wrong guesses rate-limited in hardware (dictionary-attack lockout). The secret-management problem shrinks to *how the unseal password reaches the process*: prompt the user (strongest), the login keyring (pragmatic autostart — the hardware factor survives an offline thief), or a 0600 file (floor). **Never argv, never env vars.** Ranked options and the reasoning: [Where does the unseal password live on a desktop?](docs/usage/tpm2.md#where-does-the-unseal-password-live-on-a-desktop).
+
+Where it genuinely pays off ([threat catalogue](docs/security/threat-catalogue.md)):
+
+- the host is multi-tenant (shared users, CI runners, sidecar containers) — **class B**; or
+- the keyring file can leave the host (cloud backup, off-host `rsync`, container/filesystem snapshot) — **class C** (real only with a pepper independent of that disk/backup), and **class D** (harvest-now-decrypt-later) when you also set `.enablePostQuantum(true)` (hybrid X25519 + ML-KEM-768, with forward secrecy via `rotateEpoch()` — itself rollback-resistant only with a `GenerationAnchor`).
+
+Before adopting the hardened layer, walk the [“Do I need this?” decision tree](docs/security/index.md#do-i-need-this): if your host is single-tenant and the keyring never leaves it, you likely do not need it.
 
 **KeePassXC**
 
@@ -67,27 +86,94 @@ Authorization:
 
 The library provides two API layers, both using transport-encrypted secrets over the D-Bus.
 
-### Dependency
+### Coordinates (three independently published artifacts, same version)
 
-Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version. The current version requires at least _JDK 17_.
+Since `3.0.0-alpha` the project is a Maven reactor with **three separately published jars**, all released in lockstep at the same version number. **Standard consumers add only `secret-service` and pay zero overhead from the optional layers.**
+
+| Artifact | JDK floor | Adds | Pulls extra runtime deps? |
+|---|---|---|---|
+| `de.swiesend:secret-service` | 25 | The classical Secret Service 0.2 client + transport encryption | dbus-java, slf4j-api |
+| `de.swiesend:secret-service-hardened` | 25 | Optional app-layer AEAD envelopes (AES-256-GCM or ChaCha20-Poly1305), `KeyMaterialProvider` SPI, hybrid X25519 + ML-KEM-768 (native SunJCE) | none beyond core (BouncyCastle is `provided/optional`, only for the `Argon2KeyMaterialProvider`) |
+| `de.swiesend:secret-service-hardened-tpm2` | 25 | TPM-sealed pepper provider | none beyond hardened (TSS.Java is `provided/optional`) |
+
+**Most consumers want only the first row:**
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>3.0.0-beta</version>
-    <exclusions>
-        <exclusion>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </exclusion>
-    </exclusions>
+    <version>3.0.0-alpha</version>
+</dependency>
+```
+
+A `mvn dependency:tree` for that single declaration shows only the dbus-java and slf4j transitive deps and nothing from the hardened or TPM modules (the former `at.favre.lib:hkdf` was dropped in favour of the native JDK `javax.crypto.KDF`). See [Desktop App consumer scenarios](docs/security/desktop-deployment.md) to decide whether you also need the optional layers.
+
+**Optional: app-layer encryption** (adds AEAD envelopes — AES-256-GCM or ChaCha20-Poly1305; requires JDK 25):
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service-hardened</artifactId>
+    <version>3.0.0-alpha</version>
+</dependency>
+```
+
+**Optional: TPM-sealed pepper** (Linux + TPM 2.0 hardware required at runtime; requires JDK 25):
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service-hardened-tpm2</artifactId>
+    <version>3.0.0-alpha</version>
+</dependency>
+<!-- TSS.Java is required at runtime to actually open the TPM (provided/optional in our pom): -->
+<dependency>
+    <groupId>com.microsoft.azure</groupId>
+    <artifactId>TSS.Java</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+**Pinning all three at the same version with one BOM import:**
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>de.swiesend</groupId>
+      <artifactId>secret-service-parent</artifactId>
+      <version>3.0.0-alpha</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+
+<dependencies>
+  <dependency><groupId>de.swiesend</groupId><artifactId>secret-service</artifactId></dependency>
+  <!-- add the hardened / hardened-tpm2 ones here; no <version> needed -->
+</dependencies>
+```
+
+To swap out an incompatible `slf4j-api`, exclude it from `secret-service` (the only artifact that pulls it transitively).
+
+### Legacy (`2.x.x`) coordinates
+
+The 2.x line continues to ship as a single artifact for consumers who don't want the 3.x module split:
+
+```xml
+<dependency>
+    <groupId>de.swiesend</groupId>
+    <artifactId>secret-service</artifactId>
+    <version>2.0.1-alpha</version>
 </dependency>
 ```
 
 ### Functional API (Recommended)
 
 The functional API uses instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle management.
+
+> **Worked code samples**: end-to-end examples for core, hardened, and hardened-tpm2 — including custom `KeyMaterialProvider` implementations, the `Tpm2Provisioner` CLI flows, and `enablePostQuantum(true)` / `rotateEpoch()` — live in the [usage guides](docs/usage/core.md) ([core](docs/usage/core.md), [hardened](docs/usage/hardened.md), [TPM 2.0](docs/usage/tpm2.md)).
 
 #### Basic Usage
 
