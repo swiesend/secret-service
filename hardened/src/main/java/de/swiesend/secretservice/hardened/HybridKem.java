@@ -263,8 +263,9 @@ public final class HybridKem {
     /**
      * Reconstructs an X25519 {@link KeyPair} from a PKCS#8-encoded private key only.
      * The matching public key is recovered from the private's encoded form via the JCE
-     * (Java exposes both halves on the {@code XECPrivateKey}). This lets a caller
-     * recover a usable pair without having stored the public key separately.
+     * (Java exposes both halves on the {@code XECPrivateKey}). Used by
+     * {@link EpochKeystore} so a freshly-loaded keystore can return the pair without
+     * having stored the public key separately.
      */
     /**
      * Reconstructs an X25519 {@link KeyPair} from PKCS#8 private + X.509 SPKI public. Unlike
