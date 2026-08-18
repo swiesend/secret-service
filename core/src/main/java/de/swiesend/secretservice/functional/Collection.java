@@ -570,14 +570,17 @@ public class Collection implements CollectionInterface {
 
         // KeePassXC returns nothing for SearchItems({}) (empty map = no criteria match).
         // Use the Items property directly when no filter is specified — it always returns all items.
+        // An empty result is a SUCCESSFUL search that found nothing, and must be reported as
+        // Optional.of(emptyList). Optional.empty() is reserved for "the search failed". Conflating
+        // them left callers unable to tell "no items" from "the daemon did not answer" -- which in
+        // the hardened layer meant a key-destroying rotation could not tell whether it had proved
+        // anything.
         if (attributes.isEmpty()) {
             return collection.getItems()
-                    .filter(list -> !list.isEmpty())
                     .map(Static.Convert::toStrings);
         }
 
         return Optional.ofNullable(collection.searchItems(attributes))
-                .filter(objects -> !objects.isEmpty())
                 .flatMap(objects -> objects.map(Static.Convert::toStrings));
     }
 

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.swiesend</groupId>
+        <artifactId>secret-service-parent</artifactId>
+        <version>3.0.0-alpha</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>secret-service</artifactId>
+    <packaging>jar</packaging>
+
+    <name>secret-service</name>
+    <description>
+        A Java library for storing secrets in the gnome-keyring over the DBus.
+        Classical Secret Service 0.2 client with transport encryption.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.github.hypfvieh</groupId>
+            <artifactId>dbus-java-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.hypfvieh</groupId>
+            <artifactId>dbus-java-transport-native-unixsocket</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!--
+        No compiler configuration here on purpose. The JDK floor is declared once, by the
+        aggregator's <maven.compiler.release>, and inherited. Repeating release/source/target in
+        every module means the next JDK bump has to find all of them, and a module that is missed
+        silently keeps compiling to the old level.
+    -->
+</project>

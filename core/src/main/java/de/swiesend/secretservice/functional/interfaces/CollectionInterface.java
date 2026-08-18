@@ -56,6 +56,24 @@ public interface CollectionInterface extends AutoCloseable {
 
     Optional<Map<String, String>> getAttributes(String objectPath);
 
+    /**
+     * Object paths of the items matching every entry in {@code attributes}; an empty map returns
+     * all items in the collection.
+     *
+     * <p><b>An empty result and a failed search are different things</b>, and callers that destroy
+     * or overwrite data on the strength of this answer must distinguish them:</p>
+     * <ul>
+     *   <li>{@code Optional.of(List.of())} — the search <em>succeeded</em> and matched nothing.</li>
+     *   <li>{@code Optional.empty()} — the search <em>failed</em> (the daemon did not answer, or
+     *       {@code attributes} was null). Nothing may be inferred about the collection's contents.</li>
+     * </ul>
+     *
+     * <p><b>Changed in 3.0.0.</b> Earlier releases collapsed both cases to {@code Optional.empty()},
+     * so code of the form {@code if (getItems(a).isPresent()) …} previously implied "there are
+     * matches" and no longer does — such a caller now enters that branch with an empty list. The
+     * legacy {@code SimpleCollection.getItems} adapter deliberately keeps the old shape, returning
+     * {@code null} for both.</p>
+     */
     Optional<List<String>> getItems(Map<String, String> attributes);
 
     /**
