@@ -15,11 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xvfb \
         libkf5wallet-bin \
         libsecret-tools \
-        openjdk-17-jdk-headless \
+        openjdk-25-jdk-headless \
         maven \
     && rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64
 
 COPY .github/providers/ /providers/
 RUN chmod +x /providers/dbus-up.sh /providers/kwallet/entrypoint.sh
