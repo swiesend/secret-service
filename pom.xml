@@ -24,6 +24,7 @@
 
     <modules>
         <module>core</module>
+        <module>hardened</module>
     </modules>
 
     <licenses>
