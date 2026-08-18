@@ -47,6 +47,7 @@ A new artifact, `de.swiesend:secret-service-hardened`, encrypts each secret at t
   - A second opt-in artifact, **`de.swiesend:secret-service-hardened-tpm2`**, keeps the pepper in a TPM 2.0. It is classpath-only, because TSS.Java has a class in the unnamed package and so cannot be a JPMS module, and it declares TSS.Java `provided`: add `com.microsoft.azure:TSS.Java` yourself. `Tpm2SealedBlob` is the on-disk format of a sealed pepper, with the file's POSIX mode checked before any TPM contact; `Tpm2Availability` probes for TSS.Java without linking it.
   - **`Tpm2KeyMaterialProvider`** unseals the pepper from the TPM, so the pepper never exists on disk in recoverable form. Dictionary-attack lockout is on. Its same-UID protection is rated PARTIAL: a process of the same user can ask the TPM to unseal, as the application does.
   - **`Tpm2Provisioner`**, the one-time CLI that seals a pepper to the TPM and defines the NV counter for the generation anchor. The pepper and the password come from stdin, an environment variable or a file descriptor, never from the command line. The sealed pepper is base64-encoded, which matters for escrow across hosts: seal the same escrowed line on every host.
+  - **`Tpm2GenerationAnchor`**, the `GenerationAnchor` backed by a TPM NV monotonic counter: hardware that an attacker who controls the filesystem cannot roll back.
 
 ## [3.0.0-alpha] - 2026-06-11
 
