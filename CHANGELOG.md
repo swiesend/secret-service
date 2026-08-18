@@ -37,6 +37,7 @@ A new artifact, `de.swiesend:secret-service-hardened`, encrypts each secret at t
 - `Added`:
   - The `secret-service-hardened` module and its **envelope format, version 3**: a versioned binary record whose whole header is authenticated as AEAD associated data, so a changed selector byte fails authentication. Selector bytes for the AEAD, the KDF and the KEM make the suite agile without a format change. AES-256-GCM (default) and ChaCha20-Poly1305 ship, both JDK-native. Jazzer fuzzes the envelope parser.
   - The **`KeyMaterialProvider` SPI**, which supplies the pepper, with providers for a file (mode 0600 enforced), an environment variable (CI and development), and an interactive prompt, plus `Argon2KeyMaterialProvider`, which stretches a weak pepper with Argon2id. Argon2 needs BouncyCastle, which the library loads reflectively and never puts on a consumer's classpath: add `bcprov-jdk18on` only if you use it. Every provider declares a `ThreatCoverage` per attacker class, so a provider that gives no same-UID protection can be recognised and refused.
+  - **Hybrid X25519 + ML-KEM-768 key encapsulation** through the JDK's `javax.crypto.KEM` (SunJCE on JDK 24+, no third-party crypto). The X25519 secret is always part of the result, so it is no weaker than the classical exchange even if ML-KEM is broken.
 
 ## [3.0.0-alpha] - 2026-06-11
 
