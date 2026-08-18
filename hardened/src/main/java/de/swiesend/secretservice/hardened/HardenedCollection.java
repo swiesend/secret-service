@@ -908,7 +908,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
 
     /**
      * Class name of the {@link KeyMaterialProvider} backing this collection. Useful for
-     * diagnostics and logging without exposing the provider
+     * diagnostics ({@link HardenedHealthCheck}) and logging without exposing the provider
      * itself, which may hold sensitive material.
      */
     public String providerClassName() {
