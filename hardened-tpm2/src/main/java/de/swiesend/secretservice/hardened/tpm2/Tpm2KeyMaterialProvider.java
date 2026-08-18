@@ -213,7 +213,7 @@ public final class Tpm2KeyMaterialProvider implements KeyMaterialProvider, AutoC
      * RSA-2048 storage-root template. Matches the "standard" TPM owner-hierarchy
      * primary key used by tpm2-tools and tpm2-pkcs11 except that this template
      * omits {@code TPMA_OBJECT.noDA}. That matches the non-{@code noDA} posture
-     * of the leaf seal template used when sealing; the primary itself
+     * of the leaf seal template in {@link Tpm2Provisioner}; the primary itself
      * is transient and never authenticates via a password (owner-auth is empty
      * in the constructor path), so the flag is effectively a no-op on the primary
      * -- but removing it keeps the policy posture consistent across both templates.
