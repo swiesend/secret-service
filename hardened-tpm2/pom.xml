@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.swiesend</groupId>
+        <artifactId>secret-service-parent</artifactId>
+        <version>3.0.0-alpha</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>secret-service-hardened-tpm2</artifactId>
+    <packaging>jar</packaging>
+
+    <name>secret-service-hardened-tpm2</name>
+    <description>
+        Optional TPM 2.0 KeyMaterialProvider for secret-service-hardened.
+        Has no module-info.java: Microsoft TSS.Java places a class in the
+        unnamed package and therefore cannot be loaded as a JPMS module, and a
+        named module cannot read the class path. The jar declares the automatic
+        module name de.swiesend.secretservice.hardened.tpm2 instead, so it can
+        go on the module path, with TSS.Java on the class path. Consumers add
+        TSS.Java themselves to seal the hardened wrapper's pepper inside a TPM.
+    </description>
+
+    <properties>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.swiesend</groupId>
+            <artifactId>secret-service-hardened</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.azure</groupId>
+            <artifactId>TSS.Java</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <!-- A stable name on the module path. Without it, the JDK derives the
+                                 name from the jar's file name, and javac warns a module that
+                                 requires it. An automatic module reads the class path, where
+                                 TSS.Java has to stay. -->
+                            <Automatic-Module-Name>de.swiesend.secretservice.hardened.tpm2</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+    <!--
+        No compiler configuration here on purpose. The JDK floor is declared once, by the
+        parent's <maven.compiler.release>, and inherited. Repeating release/source/target
+        in every module means the next JDK bump has to find all of them, and a module that is
+        missed silently keeps compiling to the old level.
+    -->
+</project>
