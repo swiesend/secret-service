@@ -1,0 +1,94 @@
+site_name: secret-service
+site_description: >-
+  Java client library for the freedesktop.org Secret Service API —
+  keyring secrets over D-Bus, with optional application-layer encryption and TPM 2.0 sealing.
+site_url: https://swiesend.github.io/secret-service/
+repo_url: https://github.com/swiesend/secret-service
+repo_name: swiesend/secret-service
+edit_uri: edit/main/docs/
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.snippets:
+      base_path:
+        - .
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+exclude_docs: |
+  threat_models_and_mitigation.md
+  usage_examples.md
+  vision.md
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Usage:
+      - Core: usage/core.md
+      - Hardened: usage/hardened.md
+      - TPM 2.0: usage/tpm2.md
+      - Logging: usage/logging.md
+  - Architecture:
+      - Overview: architecture/index.md
+      - Envelope encryption: architecture/envelope-encryption.md
+      - Hybrid KEM: architecture/hybrid-kem.md
+      - Epoch keystore & forward secrecy: architecture/epoch-keystore-and-forward-secrecy.md
+      - Anti-rollback anchor: architecture/anti-rollback-anchor.md
+      - Key-material providers: architecture/key-material-providers.md
+  - Security:
+      - Overview: security/index.md
+      - Threat catalogue: security/threat-catalogue.md
+      - Defense mechanisms: security/defense-mechanisms.md
+      - D-Bus policy: security/dbus-policy.md
+      - Backend choice: security/backend-choice.md
+      - Full-disk encryption: security/full-disk-encryption.md
+      - Desktop deployment: security/desktop-deployment.md
+      - CI deployment: security/ci-deployment.md
+      - Sample configurations: security/sample-configurations.md
+      - Backup & recovery: security/backup-and-recovery.md
+      - Anti-checklist & references: security/anti-checklist.md
+  - Audits:
+      - Overview: audits/index.md
+      - 2026-07 hardened audit: audits/2026-07-security-audit-hardened.md
+  - Roadmap: roadmap.md
+  - Changelog: changelog.md
