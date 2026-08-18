@@ -217,7 +217,7 @@ public final class Tpm2Provisioner {
     }
 
     /**
-     * Define a TPM NV <b>monotonic counter</b> to back the generation anchor. Run once per
+     * Define a TPM NV <b>monotonic counter</b> to back {@link Tpm2GenerationAnchor}. Run once per
      * collection/keystore, at a distinct {@code nvIndex}. The counter is created under the owner
      * hierarchy with the given {@code password} as its index auth value (increment and read are
      * auth-gated so a hostile process cannot drive the floor), and is initialised with one
