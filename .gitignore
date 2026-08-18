@@ -265,3 +265,5 @@ $RECYCLE.BIN/
 .vscode/
 .metals/
 cursor
+# MkDocs build output
+site/

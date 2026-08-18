@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This is the unified instruction file for all AI agents (Claude Code, GitHub Copilot, etc.) working on the `secret-service` codebase. For the full design roadmap and historical context, see [`docs/vision.md`](../docs/vision.md).
+This is the unified instruction file for all AI agents (Claude Code, GitHub Copilot, etc.) working on the `secret-service` codebase. For the full design roadmap and historical context, see [`docs/roadmap.md`](../docs/roadmap.md).
 
 ## Project Overview
 
@@ -8,7 +8,7 @@ This is the unified instruction file for all AI agents (Claude Code, GitHub Copi
 
 - **Group/Artifact:** `de.swiesend:secret-service`
 - **License:** MIT
-- **JDK:** Requires JDK 17+ to build
+- **JDK:** Requires JDK 25 to build
 
 ## Build Commands
 
