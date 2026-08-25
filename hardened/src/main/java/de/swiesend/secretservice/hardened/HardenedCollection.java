@@ -71,7 +71,9 @@ import java.util.function.Function;
  * {@link #matchesSecret} calls on a single instance are safe <em>as long as the wrapped
  * {@link CollectionInterface} is thread-safe</em>: the epoch keystore's mutating methods are
  * {@code synchronized} (so concurrent first-writes create exactly one epoch, not a split-brain), the
- * shared {@code SecureRandom} is thread-safe, and each write uses fresh per-item key material.</p>
+ * shared {@code SecureRandom} is thread-safe, and each write uses fresh per-item key material. The
+ * epoch-mutating operation {@link #rotateEpoch} must <b>not</b> run concurrently with writers on
+ * the same instance -- quiesce writes around it.</p>
  */
 public final class HardenedCollection implements HardenedCollectionInterface {
 
@@ -93,6 +95,8 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     private static final String HKDF_INFO_TAG = "secret-service/hardened/v3";
     /** Reported by {@link #status()} before the first write resolves the collection's epoch. */
     static final String EPOCH_UNRESOLVED = "(unresolved)";
+    /** Sentinel from the rotation verification for an item that is not a hardened envelope. */
+    private static final String NOT_OURS = "\u0000not-a-hardened-envelope";
 
     /**
      * Anchors currently backing a live collection, keyed by {@link GenerationAnchor#scopeKey()}.
@@ -623,6 +627,144 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         return wrapped.deleteItem(objectPath);
     }
 
+    @Override
+    public boolean rotateEpoch() {
+        if (generationAnchor == null) {
+            // The rotation about to happen destroys the superseded epoch keys -- the forward-secrecy
+            // primitive. Without an anti-rollback anchor, a party that can write the keyring store can
+            // reintroduce the pre-rotation keystore snapshot and resurrect those keys, silently undoing
+            // the guarantee. See GenerationAnchor / Tpm2GenerationAnchor.
+            log.warn("rotateEpoch: no GenerationAnchor configured. The forward secrecy this rotation "
+                    + "creates can be undone by a keyring-writer that rolls the keystore back to a "
+                    + "pre-rotation snapshot -- and because the collection's current epoch is "
+                    + "recorded in the keystore, such a rollback also redirects FUTURE writes onto "
+                    + "the resurrected epoch, not just past ones. Configure a Tpm2GenerationAnchor "
+                    + "to make it rollback-resistant.");
+        }
+        String previous = keystore.peekCurrent().orElse(this.epochId);
+        String next = newEpochId();
+        log.info("rotateEpoch: {} -> {} (rewrap pending items)", previous, next);
+        // Rewrap every hardened item under the new epoch. Filter out the keystore item itself
+        // so rotation doesn't recursively try to rewrap its own keystore (which is encrypted
+        // under the pepper, not under the per-epoch KEM).
+        Optional<List<String>> paths = wrapped.getItems(Map.of(ATTR_VERSION, ATTR_VERSION_V1));
+        if (paths.isEmpty()) {
+            // Enumeration FAILED (as opposed to succeeding with nothing found -- the functional
+            // Collection now distinguishes the two). We cannot know what would have needed
+            // rewrapping, so we neither rotate nor destroy anything, and we report failure. This
+            // used to return true after advancing the epoch, claiming a forward secrecy it had not
+            // established.
+            log.warn("rotateEpoch: could not enumerate items; refusing to rotate. No keys destroyed.");
+            return false;
+        }
+        // Commit the new epoch BEFORE rewrapping anything under it: adoptAsCurrent writes the
+        // keypair and records it current in one persist. Rewrapping first would seal items under
+        // an epoch whose private key existed only in this JVM's heap.
+        try {
+            keystore.adoptAsCurrent(next, kem);
+        } catch (RuntimeException e) {
+            log.warn("rotateEpoch: could not commit the new epoch {}: {}; staying on {}.",
+                    next, e.toString(), previous);
+            return false;
+        }
+        // Only now does this instance start writing under `next`. Because the assignment follows
+        // the durable commit, a failure above leaves us writing under `previous`, whose keys still
+        // exist -- no rollback of this field is needed.
+        this.epochId = next;
+        this.epochCreated = java.time.Instant.now();
+        this.pinActive = false; // a rotation supersedes any test-pinned epoch
+        boolean allOk = true;
+        int rewrapped = 0;
+        for (String path : paths.get()) {
+            // Skip the keystore item -- it lives under hardened.kind=epoch-keystore and is
+            // managed by EpochKeystore directly, not by the per-item DEK derivation.
+            Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
+            // Skip the keystore item, and skip anything whose attributes we cannot read at all --
+            // rewrapping an item we cannot classify is the riskier of the two options.
+            if (attrs.isEmpty()
+                    || EpochKeystore.KIND_VALUE.equals(attrs.get().get(EpochKeystore.ATTR_KIND))) {
+                continue;
+            }
+            Boolean ok;
+            try {
+                ok = wrapped.withSecret(path, envelopeChars -> {
+                Optional<Map<String, String>> a = wrapped.getAttributes(path);
+                if (a.isEmpty()) return Boolean.FALSE;
+                byte[] envBytes;
+                try {
+                    envBytes = Base64.getDecoder().decode(new String(envelopeChars));
+                } catch (IllegalArgumentException e) {
+                    return Boolean.FALSE;
+                }
+                Envelope env = Envelope.fromBytes(envBytes);
+                Arrays.fill(envBytes, (byte) 0);
+                char[] plain = decryptToChars(env, path);
+                if (plain == null) return Boolean.FALSE;
+                try {
+                    String label = wrapped.getItemLabel(path).orElse("item");
+                    Map<String, String> oldAttrs = new HashMap<>(a.get());
+                    // strip hardened.* attributes before merging user-defined ones
+                    oldAttrs.keySet().removeIf(k -> k != null && k.startsWith("hardened."));
+                    // Create-then-delete: the old envelope survives until the new one
+                    // is durably written, so a crash between the two never loses data.
+                    Optional<String> created = createItem(label, CharBuffer.wrap(plain), oldAttrs);
+                    if (created.isEmpty()) {
+                        log.warn("rotateEpoch: rewrap of {} failed; keeping old envelope intact.", path);
+                        return Boolean.FALSE;
+                    }
+                    boolean deleted = wrapped.deleteItem(path);
+                    if (!deleted) {
+                        log.warn("rotateEpoch: rewrote {} as {} but could not delete the old item; "
+                                + "duplicate present until resolved manually.", path, created.get());
+                    }
+                    return Boolean.TRUE;
+                } finally {
+                    Arrays.fill(plain, '\0');
+                }
+                }).orElse(Boolean.FALSE);
+            } catch (RuntimeException e) {
+                // A rewrap can throw if writing the new envelope fails partway -- e.g. the epoch
+                // keystore could not persist the new epoch keypair. The old envelope has not been
+                // deleted, so no data is lost; treat this item as a failed rewrap and keep the
+                // previous epoch alive.
+                log.warn("rotateEpoch: rewrap of {} failed: {}; keeping old envelope intact.",
+                        path, e.toString());
+                ok = Boolean.FALSE;
+            }
+            allOk &= ok;
+            if (Boolean.TRUE.equals(ok)) rewrapped++;
+        }
+        if (allOk) {
+            // Forward secrecy: keep only the new epoch's keypair and destroy every superseded
+            // one -- not just `previous`, but any epoch left over from earlier sessions. A fully
+            // successful rewrap proves no surviving hardened item references an older epoch (an
+            // unreadable item would have failed the rewrap and set allOk=false, keeping all keys),
+            // so retaining only `next` can never strand an item. Items captured pre-rotation can
+            // no longer be decapsulated by any retained key.
+            //
+            // "Fully successful" must also mean "actually examined something": allOk is initialised
+            // true outside the loop, so a zero-iteration loop used to reach here having proved
+            // nothing. Verify by re-enumerating -- every surviving hardened item must now name the
+            // new epoch -- before destroying any key.
+            try {
+                if (!rewrapCovered(next, rewrapped)) {
+                    log.warn("rotateEpoch: could not verify that every item now references epoch {}; "
+                            + "keeping all epoch keys. Re-run rotation once the collection is readable.", next);
+                    return false;
+                }
+                keystore.retainOnly(next);
+                log.info("rotateEpoch: retained only epoch {}; destroyed all superseded epoch keys "
+                        + "(forward secrecy)", next);
+            } catch (RuntimeException e) {
+                log.warn("rotateEpoch: failed to destroy superseded epoch keys: {}", e.toString());
+                allOk = false;
+            }
+        } else {
+            log.warn("rotateEpoch: at least one rewrap failed; keeping previous epoch {} alive "
+                    + "in the keystore so straggler items remain readable.", previous);
+        }
+        return allOk;
+    }
 
     @Override
     public HardenedStatus status() {
@@ -896,6 +1038,66 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         return out;
     }
 
+    /**
+     * Positive proof that destroying the superseded epoch keys is safe: re-enumerate the collection
+     * and require every surviving hardened item to name {@code newEpoch}. Returns false if the
+     * enumeration fails, or if any item still references an older epoch.
+     *
+     * <p>{@code rewrapped == 0} is allowed only when the re-enumeration confirms there is genuinely
+     * nothing left to rewrap -- rotating an empty collection is legitimate; rotating a collection we
+     * merely failed to read is not.</p>
+     */
+    private boolean rewrapCovered(String newEpoch, int rewrapped) {
+        // Enumerate EVERYTHING, not the hardened.version filter the rewrap loop uses. Attributes are
+        // plaintext and daemon-mutable, and this project already documents SearchItems as unreliable
+        // per provider (see the KeePassXC note in core's Collection.getItems). An item missing from
+        // a filtered result would be invisible to both the rewrap and this check, and we would
+        // destroy the only key that reads it. The empty-map form is served from the Items property.
+        Optional<List<String>> after = wrapped.getItems(Map.of());
+        if (after.isEmpty()) {
+            return false; // enumeration failed: we cannot prove anything
+        }
+        for (String path : after.get()) {
+            Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
+            if (attrs.isEmpty()) return false; // cannot read it -> cannot clear it
+            if (EpochKeystore.KIND_VALUE.equals(attrs.get().get(EpochKeystore.ATTR_KIND))) continue;
+            // Read the epoch from the AEAD-AUTHENTICATED envelope header, never from the
+            // hardened.epoch attribute: attributes are plaintext and daemon-mutable, so a
+            // compromised daemon could stamp the new epoch onto an item still sealed under the old
+            // one and make us destroy the only key that reads it. Parsing the header needs no
+            // decryption. Anything we cannot parse blocks the destruction.
+            Optional<String> envEpoch = wrapped.withSecret(path, body -> {
+                try {
+                    byte[] raw = Base64.getDecoder().decode(new String(body));
+                    // Classify by the SSv1 magic, not by hardened.version: an item whose attribute
+                    // was stripped is still ours and still references an epoch key.
+                    if (!Envelope.looksLikeEnvelope(raw)) {
+                        Arrays.fill(raw, (byte) 0);
+                        return NOT_OURS;
+                    }
+                    Envelope env = Envelope.fromBytes(raw);
+                    Arrays.fill(raw, (byte) 0);
+                    return new String(env.epochId(), StandardCharsets.US_ASCII);
+                } catch (RuntimeException e) {
+                    return null;
+                }
+            });
+            if (envEpoch.isEmpty() || envEpoch.get() == null) {
+                log.warn("rotateEpoch: could not read the body of {}; not destroying keys.", path);
+                return false;
+            }
+            if (NOT_OURS.equals(envEpoch.get())) continue;   // foreign plaintext item: not our concern
+            if (!newEpoch.equals(envEpoch.get())) {
+                log.warn("rotateEpoch: item {} is still sealed under epoch {}; not destroying keys.",
+                        path, envEpoch.get());
+                return false;
+            }
+        }
+        if (rewrapped == 0) {
+            log.info("rotateEpoch: no items needed rewrapping; the collection holds no hardened items.");
+        }
+        return true;
+    }
 
     private static String newEpochId() { return UUID.randomUUID().toString(); }
 }
