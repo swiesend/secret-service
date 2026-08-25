@@ -223,6 +223,23 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void classicalKemProvidesForwardSecrecyWithoutPq() {
+        // Even without PQ, a pre-rotation envelope copy must be unreadable after rotateEpoch
+        // destroys the classical epoch key -- the whole point of always using a KEM.
+        HardenedCollection h = build();
+        String path = h.createItem("pre", "classical-secret").orElseThrow();
+        FakeCollection.Item snapshot = fake.rawItems().get(path);
+        String capturedSecret = snapshot.rawSecret();
+        Map<String, String> capturedAttrs = new HashMap<>(snapshot.attrs());
+
+        assertTrue(h.rotateEpoch());
+
+        fake.seedRaw("/replay/pre", "pre", capturedSecret, capturedAttrs);
+        assertTrue(h.withSecret("/replay/pre", String::new).isEmpty(),
+                "classical pre-rotation envelope must be unreadable after rotation (forward secrecy)");
+    }
+
+    @Test
     void legacyV1AndV2EnvelopesAreRejectedGracefully() {
         // Formats v1/v2 (pre-suite-selector) are no longer supported. A stale legacy item must be
         // rejected gracefully -- withSecret returns empty rather than throwing -- so a leftover
@@ -268,6 +285,32 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void rotateEpochProvidesForwardSecrecyForPqItems() {
+        // Write a PQ item, capture its envelope bytes, rotate the epoch, then try to read
+        // the captured envelope as if it had been exfiltrated pre-rotation. The keystore's
+        // previous-epoch entry has been destroyed, so decapsulation must fail.
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .enablePostQuantum(true)
+                .build();
+
+        String path = h.createItem("pre-rotate", "leaky-secret").orElseThrow();
+        FakeCollection.Item snapshot = fake.rawItems().get(path);
+        String capturedSecret = snapshot.rawSecret();
+        Map<String, String> capturedAttrs = new HashMap<>(snapshot.attrs());
+
+        assertTrue(h.rotateEpoch(), "rotateEpoch must succeed");
+
+        // Re-seed the original (pre-rotate) item byte-for-byte at a fresh path so we can
+        // ask the wrapper to read it as if it had survived rotation. Forward secrecy means
+        // this read must fail because the old epoch's private key is destroyed.
+        fake.seedRaw("/replay/pre-rotate", "pre-rotate", capturedSecret, capturedAttrs);
+        Optional<String> recovered = h.withSecret("/replay/pre-rotate", String::new);
+        assertTrue(recovered.isEmpty(),
+                "Captured pre-rotation envelope must be unreadable after rotateEpoch destroys the old keypair");
+    }
+
+    @Test
     void generationAnchorWiredThroughBuilderIsConsultedAndFailsClosed() {
         // Builder wiring smoke test: an anchored collection round-trips and the write advances the
         // anchor through the keystore. Then, with the anchor floor pushed above the stored keystore
@@ -308,6 +351,46 @@ class HardenedCollectionTest {
                 "session 2 must read the item it wrote under the loaded epoch");
         assertEquals("secret-b", s1.withSecret(p2, String::new).orElse(null),
                 "the item written by session 2 must be readable through session 1 too");
+    }
+
+    @Test
+    void rotateEpochDestroysAllSupersededEpochsNotJustPrevious() {
+        // Two epochs accumulate in the keystore across "sessions": an oldest epoch (from an
+        // earlier HardenedCollection instance) and a middle epoch. A single rotation must
+        // destroy BOTH, not just the immediately-previous one -- otherwise a pre-rotation
+        // backup plus the current keystore could still decapsulate the oldest envelope.
+        HardenedCollection oldest = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .enablePostQuantum(true)
+                .epochId("epoch-oldest")
+                .build();
+        String pathOldest = oldest.createItem("oldest", "oldest-secret").orElseThrow();
+        FakeCollection.Item snapshot = fake.rawItems().get(pathOldest);
+        String capturedSecret = snapshot.rawSecret();
+        Map<String, String> capturedAttrs = new HashMap<>(snapshot.attrs());
+
+        // A later session under a different epoch; its keystore now holds {oldest, middle}.
+        HardenedCollection middle = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .enablePostQuantum(true)
+                .epochId("epoch-middle")
+                .build();
+        middle.createItem("middle", "middle-secret").orElseThrow();
+
+        assertTrue(middle.rotateEpoch(), "rotateEpoch must succeed");
+
+        // The keystore must now hold exactly one epoch (the new one); both older epochs gone.
+        EpochKeystore ks = new EpochKeystore(fake, provider);
+        ks.get("epoch-oldest"); // triggers load
+        assertEquals(1, ks.sizeForTest(), "keystore must retain exactly the new epoch");
+        assertTrue(ks.get("epoch-oldest").isEmpty(), "oldest epoch key must be destroyed");
+        assertTrue(ks.get("epoch-middle").isEmpty(), "middle epoch key must be destroyed");
+
+        // A pre-rotation copy of the oldest envelope must no longer decrypt: forward secrecy
+        // now covers epochs older than `previous`, which the old removeEpoch(previous) missed.
+        fake.seedRaw("/replay/oldest", "oldest", capturedSecret, capturedAttrs);
+        assertTrue(middle.withSecret("/replay/oldest", String::new).isEmpty(),
+                "captured oldest-epoch envelope must be unreadable after rotation destroys its key");
     }
 
     @Test
@@ -385,6 +468,25 @@ class HardenedCollectionTest {
                 "items still round-trip with lockMemory enabled");
     }
 
+    @Test
+    void rotateEpochCreatesThenDeletes() {
+        // Atomicity invariant: the new envelope must exist before the old one is removed.
+        HardenedCollection h = build();
+        String pathBefore = h.createItem("x", "secret-value").orElseThrow();
+        String epochBefore = h.status().epochId();
+
+        assertTrue(h.rotateEpoch());
+        String epochAfter = h.status().epochId();
+        assertNotEquals(epochBefore, epochAfter);
+
+        Optional<List<String>> paths = fake.getItems(Map.of(
+                HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1));
+        assertTrue(paths.isPresent() && paths.get().size() == 1);
+        String newPath = paths.get().get(0);
+        assertEquals("secret-value", h.withSecret(newPath, String::new).orElse(null));
+        assertFalse(fake.rawItems().containsKey(pathBefore), "old path replaced by rewrap");
+    }
+
     /**
      * Fails the first {@code n} createItem calls that write a real ITEM (not the epoch keystore).
      * A one-shot {@code setNextCreateItemFails} can no longer target a rewrap: rotation commits the
@@ -395,6 +497,39 @@ class HardenedCollectionTest {
         fake.setCreateItemFailsWhen(attrs ->
                 !EpochKeystore.KIND_VALUE.equals(attrs.get(EpochKeystore.ATTR_KIND))
                         && left.getAndDecrement() > 0);
+    }
+
+    @Test
+    void rotateEpochFailsClosedWhenTheNewEpochCannotBeCommitted() {
+        // Rotation writes the new epoch to the keystore BEFORE rewrapping anything under it, so a
+        // one-shot createItem failure lands on that commit. Nothing may change: no rewrap was
+        // attempted, the epoch must not advance, and the existing item stays readable.
+        HardenedCollection h = build();
+        String pathBefore = h.createItem("x", "must-not-be-lost").orElseThrow();
+        String epochBefore = h.status().epochId();
+
+        fake.setNextCreateItemFails(true); // the keystore persist inside adoptAsCurrent fails
+        assertFalse(h.rotateEpoch(), "rotateEpoch must report failure when the new epoch cannot be committed");
+        assertEquals(epochBefore, h.status().epochId(),
+                "a failed commit must leave writes on the previous epoch");
+        assertTrue(fake.rawItems().containsKey(pathBefore), "no item may be touched");
+        assertEquals("must-not-be-lost", h.withSecret(pathBefore, String::new).orElse(null),
+                "the existing envelope must still decrypt under the original epoch");
+    }
+
+    @Test
+    void rotateEpochSurvivesRewrapFailure() {
+        // The other half: the epoch commits fine, then the item's rewrap write fails. Create-then-
+        // delete means the old envelope is still there and still readable -- no data loss.
+        HardenedCollection h = build();
+        String pathBefore = h.createItem("x", "must-not-be-lost").orElseThrow();
+
+        failFirstItemWrites(1);
+        assertFalse(h.rotateEpoch(), "rotateEpoch must report failure when a rewrap fails");
+        assertTrue(fake.rawItems().containsKey(pathBefore),
+                "old hardened item must survive a failed rewrap -- no data loss");
+        assertEquals("must-not-be-lost", h.withSecret(pathBefore, String::new).orElse(null),
+                "old envelope must still decrypt under the original epoch");
     }
 
     @Test
@@ -565,6 +700,49 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void rotateEpochRefusesAndDestroysNothingWhenEnumerationFails() {
+        // F4: getItems returning Optional.empty() means the SEARCH FAILED. rotateEpoch used to
+        // advance the epoch and return true -- claiming a forward secrecy it had not established.
+        HardenedCollection h = build();
+        h.createItem("a", "one").orElseThrow();
+        String epochBefore = h.status().epochId();
+        EpochKeystore before = new EpochKeystore(fake, provider);
+        before.peekCurrent();
+        int entriesBefore = before.sizeForTest();
+
+        fake.setNextGetItemsFails(true);
+        assertFalse(h.rotateEpoch(), "a failed enumeration must report failure, not success");
+        assertEquals(epochBefore, h.status().epochId(), "the epoch must not advance");
+        EpochKeystore afterKs = new EpochKeystore(fake, provider);
+        afterKs.peekCurrent();
+        assertEquals(entriesBefore, afterKs.sizeForTest(),
+                "no epoch key may be destroyed when nothing was proved");
+    }
+
+    @Test
+    void rotateEpochOnAnEmptyCollectionDoesNotEmptyTheKeystore() {
+        // F4, the catastrophic branch: with an empty (but successful) enumeration, allOk stayed
+        // true over a zero-iteration loop and retainOnly(next) ran with `next` absent from the
+        // keystore -- retainAll(Set.of(next)) then removed EVERY epoch key and persisted an empty
+        // keystore, returning true.
+        //
+        // Two independent mechanisms now prevent that, so this test pins the invariant rather than
+        // discriminating a single fix: rotation commits the new epoch (adoptAsCurrent) BEFORE the
+        // rewrap loop, so `next` is always a held epoch by the time retainOnly runs; and retainOnly
+        // itself refuses an epoch it does not hold (proven by
+        // EpochKeystoreTest.retainOnlyRefusesAnEpochItDoesNotHold).
+        HardenedCollection h = build();
+        assertTrue(h.rotateEpoch(), "rotating a collection with no hardened items is legitimate");
+        EpochKeystore after = new EpochKeystore(fake, provider);
+        after.peekCurrent(); // force the load before inspecting the in-memory map
+        assertTrue(after.sizeForTest() >= 1,
+                "the keystore must never be emptied; the new epoch must be present");
+        // And the collection is still usable.
+        String p = h.createItem("post", "rotation").orElseThrow();
+        assertTrue(h.withSecret(p, String::new).isPresent());
+    }
+
+    @Test
     void enablingPostQuantumOverAnExistingCollectionKeepsEverythingReadable() {
         // The documented upgrade path. kem_id used to be stamped from the RUNTIME PQ preference
         // while the actual encapsulation fell back to classical (the recorded epoch, minted while
@@ -641,6 +819,31 @@ class HardenedCollectionTest {
         assertFalse(HardenedCollection.constantTimeEquals("abcdef".toCharArray(), "abcde".toCharArray()));
         assertFalse(HardenedCollection.constantTimeEquals(null, "abcdef".toCharArray()));
         assertFalse(HardenedCollection.constantTimeEquals("abcdef".toCharArray(), null));
+    }
+
+    @Test
+    void rotateEpochRetainsPreviousEpochOnPartialFailure() {
+        // A genuinely PARTIAL rotation: two items, one rewraps and one fails. rotateEpoch must
+        // report failure and skip retainOnly, so the previous epoch's keys stay alive and the
+        // straggler remains readable instead of being stranded under a destroyed epoch.
+        HardenedCollection h = build();
+        String p1 = h.createItem("a", "one").orElseThrow();
+        String p2 = h.createItem("b", "two").orElseThrow();
+
+        failFirstItemWrites(1); // exactly one of the two rewraps fails
+        assertFalse(h.rotateEpoch(), "a partial rewrap failure must make rotateEpoch return false");
+
+        // Whichever item failed to rewrap is still under the previous epoch and must decrypt.
+        String survivor = fake.rawItems().containsKey(p1) ? p1 : p2;
+        assertTrue(fake.rawItems().containsKey(survivor), "the un-rewrapped original survives");
+        assertNotNull(h.withSecret(survivor, String::new).orElse(null),
+                "a straggler under the previous epoch stays readable when rotation partially fails");
+
+        // retainOnly must have been skipped: more than one epoch is still held.
+        EpochKeystore ks = new EpochKeystore(fake, provider);
+        ks.peekCurrent();
+        assertTrue(ks.sizeForTest() > 1,
+                "the previous epoch's keys must be retained when the rotation did not fully succeed");
     }
 
     @Test
