@@ -72,8 +72,8 @@ import java.util.function.Function;
  * {@link CollectionInterface} is thread-safe</em>: the epoch keystore's mutating methods are
  * {@code synchronized} (so concurrent first-writes create exactly one epoch, not a split-brain), the
  * shared {@code SecureRandom} is thread-safe, and each write uses fresh per-item key material. The
- * epoch-mutating operation {@link #rotateEpoch} must <b>not</b> run concurrently with writers on
- * the same instance -- quiesce writes around it.</p>
+ * epoch-mutating operations {@link #rotateEpoch} and {@link #migrateNonHardenedToHardened} must
+ * <b>not</b> run concurrently with writers on the same instance -- quiesce writes around them.</p>
  */
 public final class HardenedCollection implements HardenedCollectionInterface {
 
@@ -134,6 +134,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
     private final CollectionInterface wrapped;
     private final KeyMaterialProvider provider;
     private final boolean acknowledgeSameUidExposure;
+    private final boolean allowMigration;
     private final HybridKem kem;
     private final EpochKeystore keystore;
     private final GenerationAnchor generationAnchor;
@@ -164,6 +165,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         this.wrapped = Objects.requireNonNull(b.wrapped, "wrapped collection");
         this.provider = Objects.requireNonNull(b.provider, "key material provider");
         this.acknowledgeSameUidExposure = b.acknowledgeSameUidExposure;
+        this.allowMigration = b.allowMigration;
         this.kem = new HybridKem(b.enablePostQuantum);
         this.generationAnchor = b.generationAnchor;
         this.aeadId = Objects.requireNonNull(b.aead, "aead").id();
@@ -314,6 +316,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         private boolean acknowledgeSameUidExposure = false;
         private boolean suppressSameUidExposureWarning = false;
         private boolean enablePostQuantum = false;
+        private boolean allowMigration = false;
         private String epochId;
         private GenerationAnchor generationAnchor;
         private AeadId aead = AeadId.AES_256_GCM;
@@ -433,6 +436,17 @@ public final class HardenedCollection implements HardenedCollectionInterface {
          * remain readable.</p>
          */
         public Builder enablePostQuantum(boolean b) { this.enablePostQuantum = b; return this; }
+
+        /**
+         * Allow {@link HardenedCollection#migrateNonHardenedToHardened} to run on this
+         * instance. <b>Dual-gated</b>: even with this flag, the env var
+         * {@code SECRET_SERVICE_HARDENED_ALLOW_MIGRATION=1} must also be set at runtime.
+         * Both are required because migration overwrites items that this layer did not
+         * write, which is otherwise refused by the non-destructive design. The two-gate
+         * scheme means accidental adoption requires both code-review (the builder call)
+         * and an explicit operator action (the env var) before mutating shared state.
+         */
+        public Builder allowMigration(boolean b) { this.allowMigration = b; return this; }
 
         /**
          * Anchor the epoch-keystore generation counter in rollback-resistant storage (a TPM NV
@@ -847,6 +861,174 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                     + "in the keystore so straggler items remain readable.", previous);
         }
         return allOk;
+    }
+
+    /** Env-var name that, in addition to {@link Builder#allowMigration(boolean)}, must be set to "1" for migration to run. */
+    public static final String ENV_ALLOW_MIGRATION = "SECRET_SERVICE_HARDENED_ALLOW_MIGRATION";
+
+    /**
+     * One-shot migration: read each non-hardened item in the wrapped collection that
+     * matches {@code selector}, write it as a hardened envelope under this collection's
+     * configuration, then delete the plain original. Returns a structured report.
+     *
+     * <h3>Dual-gate</h3>
+     * <p>This method is the only one in the library that mutates items the layer didn't
+     * write. It is dual-gated: <b>both</b> {@link Builder#allowMigration(boolean)} and the
+     * environment variable {@code SECRET_SERVICE_HARDENED_ALLOW_MIGRATION=1} must be set.
+     * One requires a code change (visible in PR review); the other requires an explicit
+     * operator action at deploy time. Either alone is insufficient.</p>
+     *
+     * <h3>Failure handling</h3>
+     * <p>Per-item failures are recorded in the report and do <b>not</b> abort the batch.
+     * On any failure for a given item: the plain original is left intact (we delete only
+     * after a successful hardened write), and a {@code Failure} entry is added. Operators
+     * can re-run after fixing the failures.</p>
+     *
+     * @throws MigrationNotPermittedException if either gate is unset; nothing is read, written or
+     *         deleted in that case
+     * @throws NullPointerException if {@code selector} is null
+     */
+    public MigrationReport migrateNonHardenedToHardened(java.util.function.Predicate<MigrationCandidate> selector) {
+        Objects.requireNonNull(selector, "selector");
+        if (!allowMigration) {
+            throw new MigrationNotPermittedException(
+                "migrateNonHardenedToHardened requires Builder.allowMigration(true). "
+                        + "Migration overwrites pre-existing items the hardened layer did not write; "
+                        + "the dual-gate (builder + " + ENV_ALLOW_MIGRATION + " env var) prevents accidental adoption.");
+        }
+        if (!"1".equals(java.lang.System.getenv(ENV_ALLOW_MIGRATION))) {
+            throw new MigrationNotPermittedException(
+                "migrateNonHardenedToHardened requires the environment variable "
+                        + ENV_ALLOW_MIGRATION + "=1 in addition to Builder.allowMigration(true). "
+                        + "This second gate forces an explicit operator action at deploy time, "
+                        + "separate from the code change that flipped the builder flag.");
+        }
+        return migrateInternal(selector);
+    }
+
+    /**
+     * Test-only hook that runs the migration body, bypassing the env-var gate (we cannot
+     * mutate process env from a JUnit test portably). Still requires {@link Builder#allowMigration(boolean)}
+     * so the builder-side gate is still pinned by tests.
+     */
+    MigrationReport migrateNonHardenedToHardenedForTest(java.util.function.Predicate<MigrationCandidate> selector) {
+        Objects.requireNonNull(selector, "selector");
+        if (!allowMigration) {
+            throw new MigrationNotPermittedException("test hook still requires Builder.allowMigration(true)");
+        }
+        return migrateInternal(selector);
+    }
+
+    private MigrationReport migrateInternal(java.util.function.Predicate<MigrationCandidate> selector) {
+        List<MigrationResult> results = new ArrayList<>();
+        Optional<List<String>> allPaths = wrapped.getItems(Map.of());
+        if (allPaths.isEmpty()) {
+            return new MigrationReport(0, 0, 0, results);
+        }
+
+        int considered = 0, migrated = 0, skipped = 0, failed = 0;
+        for (String path : allPaths.get()) {
+            considered++;
+            Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
+            if (attrs.isEmpty()) { skipped++; continue; }
+            Map<String, String> a = attrs.get();
+            // Skip items already managed by the hardened layer (or its keystore).
+            if (ATTR_VERSION_V1.equals(a.get(ATTR_VERSION))) { skipped++; continue; }
+            if (EpochKeystore.KIND_VALUE.equals(a.get(EpochKeystore.ATTR_KIND))) { skipped++; continue; }
+            // A label that cannot be read fails this item, it does not default: migration is
+            // create-then-delete, so .orElse("item") would permanently rename the user's item to
+            // the literal "item" on one flaky D-Bus round-trip -- and the selector would judge a
+            // candidate whose label is a fabrication.
+            Optional<String> labelRead = wrapped.getItemLabel(path);
+            if (labelRead.isEmpty()) {
+                results.add(new MigrationResult(path, false, "could not read the item label"));
+                failed++;
+                continue;
+            }
+            String label = labelRead.get();
+            MigrationCandidate candidate = new MigrationCandidate(path, label, Map.copyOf(a));
+            // The SELECTOR RUNS FIRST, before anything reads a body. It is the documented mechanism
+            // for restricting what migration touches, so probing ahead of it would let migration
+            // decrypt items the caller explicitly excluded -- the selector could no longer prevent
+            // what it exists to prevent. Everything above this line is attribute-only.
+            if (!selector.test(candidate)) { skipped++; continue; }
+
+            // Selected. Only now may we look at the body. The attribute alone is not proof of what
+            // this item is: it is plaintext and daemon-mutable. An item whose hardened.version was
+            // stripped but whose body is an SSv1 envelope is still ours, and re-wrapping it would
+            // double-envelope it (the base64 envelope becoming the new "plaintext"). Check the magic
+            // before treating anything as plaintext.
+            // decodeBase64, never new String(body): this body is a live plaintext secret whenever
+            // the probe concludes "not an envelope" -- a String copy of it would be unclearable.
+            if (Boolean.TRUE.equals(wrapped.withSecret(path, body -> {
+                byte[] decoded = null;
+                try {
+                    decoded = decodeBase64(body);
+                    return Envelope.looksLikeEnvelope(decoded);
+                } catch (IllegalArgumentException notBase64) {
+                    return Boolean.FALSE; // not base64 -> cannot be one of our envelopes
+                } catch (RuntimeException e) {
+                    return Boolean.FALSE;
+                } finally {
+                    if (decoded != null) Arrays.fill(decoded, (byte) 0);
+                }
+            }).orElse(Boolean.FALSE))) { skipped++; continue; }
+
+            // Read plain into a char[] we can zero -- never a String, which is immutable and
+            // cannot be cleared, so the plaintext would linger on the heap until GC.
+            Optional<char[]> plainChars = wrapped.withSecret(path, char[]::clone);
+            if (plainChars.isEmpty()) {
+                results.add(new MigrationResult(path, false, "could not read plain item"));
+                failed++;
+                continue;
+            }
+            char[] plain = plainChars.get();
+            // Strip any reserved hardened.* attrs the source unexpectedly carried
+            Map<String, String> userAttrs = new LinkedHashMap<>(a);
+            userAttrs.keySet().removeIf(k -> k != null && k.startsWith("hardened."));
+            // Write hardened
+            Optional<String> created;
+            try {
+                created = createItem(label, CharBuffer.wrap(plain), userAttrs);
+            } catch (RuntimeException e) {
+                results.add(new MigrationResult(path, false, "createItem threw: " + e.getMessage()));
+                failed++;
+                continue;
+            } finally {
+                Arrays.fill(plain, '\0');
+            }
+            if (created.isEmpty()) {
+                results.add(new MigrationResult(path, false, "createItem returned empty"));
+                failed++;
+                continue;
+            }
+            // Delete plain only after the hardened copy is durable
+            boolean deleted = wrapped.deleteItem(path);
+            if (!deleted) {
+                results.add(new MigrationResult(path, true,
+                        "WARNING: hardened copy at " + created.get() + " written but plain original could not be deleted"));
+                migrated++;
+                continue;
+            }
+            results.add(new MigrationResult(path, true, "migrated to " + created.get()));
+            migrated++;
+        }
+        log.info("migrateNonHardenedToHardened: considered={} migrated={} skipped={} failed={}",
+                considered, migrated, skipped, failed);
+        return new MigrationReport(migrated, skipped, failed, results);
+    }
+
+    /** Item the migration helper offers to a selector predicate. */
+    public record MigrationCandidate(String path, String label, Map<String, String> attributes) {}
+
+    /** One row of {@link MigrationReport#results()}. */
+    public record MigrationResult(String path, boolean success, String detail) {}
+
+    /** Aggregate of one {@link #migrateNonHardenedToHardened} run. */
+    public record MigrationReport(int migrated, int skipped, int failed, List<MigrationResult> results) {
+        public MigrationReport {
+            results = List.copyOf(results);
+        }
     }
 
     @Override
