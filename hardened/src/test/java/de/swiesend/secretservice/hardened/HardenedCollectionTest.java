@@ -115,6 +115,112 @@ class HardenedCollectionTest {
         assertEquals("s3cr3t-password", fetched.orElse(null));
     }
 
+    @Test
+    void migrateRefusesWithoutBuilderFlag() {
+        // No .allowMigration(true) on the builder -> refused
+        HardenedCollection h = build();
+        // The migration gate is about an irreversible in-place rewrite, not about same-UID
+        // exposure -- its own exception type, not SameUidExposureException.
+        MigrationNotPermittedException e = assertThrows(MigrationNotPermittedException.class,
+                () -> h.migrateNonHardenedToHardened(c -> true));
+        assertTrue(e.getMessage().contains("allowMigration"));
+    }
+
+    @Test
+    void migrateRefusesWithoutEnvVar() {
+        // Builder flag set, but env var missing -> refused
+        // (unless this test runs with the env var actually set, in which case skip).
+        if ("1".equals(System.getenv(HardenedCollection.ENV_ALLOW_MIGRATION))) {
+            return;
+        }
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .allowMigration(true)
+                .build();
+        MigrationNotPermittedException e = assertThrows(MigrationNotPermittedException.class,
+                () -> h.migrateNonHardenedToHardened(c -> true));
+        assertTrue(e.getMessage().contains(HardenedCollection.ENV_ALLOW_MIGRATION));
+    }
+
+    @Test
+    void migrationBodyConvertsPlainItemsToHardened() {
+        // Pre-seed a couple of plain items in the wrapped collection.
+        fake.seedPlain("/legacy/a", "leg-a", "plain-a", Map.of("source", "legacy"));
+        fake.seedPlain("/legacy/b", "leg-b", "plain-b", Map.of("source", "legacy"));
+        fake.seedPlain("/legacy/c", "leg-c", "plain-c", Map.of("source", "other"));
+
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .allowMigration(true)
+                .build();
+
+        // Use the test-only hook (env var is awkward to set portably). Selector picks only
+        // items with source=legacy.
+        HardenedCollection.MigrationReport r = h.migrateNonHardenedToHardenedForTest(
+                c -> "legacy".equals(c.attributes().get("source")));
+
+        assertEquals(2, r.migrated(), "two items match the selector");
+        assertEquals(1, r.skipped(), "the source=other item is skipped by the selector");
+        assertEquals(0, r.failed());
+        // Original plain items are gone:
+        assertFalse(fake.rawItems().containsKey("/legacy/a"));
+        assertFalse(fake.rawItems().containsKey("/legacy/b"));
+        // Non-matching plain item remains:
+        assertTrue(fake.rawItems().containsKey("/legacy/c"));
+        // The two hardened items are readable through the wrapper, with original attributes preserved.
+        long hardenedCount = fake.rawItems().values().stream()
+                .filter(it -> "1".equals(it.attrs().get(HardenedCollection.ATTR_VERSION)))
+                .filter(it -> "legacy".equals(it.attrs().get("source")))
+                .count();
+        assertEquals(2, hardenedCount);
+    }
+
+    @Test
+    void migrationRecordsFailureAndLeavesPlainOriginalIntact() {
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .allowMigration(true)
+                .build();
+        // Warm up so the epoch keystore is already persisted; the injected failure then hits an
+        // item write during migration, not the one-time keystore persist.
+        h.createItem("warmup", "w").orElseThrow();
+        fake.seedPlain("/legacy/x", "leg-x", "plain-x", Map.of("source", "legacy"));
+        fake.seedPlain("/legacy/y", "leg-y", "plain-y", Map.of("source", "legacy"));
+
+        fake.setNextCreateItemFails(true); // one hardened write during migration will fail
+        HardenedCollection.MigrationReport r = h.migrateNonHardenedToHardenedForTest(
+                c -> "legacy".equals(c.attributes().get("source")));
+
+        assertEquals(1, r.failed(), "exactly one item's hardened write failed");
+        assertEquals(1, r.migrated(), "the other selected item migrated");
+        // The delete happens only after a durable hardened write, so the failed item's plain
+        // original must survive (no data loss).
+        long plainSurvivors = fake.rawItems().values().stream()
+                .filter(it -> "legacy".equals(it.attrs().get("source")))
+                .filter(it -> !"1".equals(it.attrs().get(HardenedCollection.ATTR_VERSION)))
+                .count();
+        assertEquals(1, plainSurvivors, "the failed item's plain original stays intact");
+        assertTrue(r.results().stream().anyMatch(res -> !res.success() && res.detail() != null),
+                "a failed MigrationResult with a detail message is recorded");
+    }
+
+    @Test
+    void migrationSkipsAlreadyHardenedItems() {
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .allowMigration(true)
+                .build();
+        String existing = h.createItem("already", "hardened-value").orElseThrow(); // a real hardened item
+        fake.seedPlain("/legacy/p", "leg-p", "plain-p", Map.of("source", "legacy"));
+
+        HardenedCollection.MigrationReport r = h.migrateNonHardenedToHardenedForTest(c -> true);
+
+        assertEquals(1, r.migrated(), "only the plain item is migrated");
+        assertEquals(0, r.failed());
+        // The pre-existing hardened item is untouched and still readable (not re-wrapped).
+        assertEquals("hardened-value", h.withSecret(existing, String::new).orElse(null));
+    }
+
     /** A provider that records whether close() was called on it. */
     private static KeyMaterialProvider closeTracking(java.util.concurrent.atomic.AtomicBoolean flag) {
         return new KeyMaterialProvider() {
@@ -851,6 +957,24 @@ class HardenedCollectionTest {
         fake.overwriteAttribute(hidden, HardenedCollection.ATTR_VERSION, HardenedCollection.ATTR_VERSION_V1);
         assertEquals("still-needed", h.withSecret(hidden, String::new).orElse(null),
                 "the hidden item's epoch key must survive, so it is readable again");
+    }
+
+    @Test
+    void migrationDoesNotDoubleEnvelopeAnItemWhoseVersionAttributeWasStripped() {
+        // migrateInternal classified by attribute alone, so a hardened item whose hardened.version
+        // was stripped looked like plaintext and was re-wrapped -- with its own base64 envelope as
+        // the new "plaintext".
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .allowMigration(true)
+                .build();
+        String path = h.createItem("x", "already-sealed").orElseThrow();
+        fake.removeAttribute(path, HardenedCollection.ATTR_VERSION);
+
+        HardenedCollection.MigrationReport r = h.migrateNonHardenedToHardenedForTest(c -> true);
+        assertEquals(0, r.migrated(), "an SSv1 body is ours regardless of the attribute");
+        assertTrue(fake.rawItems().get(path).rawSecret().startsWith("U1N2M"),
+                "the stored body must still be a single SSv1 envelope, not one wrapped in another");
     }
 
     @Test
