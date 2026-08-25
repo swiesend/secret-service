@@ -92,6 +92,26 @@ public interface HardenedCollectionInterface extends AutoCloseable {
 
     boolean deleteItem(String objectPath);
 
+    /**
+     * Rotate the collection epoch: rewrap every hardened item under a fresh epoch id, then destroy
+     * the superseded epoch keys so that a copy of the ciphertext taken before the rotation can no
+     * longer be opened.
+     *
+     * <p><b>Every hardened item's object path changes.</b> Rewrapping is a create-then-delete, and
+     * the provider assigns a new path to the new item, so any path cached across this call is dead
+     * afterwards -- {@link #withSecret} on it returns {@link Optional#empty()}, which is
+     * indistinguishable from tampering or a missing item. Re-resolve paths by attribute (via the
+     * underlying collection's {@code getItems}) after a rotation rather than reusing stored ones.
+     * Non-hardened items are untouched and keep their paths.</p>
+     *
+     * <p>Returns {@code false} without destroying anything if the rotation could not be proven
+     * complete -- the enumeration failed, or some hardened item is still sealed under an older
+     * epoch. A {@code false} therefore means "the old keys are still usable", never "some items
+     * are now unreadable": the operation fails safe.</p>
+     *
+     * @return true if every hardened item was rewrapped and the superseded keys were destroyed
+     */
+    boolean rotateEpoch();
 
     /** Current runtime status: epoch, cipher suite, threat coverage, memory-lock state. */
     HardenedStatus status();
