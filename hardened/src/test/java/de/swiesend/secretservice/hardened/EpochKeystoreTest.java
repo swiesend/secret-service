@@ -429,4 +429,30 @@ class EpochKeystoreTest {
                 "e1 must survive being serialized twice; a zeroed live key would not round-trip");
         assertTrue(reloaded.get("e2").isPresent());
     }
+
+    @Test
+    void aFailedSearchForTheKeystoreFailsClosedRatherThanForkingASecondOne() {
+        // loadIfPresent treated Optional.empty() -- the SEARCH FAILED -- as "there is no keystore".
+        // A transient failure therefore left keystorePath null, so the next persist did not replace
+        // the real keystore but JOINED it at generation 1. The following load picks the genuine one
+        // (higher generation) and deletes ours as superseded, taking with it the only copy of the
+        // keys for everything written during the degraded session. Fail closed instead.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        EpochKeystore writer = new EpochKeystore(fake, p);
+        writer.getOrCreate("e1", kem);
+        assertEquals(1, keystoreItems(fake).size());
+
+        EpochKeystore degraded = new EpochKeystore(fake, p);
+        fake.setNextGetItemsFails(true);
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> degraded.getOrCreate("e2", kem),
+                "a keystore whose enumeration failed must refuse to write, not mint a rival");
+        assertTrue(e.getMessage().contains("search failed"), e.getMessage());
+
+        assertEquals(1, keystoreItems(fake).size(),
+                "no second keystore may be forked while the real one is merely unreadable");
+    }
 }
