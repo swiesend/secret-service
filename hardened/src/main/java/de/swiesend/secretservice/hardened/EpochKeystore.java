@@ -31,8 +31,8 @@ import java.util.Set;
  * encrypted under a deterministic AES-256-GCM key derived from the pepper.
  *
  * <h3>Why a separate item</h3>
- * pepper alone (then it would not survive an epoch rotation destroying it),
- * and we don't want yet another out-of-band file.
+ * <p>Real PQ wiring needs the KEM private key on read. We can't derive it from the
+ * pepper alone (then it would not survive {@link HardenedCollection#rotateEpoch}
  * destroying it), and we don't want yet another out-of-band file. Storing the
  * keystore as a hardened-but-special item in the same collection means the same
  * backup that captures the user's secrets also captures the epoch keys -- which
@@ -42,7 +42,7 @@ import java.util.Set;
  *
  * <h3>Forward secrecy via destruction</h3>
  * <p>{@link #retainOnly(String)} drops every (epochId → keypairs) entry but one and
- * re-persists the keystore. Once a rotation
+ * re-persists the keystore. After {@link HardenedCollection#rotateEpoch}
  * has rewrapped all items under the new epoch and removed the old epoch's entry,
  * old envelopes (e.g. captured from a backup taken pre-rotation) cannot be
  * decapsulated even by an attacker who later compromises the host -- the private
