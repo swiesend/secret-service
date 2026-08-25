@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,6 +35,8 @@ final class FakeCollection implements CollectionInterface {
     private final Map<String, Item> items = new ConcurrentHashMap<>();
     private volatile boolean closed;
     private final AtomicBoolean nextCreateFails = new AtomicBoolean(false);
+    private final AtomicBoolean nextGetItemsFails = new AtomicBoolean(false);
+    private volatile java.util.function.Predicate<Map<String, String>> createFailsWhen;
 
     Map<String, Item> rawItems() { return Collections.unmodifiableMap(items); }
 
@@ -46,8 +49,108 @@ final class FakeCollection implements CollectionInterface {
         items.put(path, new Item(label, rawSecret, new LinkedHashMap<>(attrs)));
     }
 
+    /**
+     * Every object path whose BODY was read via {@code withSecret}, in call order. Lets a test
+     * assert the decorator's non-destructive contract directly -- that it never decrypts an item
+     * belonging to another application.
+     */
+    private final List<String> secretReads = Collections.synchronizedList(new ArrayList<>());
+
+    /** Paths whose secret body was read since the last {@link #clearSecretReads()}. */
+    List<String> secretReads() { return List.copyOf(secretReads); }
+
+    void clearSecretReads() { secretReads.clear(); }
+
     /** Test hook: next call to createItem returns Optional.empty() without mutating state. */
     void setNextCreateItemFails(boolean v) { this.nextCreateFails.set(v); }
+
+    /** Test hook: next call to getItems returns Optional.empty() -- i.e. the SEARCH FAILED. */
+    void setNextGetItemsFails(boolean v) { this.nextGetItemsFails.set(v); }
+
+    /**
+     * Test hook: every FILTERED getItems call (non-empty attribute map) returns a SUCCESSFUL empty
+     * result regardless of what actually matches, while the empty-map enumeration stays honest.
+     * Models the provider-dependent SearchItems unreliability this project documents (see the
+     * KeePassXC note in core's Collection.getItems): a wrong-but-successful answer, which the
+     * Optional.empty() failure hook above cannot express.
+     */
+    void setFilteredGetItemsLies(boolean v) { this.filteredGetItemsLies = v; }
+    private volatile boolean filteredGetItemsLies = false;
+
+    /** Test hook: next call to getItemLabel returns Optional.empty() -- i.e. the READ FAILED. */
+    void setNextGetItemLabelFails(boolean v) { this.nextGetItemLabelFails.set(v); }
+    private final java.util.concurrent.atomic.AtomicBoolean nextGetItemLabelFails =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Paths whose reads fail while the item REMAINS PRESENT -- models a locked/denied item or a
+     * daemon that stops answering for it. {@code getAttributes}/{@code withSecret} return empty,
+     * but {@code itemExists} still answers "present", so a caller must fail closed.
+     */
+    private final Set<String> unreadable = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    void setUnreadable(String path) { unreadable.add(path); }
+
+    /**
+     * As {@link #setUnreadable}, but only the BODY fails: attributes still read. Models an item
+     * whose secret needs a prompt the user dismissed, and isolates the body guard from the
+     * attribute guard that would otherwise trip first.
+     */
+    private final Set<String> bodyUnreadable = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    void setBodyUnreadable(String path) { bodyUnreadable.add(path); unreadable.add(path); }
+
+    /**
+     * Paths that report "cannot tell" from {@code itemExists} -- models no reply / disconnected,
+     * where nothing may be inferred about existence.
+     */
+    private final Set<String> existenceUnknown = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    void setExistenceUnknown(String path) { unreadable.add(path); existenceUnknown.add(path); }
+
+    /**
+     * A path the enumeration keeps reporting after the item is gone -- the ordinary race between
+     * listing a shared collection and reading each item, not an error. Reads of it return empty and
+     * {@code itemExists} answers "provably absent".
+     */
+    private final Set<String> phantoms = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    void setPhantomPath(String path) { phantoms.add(path); }
+
+    @Override
+    public Optional<Boolean> itemExists(String objectPath) {
+        if (existenceUnknown.contains(objectPath)) return Optional.empty();   // UNAVAILABLE
+        if (unreadable.contains(objectPath)) return Optional.of(true);        // DENIED -> present
+        return Optional.of(items.containsKey(objectPath));                    // OK / ABSENT
+    }
+
+    /**
+     * Test hook: fail createItem for the writes whose attributes match {@code p}. Needed because a
+     * one-shot failure can no longer target the rewrap -- rotateEpoch now writes the keystore
+     * first, so the first createItem of a rotation is the keystore persist. Pass a predicate that
+     * excludes {@code hardened.kind=epoch-keystore} to fail only item rewraps.
+     */
+    void setCreateItemFailsWhen(java.util.function.Predicate<Map<String, String>> p) {
+        this.createFailsWhen = p;
+    }
+
+    /** Test hook: drop one plaintext attribute (models a hostile/buggy daemon, or a lossy search). */
+    void removeAttribute(String path, String key) {
+        Item it = items.get(path);
+        if (it == null) throw new IllegalArgumentException("no such item: " + path);
+        Map<String, String> attrs = new java.util.HashMap<>(it.attrs());
+        attrs.remove(key);
+        items.put(path, new Item(it.label(), it.rawSecret(), attrs));
+    }
+
+    /** Test hook: rewrite one plaintext attribute (models a hostile/buggy daemon). */
+    void overwriteAttribute(String path, String key, String value) {
+        Item it = items.get(path);
+        if (it == null) throw new IllegalArgumentException("no such item: " + path);
+        Map<String, String> attrs = new java.util.HashMap<>(it.attrs());
+        attrs.put(key, value);
+        items.put(path, new Item(it.label(), it.rawSecret(), attrs));
+    }
 
     /** Test hook: replace the stored secret body for an item (simulates tampering). */
     void overwriteRawSecret(String path, String newRawSecret) {
@@ -68,6 +171,10 @@ final class FakeCollection implements CollectionInterface {
         if (nextCreateFails.getAndSet(false)) {
             return Optional.empty();
         }
+        java.util.function.Predicate<Map<String, String>> p = createFailsWhen;
+        if (p != null && p.test(attributes)) {
+            return Optional.empty();
+        }
         String path = "/org/freedesktop/secrets/collection/test/" + UUID.randomUUID();
         items.put(path, new Item(label, secret.toString(), new LinkedHashMap<>(attributes)));
         return Optional.of(path);
@@ -86,12 +193,22 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public Optional<Map<String, String>> getAttributes(String objectPath) {
+        // bodyUnreadable leaves attributes readable on purpose; only the secret fails.
+        if (unreadable.contains(objectPath) && !bodyUnreadable.contains(objectPath)) {
+            return Optional.empty(); // present, but we can't read it
+        }
         Item it = items.get(objectPath);
         return it == null ? Optional.empty() : Optional.of(new HashMap<>(it.attrs));
     }
 
     @Override
     public Optional<List<String>> getItems(Map<String, String> attributes) {
+        if (nextGetItemsFails.getAndSet(false)) {
+            return Optional.empty(); // models a failed search, NOT an empty result
+        }
+        if (filteredGetItemsLies && !attributes.isEmpty()) {
+            return Optional.of(List.of()); // a SUCCESSFUL lie: search "worked", found nothing
+        }
         List<String> matched = new ArrayList<>();
         for (Map.Entry<String, Item> e : items.entrySet()) {
             boolean ok = true;
@@ -100,11 +217,17 @@ final class FakeCollection implements CollectionInterface {
             }
             if (ok) matched.add(e.getKey());
         }
+        // Stale entries the daemon still lists though the item is gone; only the unfiltered
+        // enumeration reports them, which is where the classification race actually happens.
+        if (attributes.isEmpty()) matched.addAll(phantoms);
         return Optional.of(matched);
     }
 
     @Override
     public Optional<String> getItemLabel(String objectPath) {
+        if (nextGetItemLabelFails.getAndSet(false)) {
+            return Optional.empty(); // models a failed label read
+        }
         Item it = items.get(objectPath);
         return it == null ? Optional.empty() : Optional.of(it.label);
     }
@@ -129,6 +252,8 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback) {
+        secretReads.add(objectPath);
+        if (unreadable.contains(objectPath)) return Optional.empty(); // present, but we can't read it
         Item it = items.get(objectPath);
         if (it == null) return Optional.empty();
         char[] chars = it.rawSecret.toCharArray();
