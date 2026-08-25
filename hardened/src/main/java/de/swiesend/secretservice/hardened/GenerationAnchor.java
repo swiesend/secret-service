@@ -8,7 +8,7 @@ package de.swiesend.secretservice.hardened;
  * alone defeats a crash that leaves a stale duplicate, but it does <b>not</b> defend against an
  * attacker with write access to the keyring store who deletes the current keystore item and
  * re-introduces a genuine <i>older</i> generation they captured earlier: highest-of-what's-present
- * would happily load the stale snapshot and resurrect epoch keys that a rotation
+ * would happily load the stale snapshot and resurrect epoch keys that {@link HardenedCollection#rotateEpoch}
  * destroyed, silently undoing forward secrecy.</p>
  *
  * <p>A {@code GenerationAnchor} closes that gap by holding the highest generation ever committed in
