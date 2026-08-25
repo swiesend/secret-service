@@ -34,6 +34,8 @@ final class FakeCollection implements CollectionInterface {
     private final Map<String, Item> items = new ConcurrentHashMap<>();
     private volatile boolean closed;
     private final AtomicBoolean nextCreateFails = new AtomicBoolean(false);
+    private final AtomicBoolean nextGetItemsFails = new AtomicBoolean(false);
+    private volatile java.util.function.Predicate<Map<String, String>> createFailsWhen;
 
     Map<String, Item> rawItems() { return Collections.unmodifiableMap(items); }
 
@@ -46,8 +48,66 @@ final class FakeCollection implements CollectionInterface {
         items.put(path, new Item(label, rawSecret, new LinkedHashMap<>(attrs)));
     }
 
+    /**
+     * Every object path whose BODY was read via {@code withSecret}, in call order. Lets a test
+     * assert the decorator's non-destructive contract directly -- that it never decrypts an item
+     * belonging to another application.
+     */
+    private final List<String> secretReads = Collections.synchronizedList(new ArrayList<>());
+
+    /** Paths whose secret body was read since the last {@link #clearSecretReads()}. */
+    List<String> secretReads() { return List.copyOf(secretReads); }
+
+    void clearSecretReads() { secretReads.clear(); }
+
     /** Test hook: next call to createItem returns Optional.empty() without mutating state. */
     void setNextCreateItemFails(boolean v) { this.nextCreateFails.set(v); }
+
+    /** Test hook: next call to getItems returns Optional.empty() -- i.e. the SEARCH FAILED. */
+    void setNextGetItemsFails(boolean v) { this.nextGetItemsFails.set(v); }
+
+    /**
+     * Test hook: every FILTERED getItems call (non-empty attribute map) returns a SUCCESSFUL empty
+     * result regardless of what actually matches, while the empty-map enumeration stays honest.
+     * Models the provider-dependent SearchItems unreliability this project documents (see the
+     * KeePassXC note in core's Collection.getItems): a wrong-but-successful answer, which the
+     * Optional.empty() failure hook above cannot express.
+     */
+    void setFilteredGetItemsLies(boolean v) { this.filteredGetItemsLies = v; }
+    private volatile boolean filteredGetItemsLies = false;
+
+    /** Test hook: next call to getItemLabel returns Optional.empty() -- i.e. the READ FAILED. */
+    void setNextGetItemLabelFails(boolean v) { this.nextGetItemLabelFails.set(v); }
+    private final java.util.concurrent.atomic.AtomicBoolean nextGetItemLabelFails =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Test hook: fail createItem for the writes whose attributes match {@code p}. Needed because a
+     * one-shot failure can no longer target the rewrap -- rotateEpoch now writes the keystore
+     * first, so the first createItem of a rotation is the keystore persist. Pass a predicate that
+     * excludes {@code hardened.kind=epoch-keystore} to fail only item rewraps.
+     */
+    void setCreateItemFailsWhen(java.util.function.Predicate<Map<String, String>> p) {
+        this.createFailsWhen = p;
+    }
+
+    /** Test hook: drop one plaintext attribute (models a hostile/buggy daemon, or a lossy search). */
+    void removeAttribute(String path, String key) {
+        Item it = items.get(path);
+        if (it == null) throw new IllegalArgumentException("no such item: " + path);
+        Map<String, String> attrs = new java.util.HashMap<>(it.attrs());
+        attrs.remove(key);
+        items.put(path, new Item(it.label(), it.rawSecret(), attrs));
+    }
+
+    /** Test hook: rewrite one plaintext attribute (models a hostile/buggy daemon). */
+    void overwriteAttribute(String path, String key, String value) {
+        Item it = items.get(path);
+        if (it == null) throw new IllegalArgumentException("no such item: " + path);
+        Map<String, String> attrs = new java.util.HashMap<>(it.attrs());
+        attrs.put(key, value);
+        items.put(path, new Item(it.label(), it.rawSecret(), attrs));
+    }
 
     /** Test hook: replace the stored secret body for an item (simulates tampering). */
     void overwriteRawSecret(String path, String newRawSecret) {
@@ -66,6 +126,10 @@ final class FakeCollection implements CollectionInterface {
     @Override
     public Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes) {
         if (nextCreateFails.getAndSet(false)) {
+            return Optional.empty();
+        }
+        java.util.function.Predicate<Map<String, String>> p = createFailsWhen;
+        if (p != null && p.test(attributes)) {
             return Optional.empty();
         }
         String path = "/org/freedesktop/secrets/collection/test/" + UUID.randomUUID();
@@ -92,6 +156,12 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public Optional<List<String>> getItems(Map<String, String> attributes) {
+        if (nextGetItemsFails.getAndSet(false)) {
+            return Optional.empty(); // models a failed search, NOT an empty result
+        }
+        if (filteredGetItemsLies && !attributes.isEmpty()) {
+            return Optional.of(List.of()); // a SUCCESSFUL lie: search "worked", found nothing
+        }
         List<String> matched = new ArrayList<>();
         for (Map.Entry<String, Item> e : items.entrySet()) {
             boolean ok = true;
@@ -105,6 +175,9 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public Optional<String> getItemLabel(String objectPath) {
+        if (nextGetItemLabelFails.getAndSet(false)) {
+            return Optional.empty(); // models a failed label read
+        }
         Item it = items.get(objectPath);
         return it == null ? Optional.empty() : Optional.of(it.label);
     }
@@ -129,6 +202,7 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback) {
+        secretReads.add(objectPath);
         Item it = items.get(objectPath);
         if (it == null) return Optional.empty();
         char[] chars = it.rawSecret.toCharArray();
