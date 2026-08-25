@@ -1,8 +1,8 @@
 package de.swiesend.secretservice.hardened;
 
 /**
- * Selectable AEAD cipher for hardened item envelopes, chosen when a collection is built.
- * Both suites are JDK-native and use a 32-byte key,
+ * Selectable AEAD cipher for hardened item envelopes, chosen via
+ * {@link HardenedCollection.Builder#aead(AeadId)}. Both suites are JDK-native and use a 32-byte key,
  * a 12-byte nonce, and a 16-byte tag; the choice is recorded in the authenticated {@code aead_id}
  * envelope byte, so items written under either cipher remain readable.
  */

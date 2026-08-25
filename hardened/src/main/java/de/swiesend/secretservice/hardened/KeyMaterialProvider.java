@@ -10,7 +10,11 @@ package de.swiesend.secretservice.hardened;
  * <p>The interface extends {@link AutoCloseable} so providers that hold sensitive material (cached
  * pepper, open TPM handles, etc.) can scrub themselves on shutdown. The default {@link #close()} is
  * a no-op for stateless providers; implementations that hold state should override it.
- * <b>You are responsible for closing the provider you construct.</b></p>
+ * <b>You are responsible for closing the provider you construct.</b>
+ * {@link HardenedCollection#close()} does NOT close a caller-supplied provider unless the
+ * collection was built with {@code Builder.ownsProvider(true)} -- the default is non-owning so that
+ * one provider can be shared across several collections without the first {@code close()} breaking
+ * the rest.</p>
  */
 public interface KeyMaterialProvider extends AutoCloseable {
 
