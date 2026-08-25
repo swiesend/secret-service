@@ -429,4 +429,156 @@ class EpochKeystoreTest {
                 "e1 must survive being serialized twice; a zeroed live key would not round-trip");
         assertTrue(reloaded.get("e2").isPresent());
     }
+
+    @Test
+    void aFailedSearchForTheKeystoreFailsClosedRatherThanForkingASecondOne() {
+        // loadIfPresent treated Optional.empty() -- the SEARCH FAILED -- as "there is no keystore".
+        // A transient failure therefore left keystorePath null, so the next persist did not replace
+        // the real keystore but JOINED it at generation 1. The following load picks the genuine one
+        // (higher generation) and deletes ours as superseded, taking with it the only copy of the
+        // keys for everything written during the degraded session. Fail closed instead.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        EpochKeystore writer = new EpochKeystore(fake, p);
+        writer.getOrCreate("e1", kem);
+        assertEquals(1, keystoreItems(fake).size());
+
+        EpochKeystore degraded = new EpochKeystore(fake, p);
+        fake.setNextGetItemsFails(true);
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> degraded.getOrCreate("e2", kem),
+                "a keystore whose enumeration failed must refuse to write, not mint a rival");
+        assertTrue(e.getMessage().contains("enumeration failed"), e.getMessage());
+
+        assertEquals(1, keystoreItems(fake).size(),
+                "no second keystore may be forked while the real one is merely unreadable");
+    }
+
+    @Test
+    void aFailedPersistDuringRetainOnlyRollsTheEntriesBack() {
+        // retainAll ran BEFORE persist, so a transient write failure destroyed the superseded keys
+        // IN MEMORY while the on-disk keystore still held them: every item under an old epoch
+        // became unreadable for the rest of the process lifetime. rotateEpoch's contract says a
+        // false return means "the old keys are still usable" -- which this made a lie. Every other
+        // mutator here rolls back on a failed persist; retainOnly was the one that did not.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        EpochKeystore ks = new EpochKeystore(fake, p);
+        ks.getOrCreate("e-old", kem);
+        ks.getOrCreate("e-new", kem);
+
+        fake.setNextCreateItemFails(true); // the retainOnly persist will fail
+        assertThrows(IllegalStateException.class, () -> ks.retainOnly("e-new"));
+
+        assertTrue(ks.get("e-old").isPresent(),
+                "a failed persist must leave the superseded epoch keys usable in memory");
+        assertTrue(ks.get("e-new").isPresent());
+
+        // And the destruction still works once the transient clears.
+        ks.retainOnly("e-new");
+        assertTrue(ks.get("e-old").isEmpty(), "the retry destroys the superseded epoch");
+        assertTrue(ks.get("e-new").isPresent());
+    }
+
+    @Test
+    void keystoreIsFoundEvenWhenTheFilteredSearchLies() {
+        // The keystore was located with a filtered SearchItems query -- the exact mechanism this
+        // project documents as provider-unreliable and that rewrapCovered refuses to trust. A
+        // filtered search that returns SUCCESSFULLY EMPTY while the keystore item exists landed on
+        // "genuinely no keystore yet", and the next persist forked a second keystore at
+        // generation 1 -- whereupon the next load deleted it as superseded, destroying that
+        // session's epoch keys. Locating via the full enumeration (Items property) plus a local
+        // attribute filter is immune to the lie.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        EpochKeystore writer = new EpochKeystore(fake, p);
+        writer.getOrCreate("e1", kem);
+        assertEquals(1, keystoreItems(fake).size());
+
+        fake.setFilteredGetItemsLies(true); // SearchItems-style queries now return empty
+        EpochKeystore reader = new EpochKeystore(fake, p);
+        assertTrue(reader.get("e1").isPresent(),
+                "the keystore must be found through the honest full enumeration");
+        reader.getOrCreate("e2", kem); // a write must UPDATE the keystore, not fork a rival
+
+        fake.setFilteredGetItemsLies(false);
+        assertEquals(1, keystoreItems(fake).size(),
+                "exactly one keystore item: found and replaced, never forked");
+    }
+
+    @Test
+    void aForeignItemDeletedMidLoadIsSkippedRatherThanBrickingTheKeystore() {
+        // Locating the keystore reads every item's attributes. An item another application deletes
+        // between the enumeration and that read is routine on a shared collection -- and refusing
+        // service for it would make the hardened layer unusable exactly where it is meant to run.
+        // itemExists distinguishes "provably gone" (skip) from "cannot read it" (fail closed).
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        EpochKeystore writer = new EpochKeystore(fake, p);
+        writer.getOrCreate("e1", kem);
+
+        // A path the enumeration reports but that no longer resolves: gone, not unreadable.
+        fake.seedPlain("/foreign/ghost", "ghost", "gone-in-a-moment", Map.of());
+        fake.deleteItem("/foreign/ghost");
+        fake.setPhantomPath("/foreign/ghost");
+
+        EpochKeystore reader = new EpochKeystore(fake, p);
+        assertTrue(reader.get("e1").isPresent(),
+                "a vanished foreign item must not stop the keystore being found");
+    }
+
+    @Test
+    void anUnreadableButPresentItemFailsClosed() {
+        // The other half of the same distinction: an item that is still there but whose attributes
+        // we cannot read MIGHT be the keystore, so proceeding would risk forking a second one.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        EpochKeystore writer = new EpochKeystore(fake, p);
+        writer.getOrCreate("e1", kem);
+        fake.seedPlain("/foreign/locked", "locked", "cannot-read-me", Map.of());
+        fake.setUnreadable("/foreign/locked");
+
+        EpochKeystore reader = new EpochKeystore(fake, p);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> reader.get("e1"));
+        assertTrue(e.getMessage().contains("could not establish that the item is gone"), e.getMessage());
+        assertEquals(1, keystoreItems(fake).size(), "and no rival keystore was forked");
+    }
+
+    @Test
+    void aFailedReadOfTheKeystoreBodyDoesNotLookLikeAnAbsentKeystore() {
+        // The third read in loadIfPresent -- the candidate's BODY -- collapsed "we judged this and
+        // it is not ours" with "we never read it" via .orElse(null). A failed read of the genuine
+        // keystore therefore left best == null, and the next persist forked a rival at generation 1
+        // whose deletion on the following load destroys this session's epoch keys.
+        FakeCollection fake = new FakeCollection();
+        KeyMaterialProvider p = provider("a-test-pepper-long-enough-for-derivation");
+        HybridKem kem = new HybridKem(false);
+
+        EpochKeystore writer = new EpochKeystore(fake, p);
+        writer.getOrCreate("e1", kem);
+        String keystorePath = keystoreItems(fake).get(0);
+
+        // Attributes still classify it as a keystore candidate; only the BODY fails, so this
+        // reaches the third guard rather than tripping the attribute guard above it.
+        fake.setBodyUnreadable(keystorePath);
+
+        EpochKeystore reader = new EpochKeystore(fake, p);
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> reader.getOrCreate("e2", kem),
+                "a keystore whose body could not be read must not be treated as absent");
+        assertTrue(e.getMessage().contains("could not read the body of keystore candidate"),
+                e.getMessage());
+        assertEquals(1, keystoreItems(fake).size(),
+                "no rival keystore may be forked beside the one we merely failed to read");
+    }
 }
