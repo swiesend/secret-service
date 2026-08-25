@@ -34,6 +34,8 @@ final class FakeCollection implements CollectionInterface {
     private final Map<String, Item> items = new ConcurrentHashMap<>();
     private volatile boolean closed;
     private final AtomicBoolean nextCreateFails = new AtomicBoolean(false);
+    private final AtomicBoolean nextGetItemsFails = new AtomicBoolean(false);
+    private volatile java.util.function.Predicate<Map<String, String>> createFailsWhen;
 
     Map<String, Item> rawItems() { return Collections.unmodifiableMap(items); }
 
@@ -48,6 +50,37 @@ final class FakeCollection implements CollectionInterface {
 
     /** Test hook: next call to createItem returns Optional.empty() without mutating state. */
     void setNextCreateItemFails(boolean v) { this.nextCreateFails.set(v); }
+
+    /** Test hook: next call to getItems returns Optional.empty() -- i.e. the SEARCH FAILED. */
+    void setNextGetItemsFails(boolean v) { this.nextGetItemsFails.set(v); }
+
+    /**
+     * Test hook: fail createItem for the writes whose attributes match {@code p}. Needed because a
+     * one-shot failure can no longer target the rewrap -- rotateEpoch now writes the keystore
+     * first, so the first createItem of a rotation is the keystore persist. Pass a predicate that
+     * excludes {@code hardened.kind=epoch-keystore} to fail only item rewraps.
+     */
+    void setCreateItemFailsWhen(java.util.function.Predicate<Map<String, String>> p) {
+        this.createFailsWhen = p;
+    }
+
+    /** Test hook: drop one plaintext attribute (models a hostile/buggy daemon, or a lossy search). */
+    void removeAttribute(String path, String key) {
+        Item it = items.get(path);
+        if (it == null) throw new IllegalArgumentException("no such item: " + path);
+        Map<String, String> attrs = new java.util.HashMap<>(it.attrs());
+        attrs.remove(key);
+        items.put(path, new Item(it.label(), it.rawSecret(), attrs));
+    }
+
+    /** Test hook: rewrite one plaintext attribute (models a hostile/buggy daemon). */
+    void overwriteAttribute(String path, String key, String value) {
+        Item it = items.get(path);
+        if (it == null) throw new IllegalArgumentException("no such item: " + path);
+        Map<String, String> attrs = new java.util.HashMap<>(it.attrs());
+        attrs.put(key, value);
+        items.put(path, new Item(it.label(), it.rawSecret(), attrs));
+    }
 
     /** Test hook: replace the stored secret body for an item (simulates tampering). */
     void overwriteRawSecret(String path, String newRawSecret) {
@@ -66,6 +99,10 @@ final class FakeCollection implements CollectionInterface {
     @Override
     public Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes) {
         if (nextCreateFails.getAndSet(false)) {
+            return Optional.empty();
+        }
+        java.util.function.Predicate<Map<String, String>> p = createFailsWhen;
+        if (p != null && p.test(attributes)) {
             return Optional.empty();
         }
         String path = "/org/freedesktop/secrets/collection/test/" + UUID.randomUUID();
@@ -92,6 +129,9 @@ final class FakeCollection implements CollectionInterface {
 
     @Override
     public Optional<List<String>> getItems(Map<String, String> attributes) {
+        if (nextGetItemsFails.getAndSet(false)) {
+            return Optional.empty(); // models a failed search, NOT an empty result
+        }
         List<String> matched = new ArrayList<>();
         for (Map.Entry<String, Item> e : items.entrySet()) {
             boolean ok = true;
