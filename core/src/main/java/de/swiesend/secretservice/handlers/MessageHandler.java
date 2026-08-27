@@ -16,7 +16,11 @@ import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
 
 public class MessageHandler {
 
-    private Logger log = LoggerFactory.getLogger(getClass());
+    // getLogger(MessageHandler.class), not getLogger(getClass()): the latter names the RUNTIME
+    // subclass, so a consumer who configures "de.swiesend.secretservice.handlers.MessageHandler"
+    // in their SLF4J backend silently fails to match a subclassed handler. Logger names are the
+    // library's only filtering contract, so they must be predictable from the source.
+    private static final Logger log = LoggerFactory.getLogger(MessageHandler.class);
 
     private DBusConnection connection;
     private boolean fireAndForget = true;

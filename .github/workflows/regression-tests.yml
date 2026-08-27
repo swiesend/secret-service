@@ -25,6 +25,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
+      # Cheap, source-only, and first: a leak that reaches a log is not undone by deleting the
+      # log. Runs before the container build so a violation fails in seconds, not minutes.
+      - name: Check the logging policy
+        run: python3 .github/scripts/check_logging.py
+
       - name: Build test container
         run: docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test .
 
