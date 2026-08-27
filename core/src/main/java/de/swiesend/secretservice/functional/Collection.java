@@ -130,7 +130,8 @@ public class Collection implements CollectionInterface {
 
         Optional<de.swiesend.secretservice.Collection> maybeCollection = c.getOrCreateCollection(label);
         if (maybeCollection.isEmpty()) {
-            log.warn("Could not acquire collection with name {}", label);
+            // A collection name is user-chosen too, and just as descriptive as an item label.
+            log.warn("Could not acquire collection with name {}", LogPolicy.label(label));
             return Optional.empty();
         }
         c.collection = maybeCollection.get();
@@ -320,7 +321,9 @@ public class Collection implements CollectionInterface {
 
     private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(DBusPath path, String label) {
         if (path == null) {
-            log.error(String.format("Could not acquire collection with label: \"%s\"", label));
+            // Parameterised, not String.format: the argument is then rendered only if the message
+            // is actually emitted, so a suppressed label is never built at all.
+            log.error("Could not acquire collection with label: {}", LogPolicy.label(label));
             return Optional.empty();
         }
 
@@ -408,7 +411,7 @@ public class Collection implements CollectionInterface {
 
         Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
         if (encrypted == null) {
-            log.error("Could not encrypt secret for item \"{}\".", label);
+            log.error("Could not encrypt secret for item {}.", LogPolicy.label(label));
             return Optional.empty();
         }
 
@@ -416,7 +419,7 @@ public class Collection implements CollectionInterface {
             Map<String, Variant> properties = Item.createProperties(label, attributes);
             Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
             if (pair == null || pair.a == null) {
-                log.error("createItem D-Bus call returned no result for label \"{}\".", label);
+                log.error("createItem D-Bus call returned no result for item {}.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
@@ -428,7 +431,7 @@ public class Collection implements CollectionInterface {
             // Prompt required (e.g. KeePassXC per-item unlock)
             de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
             if (completed == null || completed.dismissed) {
-                log.warn("Prompt was dismissed or timed out for item \"{}\".", label);
+                log.warn("Prompt was dismissed or timed out for item {}.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
