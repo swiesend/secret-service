@@ -564,6 +564,18 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
+    public Optional<Boolean> itemExists(String objectPath) {
+        // Deliberately no unlock() here: a locked item still answers the existence question (the
+        // daemon refuses it by name, which is DENIED, i.e. present), and unlocking can prompt --
+        // far too heavy for a question asked while classifying someone else's item.
+        // empty, not of(false): a null path is a programming error and proves nothing about any
+        // item. Answering "provably absent" would license a caller's destructive branch on it, and
+        // every sibling method returns empty for the same input.
+        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        return getItem(objectPath).flatMap(de.swiesend.secretservice.Item::exists);
+    }
+
+    @Override
     public Optional<List<String>> getItems(Map<String, String> attributes) {
         if (attributes == null) return Optional.empty();
         unlock();
