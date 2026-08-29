@@ -742,6 +742,7 @@ public class Collection implements CollectionInterface {
     public Optional<char[]> getSecret(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
+        if (!unlockItemIfLocked(objectPath)) return Optional.empty();
 
         return getItem(objectPath)
                 .flatMap(item -> {
@@ -1015,6 +1016,50 @@ public class Collection implements CollectionInterface {
 
     private List<DBusPath> lockable() {
         return Arrays.asList(collection.getPath());
+    }
+
+    /**
+     * Unlocks a single item when the provider reports it as locked, so a read can proceed.
+     *
+     * <p>The freedesktop specification says a client "should act as if it must unlock each item
+     * individually". KeePassXC does exactly that and prompts per item; gnome-keyring never locks an
+     * item on its own, so it only ever needed the collection-level {@link #unlock()} above. Because
+     * only the collection was unlocked, reading a locked item on KeePassXC simply failed
+     * (issue #45).
+     *
+     * <p><b>Why this cannot change behaviour for existing consumers.</b> The new work happens only
+     * inside the {@code isLocked()} branch, and that branch is unreachable on the providers people
+     * use today:
+     * <ul>
+     *   <li>gnome-keyring does not lock items individually, so the property is false and nothing
+     *       here runs.</li>
+     *   <li>{@link de.swiesend.secretservice.Item#isLocked()} is <em>fail-open</em>: a property read
+     *       that fails yields {@code false}. A flaky D-Bus call therefore cannot raise a prompt that
+     *       did not appear before.</li>
+     * </ul>
+     * The only callers affected are those on a provider that genuinely locks items -- the case that
+     * does not work at all today.
+     *
+     * <p>Deliberately not applied to {@code getSecrets}/{@code withSecrets}: those iterate the whole
+     * collection, and one prompt per item is not a reasonable thing to do to a user.
+     *
+     * @return true when the item can be read: it was already unlocked, or the unlock succeeded.
+     *         False when the item stayed locked, which includes the user dismissing the prompt.
+     */
+    private boolean unlockItemIfLocked(String objectPath) {
+        Optional<de.swiesend.secretservice.Item> maybeItem = getItem(objectPath);
+        if (maybeItem.isEmpty()) return true; // not our call to make; the read below reports it
+        if (!maybeItem.get().isLocked()) return true;
+
+        log.debug("Item is locked; asking the provider to unlock it: {}", objectPath);
+        if (unlockItem(objectPath)) return true;
+
+        // Do not fall through to GetSecret. It cannot succeed on a locked item, and the failure it
+        // produces would be reported as a missing or unreadable secret rather than as the refusal
+        // it actually is.
+        log.warn("Item stayed locked, so its secret cannot be read: {}. The unlock prompt was "
+                + "dismissed, timed out, or the provider refused it.", objectPath);
+        return false;
     }
 
     public boolean disablePrompt() {
