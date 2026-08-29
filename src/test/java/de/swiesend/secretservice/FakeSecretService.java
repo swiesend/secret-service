@@ -99,6 +99,8 @@ public final class FakeSecretService {
     // volatile like the other mutable fields: written in OpenSession and read in GetSecret,
     // which dbus-java may dispatch on different threads of its receiving pool.
     private volatile byte[] sessionKey;
+    /** The pending prompt emitter, so a test can wait for it instead of racing it. */
+    private volatile Thread promptThread;
 
     public FakeSecretService(DBusConnection connection, boolean itemLocked) {
         this.connection = connection;
@@ -125,6 +127,30 @@ public final class FakeSecretService {
      */
     public void setRefuseCollectionUnlock(boolean refuse) { this.refuseCollectionUnlock = refuse; }
     private volatile boolean refuseCollectionUnlock;
+
+    /**
+     * Makes item Lock/Unlock require a prompt that would <b>succeed</b>. Without this the fake
+     * completes those operations inline, so a test cannot tell "the client refused to prompt" from
+     * "the operation failed anyway" -- both give the same answer. With it, the operation succeeds
+     * when prompting is allowed and fails when it is not, which is the difference under test.
+     */
+    public void setRequirePromptForItemOps(boolean require) { this.requirePromptForItemOps = require; }
+    private volatile boolean requirePromptForItemOps;
+
+    /** Waits for any pending prompt emission, so teardown does not race it. */
+    public void awaitPendingPrompt() {
+        Thread t = promptThread;
+        if (t == null) return;
+        try {
+            t.join(5_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void log(String message) {
+        java.lang.System.err.println(message);
+    }
 
     public boolean isItemLocked() {
         return itemLocked;
@@ -199,12 +225,27 @@ public final class FakeSecretService {
                 emitCompletedLater(true);
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
+            if (requirePromptForItemOps) {
+                // Unlocked only when the prompt is answered -- see emitCompletedLater. Doing it
+                // here would mean a client that declines to prompt still sees the item unlocked.
+                emitCompletedLater(false, () -> itemLocked = false);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+            }
             itemLocked = false;
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
         }
 
         @Override
         public Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects) {
+            boolean itemRequested = objects.stream().anyMatch(p -> ITEM_PATH.equals(p.getPath()));
+            if (itemRequested && requirePromptForItemOps && !itemLocked) {
+                // Only the item goes behind a prompt, and only when it is not already locked. The
+                // Unlock counterpart lets every other case fall through, and so must this: an
+                // earlier version returned here for a Lock naming both paths, silently dropping
+                // the collection and reporting an empty locked list as if the request had vanished.
+                emitCompletedLater(false, () -> itemLocked = true);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+            }
             for (DBusPath p : objects) {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
                 if (COLLECTION_PATH.equals(p.getPath())) collectionLocked = true;
@@ -315,16 +356,28 @@ public final class FakeSecretService {
      * Prompt.await, which it only reaches after Unlock has returned.
      */
     private void emitCompletedLater(boolean dismissed) {
+        emitCompletedLater(dismissed, () -> { });
+    }
+
+    /** @param onAnswered applied when the prompt is answered, before the signal goes out. */
+    private void emitCompletedLater(boolean dismissed, Runnable onAnswered) {
         Thread t = new Thread(() -> {
             try {
                 Thread.sleep(150);
+                if (!dismissed) onAnswered.run();
                 connection.sendMessage(new de.swiesend.secretservice.interfaces.Prompt.Completed(
                         PROMPT_PATH, dismissed, new Variant<>(new ArrayList<DBusPath>(), "ao")));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } catch (Exception e) {
-                throw new IllegalStateException("fake: could not emit Completed", e);
+                // The test may already have torn the bus down; a Completed nobody is waiting for is
+                // not a failure. Throwing here printed stack traces on a passing build, which the
+                // next person to read CI output takes for an error.
+                log("fake: dropped a Completed signal after teardown: " + e.getClass().getName());
             }
         }, "fake-prompt");
         t.setDaemon(true);
+        promptThread = t;
         t.start();
     }
 
