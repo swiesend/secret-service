@@ -40,14 +40,28 @@ dbus-send --session --dest=org.freedesktop.DBus \
   || { echo "ERROR: D-Bus not reachable"; exit 1; }
 
 # Block until org.freedesktop.secrets is registered on the bus.
-# Usage: wait_for_secrets [timeout_seconds]
+#
+# Usage: wait_for_secrets [timeout_seconds] [provider_pid]
+#
+# Passing the provider's PID is optional and backward compatible. With it, a provider
+# that dies during startup is reported when it dies instead of at the end of the
+# timeout -- otherwise a daemon that aborted after one second is indistinguishable from
+# one that is merely slow, and both present as the same generic timeout message.
+#
+# Returns 1 on timeout, 2 if the watched process exited, so callers can tell the two
+# apart and avoid blaming the wrong thing.
 wait_for_secrets() {
     local timeout="${1:-30}"
+    local watch_pid="${2:-}"
     local waited=0
     while ! dbus-send --session --dest=org.freedesktop.DBus \
             --type=method_call --print-reply \
             /org/freedesktop/DBus org.freedesktop.DBus.GetNameOwner \
             string:org.freedesktop.secrets >/dev/null 2>&1; do
+        if [ -n "$watch_pid" ] && ! kill -0 "$watch_pid" 2>/dev/null; then
+            echo "ERROR: the provider (pid ${watch_pid}) exited before registering org.freedesktop.secrets"
+            return 2
+        fi
         sleep 1
         waited=$((waited + 1))
         if [ "$waited" -ge "$timeout" ]; then

@@ -53,3 +53,20 @@ jobs:
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-${{ matrix.provider }} \
             mvn -B test -Psystem-test
+
+      # The container runs --rm, so anything it left in /tmp is gone by the time the job
+      # is read. Surefire reports are collected for every provider; the daemon logs only
+      # for keepassxc, which is the one migrated to write under the mounted workspace.
+      # kwallet still logs to /tmp, so a kwallet bring-up failure that exits before
+      # Maven runs still produces no artifact — worth migrating next, and called out
+      # here so the step is not mistaken for covering it.
+      - name: Collect provider diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-logs-${{ matrix.provider }}
+          path: |
+            target/provider-logs/
+            **/target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 7
