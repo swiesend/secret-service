@@ -702,6 +702,12 @@ public class Collection implements CollectionInterface {
         }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
+            // Before the call, for the same reason as unlockItem: an unanswered Prompt object
+            // would be left behind on the provider.
+            if (!isPrompting) {
+                log.debug("Locking item {} would need a prompt, and prompting is disabled.", itemPath);
+                return false;
+            }
             Optional<Pair<List<DBusPath>, DBusPath>> maybeLock = service.getService().lock(List.of(item.getPath()));
             if (maybeLock.isEmpty()) {
                 log.error("Could not lock item: {}", itemPath);
@@ -709,8 +715,15 @@ public class Collection implements CollectionInterface {
             }
             Pair<List<DBusPath>, DBusPath> lock = maybeLock.get();
             log.debug("lock item: {}", lock);
-            de.swiesend.secretservice.interfaces.Prompt.Completed result = prompt.await(lock.b, service.getTimeout());
-            log.debug("lock item prompt: {}", result);
+            // Only when a prompt is genuinely required. A non-empty lock.a means the provider
+            // already locked the item, and a "/" path means there is no prompt object to talk to --
+            // this awaited in both cases, which on the "/" path consults
+            // getLastHandledSignal(Completed.class), an unrelated earlier prompt's result.
+            if (lock.a.isEmpty() && requiresPrompt(lock.b)) {
+                de.swiesend.secretservice.interfaces.Prompt.Completed result =
+                        prompt.await(lock.b, service.getTimeout());
+                log.debug("lock item prompt: {}", result);
+            }
         }
         return item.isLocked();
     }
@@ -723,6 +736,14 @@ public class Collection implements CollectionInterface {
         }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (item.isLocked()) {
+            // Before the call, not after. Unlocking a locked item essentially always needs a
+            // prompt, and issuing Unlock only to refuse the prompt leaves the provider holding a
+            // Prompt object that is never answered nor dismissed -- one per read, for the life of
+            // the connection, on a process that reads locked items with prompting disabled.
+            if (!isPrompting) {
+                log.debug("Unlocking item {} would need a prompt, and prompting is disabled.", itemPath);
+                return false;
+            }
             Optional<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlock(List.of(item.getPath()));
             if (maybeUnlock.isEmpty()) {
                 log.error("Could not unlock item: {}", itemPath);
@@ -730,7 +751,11 @@ public class Collection implements CollectionInterface {
             }
             Pair<List<DBusPath>, DBusPath> unlock = maybeUnlock.get();
             log.debug("unlock item: {}", unlock);
-            if (unlock.a.isEmpty()) {
+            // requiresPrompt(), matching lockItem: an empty unlock.a with a "/" path means the
+            // provider refused without offering a prompt, and awaiting on "/" falls through to
+            // getLastHandledSignal, which filters by class and not by path -- an unrelated earlier
+            // prompt's result.
+            if (unlock.a.isEmpty() && requiresPrompt(unlock.b)) {
                 // A prompt is required. await() returns null when it times out, and reading
                 // .result on that threw a NullPointerException out of a method declared to return
                 // a boolean. A dismissed prompt was not checked at all, so a refusal looked the
@@ -1096,14 +1121,9 @@ public class Collection implements CollectionInterface {
         if (maybeItem.isEmpty()) return true; // getItem is empty only for a null path, rejected above
         if (!maybeItem.get().isLocked()) return true;
 
-        // Unlocking an item needs a prompt, and the caller may have said no prompts. performPrompt
-        // is the only place isPrompting is honoured, and unlockItem reaches prompt.await directly,
-        // so without this check disablePrompt() would not stop the per-item dialog -- the very
-        // thing it exists to prevent.
-        if (!isPrompting) {
-            log.debug("Item {} is locked, but prompting is disabled; not unlocking it.", objectPath);
-            return true;
-        }
+        // No isPrompting check here: unlockItem itself now refuses to raise a prompt the caller
+        // opted out of, so the guarantee holds for direct callers of the public method too, and
+        // stating it twice would let the two copies drift.
 
         Optional<Boolean> collectionLocked = collection.lockedState();
         // Empty means the read failed. Treating that as "unlocked" would re-enable the double
@@ -1116,8 +1136,15 @@ public class Collection implements CollectionInterface {
         // Do not fall through to GetSecret. It cannot succeed on a locked item, and the failure it
         // produces would be reported as a missing or unreadable secret rather than as the refusal
         // it actually is.
-        log.warn("Item stayed locked, so its secret cannot be read: {}. The unlock prompt was "
-                + "dismissed, timed out, or the provider refused it.", objectPath);
+        // WARN only when something unexpected happened. With prompting disabled the item staying
+        // locked is the caller's own instruction being carried out, and warning about it would
+        // report a deliberate configuration as a fault on every read.
+        if (isPrompting) {
+            log.warn("Item stayed locked, so its secret cannot be read: {}. The unlock prompt was "
+                    + "dismissed, timed out, or the provider refused it.", objectPath);
+        } else {
+            log.debug("Item {} stayed locked because prompting is disabled; not read.", objectPath);
+        }
         return false;
     }
 
