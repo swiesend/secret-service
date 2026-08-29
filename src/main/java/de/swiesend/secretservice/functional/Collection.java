@@ -731,10 +731,23 @@ public class Collection implements CollectionInterface {
             Pair<List<DBusPath>, DBusPath> unlock = maybeUnlock.get();
             log.debug("unlock item: {}", unlock);
             if (unlock.a.isEmpty()) {
-                de.swiesend.secretservice.interfaces.Prompt.Completed await = prompt.await(unlock.b, service.getTimeout());
-                log.info("Unlocked Item: {}", await.result.getValue());
+                // A prompt is required. await() returns null when it times out, and reading
+                // .result on that threw a NullPointerException out of a method declared to return
+                // a boolean. A dismissed prompt was not checked at all, so a refusal looked the
+                // same as a success until the re-read below happened to contradict it.
+                de.swiesend.secretservice.interfaces.Prompt.Completed completed =
+                        prompt.await(unlock.b, service.getTimeout());
+                if (completed == null) {
+                    log.warn("Unlock prompt for item {} timed out.", itemPath);
+                    return false;
+                }
+                if (completed.dismissed) {
+                    log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
+                    return false;
+                }
             }
         }
+        // Authoritative: ask the provider again rather than trusting the prompt result.
         return !item.isLocked();
     }
 

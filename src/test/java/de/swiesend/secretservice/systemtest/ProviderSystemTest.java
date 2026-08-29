@@ -191,4 +191,39 @@ public class ProviderSystemTest {
             collection.deleteItem(itemPath);
         }
     }
+
+    @Test
+    @DisplayName("a live provider that locks items individually can still be read (issue #45)")
+    void perItemLockIsHandledAgainstTheLiveProvider() {
+        // Honest about its coverage: this SKIPS on every provider in CI today. gnome-keyring never
+        // locks a single item, and the KeePassXC container sets ConfirmAccessItem=false, which
+        // switches the behaviour off. It is here so that a developer running against a real
+        // KeePassXC with per-item confirmation enabled -- and CI, if that setting is ever turned on
+        // -- exercises the real wire path. The deterministic coverage lives in PerItemUnlockTest,
+        // which drives a fake provider that does lock items.
+        String label = "provider-system-per-item-lock";
+        String secret = "s3cr3t-per-item";
+
+        String itemPath = collection.createItem(label, secret, Map.of("kind", "system-test")).orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+        try {
+            assertTrue(collection.lockItem(itemPath),
+                    "precondition: the provider must accept locking a single item");
+            Assumptions.assumeTrue(collection.isLocked() || lockedIndividually(itemPath),
+                    "provider does not lock items individually; nothing to exercise here");
+
+            char[] got = collection.getSecret(itemPath).orElse(null);
+            assertNotNull(got, "a locked item must be unlocked automatically and then read");
+            assertArrayEquals(secret.toCharArray(), got);
+            Arrays.fill(got, '\0');
+        } finally {
+            collection.deleteItem(itemPath);
+        }
+    }
+
+    /** Whether the provider really reports this one item as locked, as KeePassXC does. */
+    private boolean lockedIndividually(String itemPath) {
+        // getAttributes succeeds on an unlocked item; a provider that locks the item refuses it.
+        return collection.getAttributes(itemPath).isEmpty();
+    }
 }
