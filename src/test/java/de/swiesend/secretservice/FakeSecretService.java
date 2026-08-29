@@ -50,6 +50,7 @@ public final class FakeSecretService {
     public static final String COLLECTION_LABEL = "fake";
     public static final String ITEM_PATH = COLLECTION_PATH + "/1";
     public static final String SESSION_PATH = "/org/freedesktop/secrets/session/fake";
+    public static final String PROMPT_PATH = "/org/freedesktop/secrets/prompt/fake";
 
     /** What the fake item holds. */
     public static final String SECRET_VALUE = "the-locked-secret";
@@ -95,7 +96,11 @@ public final class FakeSecretService {
     /** Every path passed to Unlock, in call order -- what the tests assert on. */
     private final List<String> unlockCalls = Collections.synchronizedList(new ArrayList<>());
 
-    private byte[] sessionKey;   // derived in OpenSession, used to encrypt the secret
+    // volatile like the other mutable fields: written in OpenSession and read in GetSecret,
+    // which dbus-java may dispatch on different threads of its receiving pool.
+    private volatile byte[] sessionKey;
+    /** The pending prompt emitter, so a test can wait for it instead of racing it. */
+    private volatile Thread promptThread;
 
     public FakeSecretService(DBusConnection connection, boolean itemLocked) {
         this.connection = connection;
@@ -110,6 +115,41 @@ public final class FakeSecretService {
     /** Makes the prompt come back dismissed, as if the user had refused it. */
     public void setDismissPrompts(boolean dismiss) {
         this.dismissPrompts = dismiss;
+    }
+
+    /** Locks the collection, as a provider does when the keyring times out or the user locks it. */
+    public void lockCollection() { collectionLocked = true; }
+
+    /**
+     * Refuses to unlock the collection, as happens when the user dismisses the keyring prompt, the
+     * stored password is wrong, or prompting is disabled. This is the state in which a per-item
+     * unlock attempt would raise a SECOND prompt.
+     */
+    public void setRefuseCollectionUnlock(boolean refuse) { this.refuseCollectionUnlock = refuse; }
+    private volatile boolean refuseCollectionUnlock;
+
+    /**
+     * Makes item Lock/Unlock require a prompt that would <b>succeed</b>. Without this the fake
+     * completes those operations inline, so a test cannot tell "the client refused to prompt" from
+     * "the operation failed anyway" -- both give the same answer. With it, the operation succeeds
+     * when prompting is allowed and fails when it is not, which is the difference under test.
+     */
+    public void setRequirePromptForItemOps(boolean require) { this.requirePromptForItemOps = require; }
+    private volatile boolean requirePromptForItemOps;
+
+    /** Waits for any pending prompt emission, so teardown does not race it. */
+    public void awaitPendingPrompt() {
+        Thread t = promptThread;
+        if (t == null) return;
+        try {
+            t.join(5_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void log(String message) {
+        java.lang.System.err.println(message);
     }
 
     public boolean isItemLocked() {
@@ -164,15 +204,32 @@ public final class FakeSecretService {
             // The bug this fixture exists for: unlocking the COLLECTION does nothing to the item.
             boolean itemRequested = objects.stream().anyMatch(p -> ITEM_PATH.equals(p.getPath()));
             if (!itemRequested) {
+                if (refuseCollectionUnlock) {
+                    return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
+                }
                 // A collection-level unlock succeeds immediately and, crucially, does NOT touch the
                 // item. That asymmetry is the bug under test.
                 collectionLocked = false;
                 return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
             }
             if (dismissPrompts) {
-                // Refused. Nothing unlocked and no prompt object to wait on -- the client must
-                // treat this as "still locked" rather than pressing on to GetSecret.
-                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
+                // A REAL prompt path, and a Completed(dismissed=true) to go with it. Answering "/"
+                // instead would send the client down Prompt.await's getLastHandledSignal branch,
+                // where no signal is ever handled -- so every test hit the "no prompt result" path
+                // and the dismissal branch had no coverage at all.
+                //
+                // No Prompt object is exported: declaring @DBusInterfaceName for
+                // org.freedesktop.Secret.Prompt registers a JVM-wide interface->class mapping that
+                // stops dbus-java constructing the library's own Prompt.Completed. The client's
+                // Prompt() method call therefore fails harmlessly; only the signal matters.
+                emitCompletedLater(true);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+            }
+            if (requirePromptForItemOps) {
+                // Unlocked only when the prompt is answered -- see emitCompletedLater. Doing it
+                // here would mean a client that declines to prompt still sees the item unlocked.
+                emitCompletedLater(false, () -> itemLocked = false);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
             itemLocked = false;
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
@@ -180,6 +237,15 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects) {
+            boolean itemRequested = objects.stream().anyMatch(p -> ITEM_PATH.equals(p.getPath()));
+            if (itemRequested && requirePromptForItemOps && !itemLocked) {
+                // Only the item goes behind a prompt, and only when it is not already locked. The
+                // Unlock counterpart lets every other case fall through, and so must this: an
+                // earlier version returned here for a Lock naming both paths, silently dropping
+                // the collection and reporting an empty locked list as if the request had vanished.
+                emitCompletedLater(false, () -> itemLocked = true);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+            }
             for (DBusPath p : objects) {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
                 if (COLLECTION_PATH.equals(p.getPath())) collectionLocked = true;
@@ -189,7 +255,15 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes) {
-            return new Pair<>(itemLocked ? List.of() : List.of(new DBusPath(ITEM_PATH)), List.of());
+            // (unlocked, locked). Reporting the item in neither list when it is locked would be a
+            // trap for the next test to use this: it would look like the item does not exist.
+            List<DBusPath> item = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
+            // Same condition as the Locked property and GetSecret below: a fixture that reports an
+            // item locked in one place and hands out its plaintext in another teaches the next test
+            // something no real provider does.
+            return (itemLocked || collectionLocked)
+                    ? new Pair<>(new ArrayList<DBusPath>(), item)
+                    : new Pair<>(item, new ArrayList<DBusPath>());
         }
 
         @Override
@@ -233,8 +307,9 @@ public final class FakeSecretService {
     private final class ItemImpl implements WireItem, Properties {
         @Override
         public Secret GetSecret(DBusPath session) {
-            if (itemLocked) {
-                // What a provider does for a locked item. The client must not get here.
+            if (itemLocked || collectionLocked) {
+                // What a provider does for a locked item -- including one locked only because its
+                // collection is. The client must not get here.
                 throw new IllegalStateException("fake: item is locked");
             }
             try {
@@ -253,7 +328,9 @@ public final class FakeSecretService {
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             switch (property) {
-                case "Locked":     return (A) Boolean.valueOf(itemLocked);   // ...but the ITEM is not
+                // gnome-keyring reports an item as locked whenever its collection is locked, so
+                // the fake does too when asked to. This is what makes the regression reproducible.
+                case "Locked":     return (A) Boolean.valueOf(itemLocked || collectionLocked);
                 case "Attributes": return (A) new Variant<>(new HashMap<String, String>(), "a{ss}");
                 case "Label":      return (A) "fake-item";
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
@@ -272,6 +349,37 @@ public final class FakeSecretService {
         @Override public boolean isRemote() { return false; }
     }
 
+
+    /**
+     * Emits {@code Prompt.Completed} shortly after Unlock returns, as a provider does once the user
+     * has answered. The delay lets the client arm its signal handler first -- it does that inside
+     * Prompt.await, which it only reaches after Unlock has returned.
+     */
+    private void emitCompletedLater(boolean dismissed) {
+        emitCompletedLater(dismissed, () -> { });
+    }
+
+    /** @param onAnswered applied when the prompt is answered, before the signal goes out. */
+    private void emitCompletedLater(boolean dismissed, Runnable onAnswered) {
+        Thread t = new Thread(() -> {
+            try {
+                Thread.sleep(150);
+                if (!dismissed) onAnswered.run();
+                connection.sendMessage(new de.swiesend.secretservice.interfaces.Prompt.Completed(
+                        PROMPT_PATH, dismissed, new Variant<>(new ArrayList<DBusPath>(), "ao")));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                // The test may already have torn the bus down; a Completed nobody is waiting for is
+                // not a failure. Throwing here printed stack traces on a passing build, which the
+                // next person to read CI output takes for an error.
+                log("fake: dropped a Completed signal after teardown: " + e.getClass().getName());
+            }
+        }, "fake-prompt");
+        t.setDaemon(true);
+        promptThread = t;
+        t.start();
+    }
 
     /** HKDF-SHA256 extract(null salt) + expand(empty info) to 128 bits, as the spec requires. */
     private static byte[] hkdfSha256To128(byte[] ikm) throws Exception {

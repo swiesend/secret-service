@@ -123,6 +123,24 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
         return response.isPresent() ? response.get() : false;
     }
 
+    /**
+     * The {@code Locked} property, keeping "could not read it" separate from "it is unlocked".
+     *
+     * <p>{@link #isLocked()} answers {@code false} for both, which is the right default for a
+     * caller that only wants to know whether to try unlocking. It is the wrong default for a caller
+     * that must not act unless it is <em>sure</em> — a failed read there silently becomes
+     * "unlocked, go ahead".</p>
+     *
+     * @return the property, or empty when it could not be read
+     */
+    public Optional<Boolean> lockedState() {
+        // flatMap + ofNullable, matching getItems/created/modified: a null variant is an absent
+        // answer, not "unlocked". Mapping it to FALSE would reintroduce, inside the fail-closed
+        // helper itself, the very conflation isLocked() is documented above as getting wrong.
+        return getProperty("Locked").flatMap(variant ->
+                Optional.ofNullable(variant).map(v -> (Boolean) v.getValue()));
+    }
+
     @Override
     public Optional<UInt64> created() {
         return getProperty("Created").flatMap(variant ->

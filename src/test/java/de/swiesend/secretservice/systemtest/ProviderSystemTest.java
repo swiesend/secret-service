@@ -201,15 +201,27 @@ public class ProviderSystemTest {
         // KeePassXC with per-item confirmation enabled -- and CI, if that setting is ever turned on
         // -- exercises the real wire path. The deterministic coverage lives in PerItemUnlockTest,
         // which drives a fake provider that does lock items.
+        // Deliberately not gated on a provider name. The condition below -- collection unlocked,
+        // item locked -- is what the code under test reacts to, whoever produces it, and this suite
+        // is provider-agnostic by design. Naming KeePassXC here would also skip a future KWallet
+        // that grew the same behaviour.
         String label = "provider-system-per-item-lock";
         String secret = "s3cr3t-per-item";
 
         String itemPath = collection.createItem(label, secret, Map.of("kind", "system-test")).orElse(null);
         assertNotNull(itemPath, "createItem returned empty");
         try {
-            assertTrue(collection.lockItem(itemPath),
-                    "precondition: the provider must accept locking a single item");
-            Assumptions.assumeTrue(collection.isLocked() || lockedIndividually(itemPath),
+            // NOTHING here locks anything. An earlier version called lockItem() to manufacture the
+            // condition, which is not safe against a live provider: KeePassXC's Lock on an item
+            // locks the whole database, that database is the user's own, and the only way back is
+            // unlockWithUserPermission() -- which locks and re-prompts, so in a headless run it
+            // blocks until the prompt times out and then leaves the database locked anyway. Worse
+            // than not trying.
+            //
+            // So the test observes rather than arranges: with per-item confirmation enabled, the
+            // provider reports a freshly written item as locked on its own. That is the real
+            // condition, and if it is not present there is nothing here to exercise.
+            Assumptions.assumeTrue(!collection.isLocked() && lockedIndividually(itemPath),
                     "provider does not lock items individually; nothing to exercise here");
 
             char[] got = collection.getSecret(itemPath).orElse(null);
@@ -223,7 +235,14 @@ public class ProviderSystemTest {
 
     /** Whether the provider really reports this one item as locked, as KeePassXC does. */
     private boolean lockedIndividually(String itemPath) {
-        // getAttributes succeeds on an unlocked item; a provider that locks the item refuses it.
-        return collection.getAttributes(itemPath).isEmpty();
+        // Read the item's own Locked property -- the exact condition unlockItemIfLocked branches
+        // on. An earlier version inferred it from getAttributes() failing, which is a different
+        // question: the spec keeps locked items discoverable with their attributes, and KeePassXC
+        // gates confirm-access on GetSecret rather than on the Attributes read. So on the one
+        // provider this test targets, the item reported Locked while getAttributes succeeded, and
+        // the test skipped while claiming to cover the live per-item path.
+        return new de.swiesend.secretservice.Item(
+                de.swiesend.secretservice.Static.Convert.toObjectPath(itemPath),
+                service.getService()).isLocked();
     }
 }
