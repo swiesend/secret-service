@@ -42,7 +42,11 @@ class PerItemUnlockTest {
 
     private static boolean dbusDaemonAvailable() {
         try {
-            return new ProcessBuilder("dbus-daemon", "--version").start().waitFor() == 0;
+            Process p = new ProcessBuilder("dbus-daemon", "--version")
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            return p.waitFor() == 0;
         } catch (Exception e) {
             return false;
         }
@@ -70,7 +74,9 @@ class PerItemUnlockTest {
                 """.formatted(socket));
 
         bus = new ProcessBuilder("dbus-daemon", "--config-file=" + config, "--nofork")
-                .redirectErrorStream(true).start();
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
         busAddress = "unix:path=" + socket;
         for (int i = 0; i < 100 && !java.nio.file.Files.exists(socket); i++) Thread.sleep(50);
         Assumptions.assumeTrue(java.nio.file.Files.exists(socket),
@@ -107,7 +113,26 @@ class PerItemUnlockTest {
         try { if (service != null) service.close(); } catch (Exception ignored) { }
         try { if (connection != null) connection.disconnect(); } catch (Exception ignored) { }
         try { if (providerConnection != null) providerConnection.disconnect(); } catch (Exception ignored) { }
-        if (bus != null) bus.destroy();
+        if (bus != null) {
+            bus.destroy();
+            // Wait, so the next test does not start while this daemon is still shutting down.
+            try {
+                // Forcibly, if it will not go quietly: the temp directory below holds the live
+                // socket, and deleting it under a running daemon leaks the process.
+                if (!bus.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) bus.destroyForcibly();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (socket != null) {
+            // The socket and its config live in a temp directory; without this every run left one
+            // behind.
+            try (var paths = java.nio.file.Files.walk(socket.getParent())) {
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try { java.nio.file.Files.deleteIfExists(p); } catch (Exception ignored) { }
+                });
+            } catch (Exception ignored) { }
+        }
     }
 
     @Test
@@ -154,6 +179,29 @@ class PerItemUnlockTest {
 
         assertTrue(secret.isEmpty(), "a refused unlock must report no secret, not throw or hang");
         assertTrue(fake.isItemLocked(), "the item stays locked when the user refuses");
+    }
+
+    @Test
+    void aLockedCollectionDoesNotTriggerASecondUnlockOfTheItem() throws Exception {
+        // The regression that shipped in #72. gnome-keyring reports EVERY item as locked while its
+        // collection is locked -- confirmed against a live daemon -- so "the item is locked" alone
+        // is not the per-item condition. When the collection-level unlock has failed (the user
+        // dismissed the prompt, the stored password is wrong, disablePrompt() is set), asking for a
+        // per-item unlock raises a SECOND prompt for the keyring they just refused.
+        //
+        // Collection unlocked but item locked is the genuine per-item case, and the only one the
+        // library may act on.
+        start(false);                       // the item itself is not individually locked
+        CollectionInterface collection = fakeCollection();
+        fake.lockCollection();                 // ...but the collection is, so the item reports locked
+        fake.setRefuseCollectionUnlock(true);  // and the collection unlock fails, as when refused
+        fake.setDismissPrompts(true);
+
+        assertTrue(collection.getSecret(FakeSecretService.ITEM_PATH).isEmpty(),
+                "a locked collection yields no secret");
+        assertTrue(fake.unlockCalls().stream().noneMatch(FakeSecretService.ITEM_PATH::equals),
+                "no item-level unlock may be attempted while the collection is locked; "
+                        + "unlock calls were " + fake.unlockCalls());
     }
 
     @Test

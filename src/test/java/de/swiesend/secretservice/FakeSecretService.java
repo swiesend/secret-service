@@ -50,6 +50,7 @@ public final class FakeSecretService {
     public static final String COLLECTION_LABEL = "fake";
     public static final String ITEM_PATH = COLLECTION_PATH + "/1";
     public static final String SESSION_PATH = "/org/freedesktop/secrets/session/fake";
+    public static final String PROMPT_PATH = "/org/freedesktop/secrets/prompt/fake";
 
     /** What the fake item holds. */
     public static final String SECRET_VALUE = "the-locked-secret";
@@ -95,7 +96,9 @@ public final class FakeSecretService {
     /** Every path passed to Unlock, in call order -- what the tests assert on. */
     private final List<String> unlockCalls = Collections.synchronizedList(new ArrayList<>());
 
-    private byte[] sessionKey;   // derived in OpenSession, used to encrypt the secret
+    // volatile like the other mutable fields: written in OpenSession and read in GetSecret,
+    // which dbus-java may dispatch on different threads of its receiving pool.
+    private volatile byte[] sessionKey;
 
     public FakeSecretService(DBusConnection connection, boolean itemLocked) {
         this.connection = connection;
@@ -111,6 +114,17 @@ public final class FakeSecretService {
     public void setDismissPrompts(boolean dismiss) {
         this.dismissPrompts = dismiss;
     }
+
+    /** Locks the collection, as a provider does when the keyring times out or the user locks it. */
+    public void lockCollection() { collectionLocked = true; }
+
+    /**
+     * Refuses to unlock the collection, as happens when the user dismisses the keyring prompt, the
+     * stored password is wrong, or prompting is disabled. This is the state in which a per-item
+     * unlock attempt would raise a SECOND prompt.
+     */
+    public void setRefuseCollectionUnlock(boolean refuse) { this.refuseCollectionUnlock = refuse; }
+    private volatile boolean refuseCollectionUnlock;
 
     public boolean isItemLocked() {
         return itemLocked;
@@ -164,15 +178,26 @@ public final class FakeSecretService {
             // The bug this fixture exists for: unlocking the COLLECTION does nothing to the item.
             boolean itemRequested = objects.stream().anyMatch(p -> ITEM_PATH.equals(p.getPath()));
             if (!itemRequested) {
+                if (refuseCollectionUnlock) {
+                    return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
+                }
                 // A collection-level unlock succeeds immediately and, crucially, does NOT touch the
                 // item. That asymmetry is the bug under test.
                 collectionLocked = false;
                 return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
             }
             if (dismissPrompts) {
-                // Refused. Nothing unlocked and no prompt object to wait on -- the client must
-                // treat this as "still locked" rather than pressing on to GetSecret.
-                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
+                // A REAL prompt path, and a Completed(dismissed=true) to go with it. Answering "/"
+                // instead would send the client down Prompt.await's getLastHandledSignal branch,
+                // where no signal is ever handled -- so every test hit the "no prompt result" path
+                // and the dismissal branch had no coverage at all.
+                //
+                // No Prompt object is exported: declaring @DBusInterfaceName for
+                // org.freedesktop.Secret.Prompt registers a JVM-wide interface->class mapping that
+                // stops dbus-java constructing the library's own Prompt.Completed. The client's
+                // Prompt() method call therefore fails harmlessly; only the signal matters.
+                emitCompletedLater(true);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
             itemLocked = false;
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
@@ -189,7 +214,15 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes) {
-            return new Pair<>(itemLocked ? List.of() : List.of(new DBusPath(ITEM_PATH)), List.of());
+            // (unlocked, locked). Reporting the item in neither list when it is locked would be a
+            // trap for the next test to use this: it would look like the item does not exist.
+            List<DBusPath> item = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
+            // Same condition as the Locked property and GetSecret below: a fixture that reports an
+            // item locked in one place and hands out its plaintext in another teaches the next test
+            // something no real provider does.
+            return (itemLocked || collectionLocked)
+                    ? new Pair<>(new ArrayList<DBusPath>(), item)
+                    : new Pair<>(item, new ArrayList<DBusPath>());
         }
 
         @Override
@@ -233,8 +266,9 @@ public final class FakeSecretService {
     private final class ItemImpl implements WireItem, Properties {
         @Override
         public Secret GetSecret(DBusPath session) {
-            if (itemLocked) {
-                // What a provider does for a locked item. The client must not get here.
+            if (itemLocked || collectionLocked) {
+                // What a provider does for a locked item -- including one locked only because its
+                // collection is. The client must not get here.
                 throw new IllegalStateException("fake: item is locked");
             }
             try {
@@ -253,7 +287,9 @@ public final class FakeSecretService {
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             switch (property) {
-                case "Locked":     return (A) Boolean.valueOf(itemLocked);   // ...but the ITEM is not
+                // gnome-keyring reports an item as locked whenever its collection is locked, so
+                // the fake does too when asked to. This is what makes the regression reproducible.
+                case "Locked":     return (A) Boolean.valueOf(itemLocked || collectionLocked);
                 case "Attributes": return (A) new Variant<>(new HashMap<String, String>(), "a{ss}");
                 case "Label":      return (A) "fake-item";
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
@@ -272,6 +308,25 @@ public final class FakeSecretService {
         @Override public boolean isRemote() { return false; }
     }
 
+
+    /**
+     * Emits {@code Prompt.Completed} shortly after Unlock returns, as a provider does once the user
+     * has answered. The delay lets the client arm its signal handler first -- it does that inside
+     * Prompt.await, which it only reaches after Unlock has returned.
+     */
+    private void emitCompletedLater(boolean dismissed) {
+        Thread t = new Thread(() -> {
+            try {
+                Thread.sleep(150);
+                connection.sendMessage(new de.swiesend.secretservice.interfaces.Prompt.Completed(
+                        PROMPT_PATH, dismissed, new Variant<>(new ArrayList<DBusPath>(), "ao")));
+            } catch (Exception e) {
+                throw new IllegalStateException("fake: could not emit Completed", e);
+            }
+        }, "fake-prompt");
+        t.setDaemon(true);
+        t.start();
+    }
 
     /** HKDF-SHA256 extract(null salt) + expand(empty info) to 128 bits, as the spec requires. */
     private static byte[] hkdfSha256To128(byte[] ikm) throws Exception {

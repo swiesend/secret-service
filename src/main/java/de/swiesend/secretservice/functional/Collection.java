@@ -737,11 +737,21 @@ public class Collection implements CollectionInterface {
                 // same as a success until the re-read below happened to contradict it.
                 de.swiesend.secretservice.interfaces.Prompt.Completed completed =
                         prompt.await(unlock.b, service.getTimeout());
+                // Logged, not returned on. await() answers null both for a real timeout and, via
+                // its "/" branch, when no Completed signal was ever handled, and it can hand back a
+                // STALE Completed from an earlier unrelated prompt. None of those are reliable
+                // enough to overrule the provider, so the re-read below stays the authority.
                 if (completed == null) {
-                    log.warn("Unlock prompt for item {} timed out.", itemPath);
-                    return false;
-                }
-                if (completed.dismissed) {
+                    // Unreliable: await() answers null for a real timeout, for its "/" branch when
+                    // no Completed was ever handled, and it can hand back a stale Completed from an
+                    // earlier prompt. Fall through and ask the provider.
+                    log.warn("No prompt result for item {}; asking the provider directly.", itemPath);
+                } else if (completed.dismissed && !"/".equals(unlock.b.getPath())) {
+                    // Trustworthy only for a real prompt path, where SignalHandler.await filters
+                    // the Completed signal by path. On the "/" branch Prompt.await falls back to
+                    // getLastHandledSignal(Completed.class), which filters by CLASS only -- so it
+                    // can hand back a dismissal from an unrelated earlier prompt on this
+                    // connection, and returning false on that would deny a read nobody refused.
                     log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
                     return false;
                 }
@@ -753,9 +763,18 @@ public class Collection implements CollectionInterface {
 
     @Override
     public Optional<char[]> getSecret(String objectPath) {
+        return getSecret(objectPath, true);
+    }
+
+    /**
+     * @param allowItemUnlock whether a locked item may be unlocked first, which can raise a prompt.
+     *                        False for the bulk readers: they iterate the whole collection, and one
+     *                        prompt per item is not a reasonable thing to do to a user.
+     */
+    private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
-        if (!unlockItemIfLocked(objectPath)) return Optional.empty();
+        if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
 
         return getItem(objectPath)
                 .flatMap(item -> {
@@ -798,7 +817,7 @@ public class Collection implements CollectionInterface {
         Map<String, char[]> passwords = new HashMap<>();
         for (DBusPath item : items) {
             String path = item.getPath();
-            getSecret(path).ifPresent(secret -> passwords.put(path, secret));
+            getSecret(path, false).ifPresent(secret -> passwords.put(path, secret));
         }
 
         return Optional.of(passwords);
@@ -1040,29 +1059,56 @@ public class Collection implements CollectionInterface {
      * only the collection was unlocked, reading a locked item on KeePassXC simply failed
      * (issue #45).
      *
-     * <p><b>Why this cannot change behaviour for existing consumers.</b> The new work happens only
-     * inside the {@code isLocked()} branch, and that branch is unreachable on the providers people
-     * use today:
-     * <ul>
-     *   <li>gnome-keyring does not lock items individually, so the property is false and nothing
-     *       here runs.</li>
-     *   <li>{@link de.swiesend.secretservice.Item#isLocked()} is <em>fail-open</em>: a property read
-     *       that fails yields {@code false}. A flaky D-Bus call therefore cannot raise a prompt that
-     *       did not appear before.</li>
-     * </ul>
-     * The only callers affected are those on a provider that genuinely locks items -- the case that
-     * does not work at all today.
+     * <p><b>Only when the collection is already unlocked.</b> "The item reports locked" is not the
+     * per-item condition, because gnome-keyring reports every item as locked while its collection
+     * is locked -- verified against a live daemon. Acting on that alone means a failed
+     * collection-level unlock (a dismissed prompt, a wrong stored password, {@code disablePrompt()})
+     * is followed by a <em>second</em> prompt for the keyring the user has just refused. Collection
+     * unlocked but item locked is the real condition, and the only one acted on.
      *
-     * <p>Deliberately not applied to {@code getSecrets}/{@code withSecrets}: those iterate the whole
-     * collection, and one prompt per item is not a reasonable thing to do to a user.
+     * <p>The check is deliberately <b>fail-closed</b>: {@link #lockedState()} separates "could not
+     * read it" from "unlocked", and both "locked" and "unknown" skip the unlock.
+     * {@link de.swiesend.secretservice.Collection#isLocked()} collapses them to {@code false},
+     * which here would mean a transient read failure silently re-enables the double prompt.
+     *
+     * <p>Not applied to {@code getSecrets}/{@code withSecrets}, which iterate the whole collection:
+     * one prompt per item is not a reasonable thing to do to a user. They call the private
+     * {@code getSecret(path, false)} overload for that reason -- an earlier version of this comment
+     * claimed the exemption while {@code getSecrets} in fact looped through the public
+     * {@code getSecret}, so a bulk read on KeePassXC would have raised N prompts.
      *
      * @return true when the item can be read: it was already unlocked, or the unlock succeeded.
      *         False when the item stayed locked, which includes the user dismissing the prompt.
      */
     private boolean unlockItemIfLocked(String objectPath) {
+        // The collection must already be unlocked. gnome-keyring reports EVERY item as locked while
+        // its collection is locked -- verified against a live daemon -- so without this guard the
+        // branch below is reachable there, not only on a provider that locks items individually.
+        // The damage: the preceding unlock() may have failed because the user dismissed the keyring
+        // prompt, or the stored password is wrong, or disablePrompt() is set. Asking for a per-item
+        // unlock then raises a SECOND prompt for the keyring they just refused. Collection unlocked
+        // but item locked is the genuine per-item condition, and it is the only one we act on.
+        if (connection == null || !connection.isConnected() || collection == null) return true;
+
+        // The item first: on every provider that does not lock items, this is the only read this
+        // method performs, and the method returns here.
         Optional<de.swiesend.secretservice.Item> maybeItem = getItem(objectPath);
-        if (maybeItem.isEmpty()) return true; // not our call to make; the read below reports it
+        if (maybeItem.isEmpty()) return true; // getItem is empty only for a null path, rejected above
         if (!maybeItem.get().isLocked()) return true;
+
+        // Unlocking an item needs a prompt, and the caller may have said no prompts. performPrompt
+        // is the only place isPrompting is honoured, and unlockItem reaches prompt.await directly,
+        // so without this check disablePrompt() would not stop the per-item dialog -- the very
+        // thing it exists to prevent.
+        if (!isPrompting) {
+            log.debug("Item {} is locked, but prompting is disabled; not unlocking it.", objectPath);
+            return true;
+        }
+
+        Optional<Boolean> collectionLocked = collection.lockedState();
+        // Empty means the read failed. Treating that as "unlocked" would re-enable the double
+        // prompt on any transient D-Bus error, so unknown skips just like locked does.
+        if (collectionLocked.isEmpty() || collectionLocked.get()) return true;
 
         log.debug("Item is locked; asking the provider to unlock it: {}", objectPath);
         if (unlockItem(objectPath)) return true;
