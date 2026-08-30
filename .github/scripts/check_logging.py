@@ -81,7 +81,7 @@ def log_statements(text):
     """Yield (line_number, statement_text) for each log.* call, balanced to its closing paren."""
     for m in LOG_CALL.finditer(text):
         i = m.end() - 1
-        depth, j, in_str, esc = 0, i, False, False
+        depth, j, in_str, in_char, esc = 0, i, False, False, False
         while j < len(text):
             c = text[j]
             if in_str:
@@ -91,8 +91,18 @@ def log_statements(text):
                     esc = True
                 elif c == '"':
                     in_str = False
+            elif in_char:
+                # A char literal can hold '(' or '"'; without this the depth count unbalances.
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == "'":
+                    in_char = False
             elif c == '"':
                 in_str = True
+            elif c == "'":
+                in_char = True
             elif c == "(":
                 depth += 1
             elif c == ")":
@@ -114,11 +124,88 @@ def strip_comments(text):
 
     Without this, LOG_CALL matches a log.warn(...) written inside a javadoc example and the rules
     are applied to prose.
+
+    Scanned character by character rather than by regex, because a regex cannot tell a comment
+    from a '//' inside a string. It could not: a log message containing a URL had the rest of its
+    line blanked -- closing paren included -- so the statement scanner ran on into the following
+    lines and reported violations against code that was never part of the call. A guardrail that
+    fails on valid source is worse than no guardrail, because the fix people reach for is to
+    stop running it.
     """
-    def blank(m):
-        return re.sub(r"[^\n]", " ", m.group(0))
-    text = re.sub(r"/\*.*?\*/", blank, text, flags=re.S)
-    return re.sub(r"//[^\n]*", blank, text)
+    out = []
+    i, n = 0, len(text)
+    line_comment = block_comment = in_str = in_char = in_text_block = False
+    esc = False
+    while i < n:
+        c = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if line_comment:
+            if c == "\n":
+                line_comment = False
+                out.append(c)
+            else:
+                out.append(" ")
+            i += 1
+        elif block_comment:
+            if c == "*" and nxt == "/":
+                block_comment = False
+                out.append("  ")
+                i += 2
+            else:
+                out.append("\n" if c == "\n" else " ")
+                i += 1
+        elif in_text_block:
+            out.append(c)
+            if not esc and text.startswith('"""', i):
+                in_text_block = False
+                out.append('""')
+                i += 3
+                continue
+            esc = c == "\\" and not esc
+            i += 1
+        elif in_str:
+            out.append(c)
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            i += 1
+        elif in_char:
+            out.append(c)
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == "'":
+                in_char = False
+            i += 1
+        elif c == "/" and nxt == "/":
+            line_comment = True
+            out.append("  ")
+            i += 2
+        elif c == "/" and nxt == "*":
+            block_comment = True
+            out.append("  ")
+            i += 2
+        elif text.startswith('"""', i):
+            in_text_block = True
+            esc = False
+            out.append('"""')
+            i += 3
+        elif c == '"':
+            in_str = True
+            out.append(c)
+            i += 1
+        elif c == "'":
+            in_char = True
+            out.append(c)
+            i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 def check(path, secrets_rules=True):

@@ -56,11 +56,25 @@ public final class LogPolicy {
     private LogPolicy() {}
 
     private static boolean readInitialSetting() {
-        String prop = System.getProperty(PROPERTY);
-        if (prop != null) return Boolean.parseBoolean(prop);
-        String env = System.getenv(ENV);
-        // "1" as well as "true", matching SECRET_SERVICE_HARDENED_ALLOW_MIGRATION.
-        return env != null && ("1".equals(env) || Boolean.parseBoolean(env));
+        // One parser for both sources. Previously the property went through Boolean.parseBoolean
+        // alone while the env var also accepted "1", so -Dde.swiesend.secretservice.log.labels=1
+        // left labels hidden while SECRET_SERVICE_LOG_LABELS=1 revealed them -- a difference with
+        // no diagnostic, in the one situation the switch exists for. And because the property was
+        // consulted with a bare null check, any unparseable value ("yes") silently disabled labels
+        // AND suppressed the env var. An unrecognised value is now simply not a setting.
+        Boolean fromProperty = parseFlag(System.getProperty(PROPERTY));
+        if (fromProperty != null) return fromProperty;
+        Boolean fromEnv = parseFlag(System.getenv(ENV));
+        return fromEnv != null && fromEnv;
+    }
+
+    /** "true"/"1" on, "false"/"0" off, anything else not a setting. Matches SECRET_SERVICE_HARDENED_ALLOW_MIGRATION. */
+    private static Boolean parseFlag(String raw) {
+        if (raw == null) return null;
+        String v = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if (v.equals("true") || v.equals("1")) return Boolean.TRUE;
+        if (v.equals("false") || v.equals("0")) return Boolean.FALSE;
+        return null;
     }
 
     /** Whether labels and collection names are currently written into log messages. */

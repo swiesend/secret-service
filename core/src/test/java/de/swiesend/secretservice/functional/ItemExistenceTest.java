@@ -47,10 +47,15 @@ class ItemExistenceTest {
 
     @AfterEach
     void tearDown() throws Exception {
-        collection.delete();
-        collection.close();
-        session.close();
-        service.close();
+        // Guarded: any .get() in setUp failing on an empty Optional (no provider, collection
+        // refused) leaves these null, and an NPE thrown here replaces the real cause in the report
+        // with a mystery about teardown.
+        if (collection != null) {
+            collection.delete();
+            collection.close();
+        }
+        if (session != null) session.close();
+        if (service != null) service.close();
     }
 
     @Test

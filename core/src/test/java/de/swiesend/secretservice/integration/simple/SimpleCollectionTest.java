@@ -29,6 +29,26 @@ public class SimpleCollectionTest {
     }
 
     @Test
+    public void aSearchThatMatchesNothingReturnsAnEmptyListNotNull() throws IOException {
+        // 1.x behaviour, and downstream code depends on it: a search with attributes that match
+        // nothing returned an EMPTY LIST, because the old filter tested the outer Optional rather
+        // than the list. Only the no-attributes path ever returned null.
+        //
+        // Collapsing both to null reads as tidier and breaks callers that iterate the result
+        // directly, which is what the loop below would do -- it throws NullPointerException, not
+        // an assertion failure, if this regresses.
+        SimpleCollection collection = new SimpleCollection("test", "test");
+
+        List<String> found = collection.getItems(Map.of("no-such-attribute", "no-such-value"));
+
+        assertNotNull(found, "a successful search matching nothing is an empty list, never null");
+        assertTrue(found.isEmpty(), "nothing should have matched");
+        for (String path : found) {
+            assertNotNull(path);   // the shape a 1.x caller uses, and the one that NPEs on null
+        }
+    }
+
+    @Test
     public void createPasswordWithoutAttributes() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");

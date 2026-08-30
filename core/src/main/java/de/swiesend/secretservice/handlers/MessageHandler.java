@@ -63,12 +63,26 @@ public class MessageHandler {
      * things depending on the call: see {@link #getPropertyChecked}, where
      * {@code DBus.Error.UnknownMethod} proves the object is gone rather than that the method is
      * missing.</p>
+     *
+     * @param errorMessage the D-Bus error's human-readable text, when there was one. Two providers
+     *                     can raise the same error name for different reasons, and only the text
+     *                     separates them; {@link #getPropertyChecked} relies on it.
      */
-    public record Reply(Optional<Object[]> value, Outcome outcome, String errorName) {
-        static Reply ok(Object[] v) { return new Reply(Optional.ofNullable(v), Outcome.OK, null); }
+    public record Reply(Optional<Object[]> value, Outcome outcome, String errorName, String errorMessage) {
+        static Reply ok(Object[] v) { return new Reply(Optional.ofNullable(v), Outcome.OK, null, null); }
         static Reply failed(Outcome o, String errorName) {
-            return new Reply(Optional.empty(), o, errorName);
+            return new Reply(Optional.empty(), o, errorName, null);
         }
+        static Reply failed(Outcome o, String errorName, String errorMessage) {
+            return new Reply(Optional.empty(), o, errorName, errorMessage);
+        }
+    }
+
+    /** The first String in a D-Bus error's parameters, which is where the message text sits. */
+    private static String errorTextOf(Object[] parameters) {
+        if (parameters == null) return null;
+        for (Object o : parameters) if (o instanceof String s) return s;
+        return null;
     }
 
     public Optional<Object[]> send(String service, String path, String iface, String method, String signature, Object... args) {
@@ -104,27 +118,40 @@ public class MessageHandler {
                     log.debug("Response parameters for method " + iface + "/" + method + ": " + Arrays.deepToString(parameters));
             }
 
+            if (response == null) {
+                // getReply times out after MAX_DELAY_MILLIS and answers null. Without this the
+                // null falls past the Error check into Reply.ok(null): the value is empty, so
+                // send() is unaffected, but the OUTCOME says OK -- and exists() reads the outcome,
+                // so a keyring merely slower than the timeout was reported as proof the item is
+                // there. That is the fail-open this whole distinction exists to prevent, on the
+                // most likely failure of all.
+                log.warn("No reply within {}ms for {}/{}; cannot tell whether the object exists.",
+                        MAX_DELAY_MILLIS, iface, method);
+                return Reply.failed(Outcome.UNAVAILABLE, null);
+            }
+
             if (response instanceof org.freedesktop.dbus.messages.Error) {
                 String error = response.getName();
+                String errorText = errorTextOf(parameters);
                 switch (error) {
                     case "org.freedesktop.Secret.Error.NoSuchObject":
                         // The Secret Service naming the object as non-existent is the one reply
                         // that proves absence rather than merely failing to confirm presence.
                         logParameterised(error, parameters, Level.WARN);
-                        return Reply.failed(Outcome.ABSENT, error);
+                        return Reply.failed(Outcome.ABSENT, error, errorText);
                     case "org.freedesktop.DBus.Error.UnknownObject":
                         // Likewise from the bus itself: there is no object at that path.
                         logParameterised(error, parameters, Level.ERROR);
-                        return Reply.failed(Outcome.ABSENT, error);
+                        return Reply.failed(Outcome.ABSENT, error, errorText);
                     case "org.freedesktop.Secret.Error.NoSession":
                         // Our session lapsed. Says nothing about the object.
                         logParameterised(error, parameters, Level.WARN);
-                        return Reply.failed(Outcome.UNAVAILABLE, error);
+                        return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
                     case "org.gnome.keyring.Error.Denied":
                     case "org.freedesktop.Secret.Error.IsLocked":
                         // The daemon knew the object well enough to refuse it, so it exists.
                         logParameterised(error, parameters, Level.INFO);
-                        return Reply.failed(Outcome.DENIED, error);
+                        return Reply.failed(Outcome.DENIED, error, errorText);
                     case "org.freedesktop.DBus.Error.NoReply":
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
                     case "org.freedesktop.DBus.Error.UnknownMethod":
@@ -134,13 +161,13 @@ public class MessageHandler {
                         // existence; NoReply and ServiceUnknown are about the daemon. None of them
                         // license the conclusion "it is not there".
                         logParameterised(error, parameters, Level.ERROR);
-                        return Reply.failed(Outcome.UNAVAILABLE, error);
+                        return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
                     case "org.freedesktop.DBus.Local.Disconnected":
                         if (log.isDebugEnabled()) log.debug(error);
-                        return Reply.failed(Outcome.UNAVAILABLE, error);
+                        return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
                     default:
                         log.error("Unexpected D-Bus error: \"" + error + "\" with parameters: " + Arrays.deepToString(parameters));
-                        return Reply.failed(Outcome.UNAVAILABLE, error);
+                        return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
                 }
             } else {
                 if (parameters != null && parameters.length == 0)
@@ -207,11 +234,29 @@ public class MessageHandler {
         //
         // Without this, ABSENT is unreachable on the library's primary provider and every caller
         // that distinguishes "gone" from "cannot tell" degrades to the fail-closed branch forever.
+        //
+        // Narrowed to that exact shape: the message must name THIS path as non-existent. Every
+        // object on the bus implementing Properties is a convention, not a guarantee, and reading
+        // any UnknownMethod as ABSENT means a provider that answers it for a property it does not
+        // expose reports a live object as gone -- and a caller's "then delete it" branch runs
+        // against real data. Being too strict instead leaves the outcome UNAVAILABLE, which is the
+        // fail-closed direction and merely loses a distinction rather than destroying something.
         if (reply.outcome() == Outcome.UNAVAILABLE
-                && "org.freedesktop.DBus.Error.UnknownMethod".equals(reply.errorName())) {
-            return Reply.failed(Outcome.ABSENT, reply.errorName());
+                && "org.freedesktop.DBus.Error.UnknownMethod".equals(reply.errorName())
+                && namesPathAsMissing(reply.errorMessage(), path)) {
+            return Reply.failed(Outcome.ABSENT, reply.errorName(), reply.errorMessage());
         }
         return reply;
+    }
+
+    /**
+     * Whether a D-Bus error text asserts that {@code path} itself does not exist, as opposed to
+     * merely failing. gnome-keyring phrases a deleted item as:
+     * {@code Object does not exist at path "/org/freedesktop/secrets/collection/x/1"}.
+     */
+    private static boolean namesPathAsMissing(String errorMessage, String path) {
+        if (errorMessage == null || path == null) return false;
+        return errorMessage.contains(path) && errorMessage.contains("does not exist");
     }
 
     public Optional<Variant> getAllProperties(String service, String path, String iface) {

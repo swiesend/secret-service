@@ -49,6 +49,11 @@ final class FakeProviderFixture {
         return fake;
     }
 
+    /** The low-level Service, for tests that exercise {@code Item}/{@code Collection} directly. */
+    de.swiesend.secretservice.Service rawService() {
+        return service.getService();
+    }
+
     /**
      * Starts the bus and the fake provider, and opens the fake collection through the library.
      *

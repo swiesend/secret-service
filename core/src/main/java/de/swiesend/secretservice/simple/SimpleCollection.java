@@ -463,10 +463,26 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public List<String> getItems(Map<String, String> attributes) {
         if (attributes == null) return null;
-        // The 1.x contract documented above is "object paths or null", and callers branch on null
-        // rather than on emptiness. The functional API now distinguishes an empty result from a
-        // failed search; collapse both back to null here so this legacy adapter keeps its contract.
-        return delegate.getItems(attributes).filter(paths -> !paths.isEmpty()).orElse(null);
+        Optional<List<String>> result = delegate.getItems(attributes);
+
+        // 1.x was asymmetric here, and this reproduces it rather than tidying it, because the
+        // whole point of this adapter is that downstream code keeps working unchanged.
+        //
+        // Before the functional API learned to distinguish "found nothing" from "the search
+        // failed", this method was `delegate.getItems(attributes).orElse(null)` over a
+        // getItems whose two branches filtered different things:
+        //
+        //   no attributes  -> filtered the LIST, so no items collapsed to Optional.empty() -> null
+        //   attributes     -> filtered the outer OPTIONAL, so a search matching nothing stayed
+        //                     Optional.of(emptyList) -> an EMPTY LIST, never null
+        //
+        // Collapsing both to null looks tidier and breaks the second case: a caller doing
+        // `for (String path : getItems(attrs))` after a no-match search iterated nothing before
+        // and would now throw NullPointerException.
+        if (attributes.isEmpty()) {
+            return result.filter(paths -> !paths.isEmpty()).orElse(null);
+        }
+        return result.orElse(null);
     }
 
     /**

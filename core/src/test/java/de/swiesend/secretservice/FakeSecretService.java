@@ -137,6 +137,14 @@ public final class FakeSecretService {
     public void setRequirePromptForItemOps(boolean require) { this.requirePromptForItemOps = require; }
     private volatile boolean requirePromptForItemOps;
 
+    /**
+     * Makes the item's property reads hang past {@code Static.DBus.MAX_DELAY_MILLIS}, so the
+     * client's getReply times out. A provider that is merely slow is the commonest failure there
+     * is, and the one the OK/ABSENT/UNAVAILABLE distinction most needs to get right.
+     */
+    public void setStallItemProperties(boolean stall) { this.stallItemProperties = stall; }
+    private volatile boolean stallItemProperties;
+
     /** Waits for any pending prompt emission, so teardown does not race it. */
     public void awaitPendingPrompt() {
         Thread t = promptThread;
@@ -327,6 +335,14 @@ public final class FakeSecretService {
         @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
+            if (stallItemProperties) {
+                // Outlast the client's reply timeout without ever answering.
+                try {
+                    Thread.sleep(de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS + 1500L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             switch (property) {
                 // gnome-keyring reports an item as locked whenever its collection is locked, so
                 // the fake does too when asked to. This is what makes the regression reproducible.
