@@ -8,17 +8,42 @@
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# ubuntu:24.04 ships with LANG unset, which leaves the JVM at ANSI_X3.4-1968: every
+# non-ASCII character becomes "?" on the way out. That is not only cosmetic -- the
+# logging policy can emit item labels, and a label is mangled exactly when someone
+# needs to read it to diagnose a failure. eclipse-temurin (the gnome-keyring base)
+# already sets a UTF-8 locale, which is why only the Ubuntu-based legs showed it.
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 RUN apt-get update && apt-get install -y --no-install-recommends \
         dbus \
         dbus-x11 \
         xvfb \
         keepassxc \
         libsecret-tools \
+        xdotool \
         openjdk-17-jdk-headless \
         maven \
     && rm -rf /var/lib/apt/lists/*
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+# Record which KeePassXC the image actually got. The package is deliberately not
+# version-pinned -- noble ships exactly one keepassxc, and pinning to a point release
+# breaks the build the day the archive supersedes it -- so the version is captured
+# instead, and the provider echoes it at startup. A behaviour change between KeePassXC
+# releases then appears in the log beside the failure instead of being guessed at.
+# dpkg-query, not "keepassxc --version": KeePassXC is a Qt GUI binary and needs a
+# display even to print its version, so at build time it yields nothing useful.
+RUN printf 'keepassxc: %s\n' "$(dpkg-query -W -f='${Version}' keepassxc)" > /image-keepassxc-version
+
+# NOTE: "maven" hard-depends on default-jre-headless, so the image also carries a
+# second, unused JRE (~46 MB) beyond the JDK named above. Splitting the apt calls does
+# not avoid it -- measured: apt still selects default-jre-headless. Dropping it means
+# installing the Apache Maven tarball instead of the distro package, trading ~46 MB for
+# a checksum to maintain across three Dockerfiles. Judged not worth it; recorded so the
+# next person does not re-run the same dead end.
 
 COPY .github/providers/ /providers/
 RUN chmod +x /providers/dbus-up.sh /providers/keepassxc/entrypoint.sh
