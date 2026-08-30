@@ -117,10 +117,10 @@ public class ProviderSystemTest {
                 ? COLLECTION
                 : (existing.isEmpty() ? null : existing.get(0));
         if (target == null) {
-            log.info("Provider {} exposes no collection — skipping", provider);
+            log.info("Provider {} exposes no collection - skipping", provider);
             return null;
         }
-        log.info("Provider {} — using existing collection id '{}'", provider, target);
+        log.info("Provider {} - using existing collection id '{}'", provider, target);
         ownsCollection = false; // pre-existing user database/wallet: never delete it
         return session.collectionById(target).orElse(null);
     }

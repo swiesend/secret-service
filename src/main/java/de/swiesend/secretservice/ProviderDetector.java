@@ -150,7 +150,7 @@ public final class ProviderDetector {
                     try {
                         String nameOwner = bus.GetNameOwner(name);
                         if (secretsOwner.equals(nameOwner)) {
-                            log.debug("Detected provider {} — shared unique owner {} ({} ≡ {})",
+                            log.debug("Detected provider {} - shared unique owner {} ({} == {})",
                                     candidate.displayName, secretsOwner, SECRETS_BUS_NAME, name);
                             return candidate;
                         }

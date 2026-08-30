@@ -53,7 +53,7 @@ public class Example {
 
             // WARN: be careful activating this on the default collection...
             if (collectionLabel == "test" || collectionLabel == "täst") {
-                log.info(String.format("Deleting collection {label: \"%s\", id: \"%s\"} …", collectionLabel, collectionId));
+                log.info(String.format("Deleting collection {label: \"%s\", id: \"%s\"} ...", collectionLabel, collectionId));
                 boolean success = collection.delete();
                 if (success)
                     log.info(String.format("Deleted collection {label: \"%s\", id: \"%s\"}", collectionLabel, collectionId));

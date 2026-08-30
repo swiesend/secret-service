@@ -297,7 +297,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @DisplayName("SimpleCollection can be reopened after close — sessions are independent")
+    @DisplayName("SimpleCollection can be reopened after close - sessions are independent")
     public void reopenAfterClose() throws IOException {
         SimpleCollection first = new SimpleCollection("test", "test");
         String item = first.createItem("reopen-test", "secret-value");
