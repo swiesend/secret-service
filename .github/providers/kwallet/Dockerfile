@@ -9,6 +9,11 @@ FROM ubuntu:24.04
 # normally goes through an interactive dialog). This image is best-effort; the
 # system-tests workflow runs the KWallet leg with continue-on-error.
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Same as the keepassxc image: ubuntu:24.04 leaves LANG unset, so the JVM falls back to
+# ANSI_X3.4-1968 and every non-ASCII character in the logs becomes "?".
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 RUN apt-get update && apt-get install -y --no-install-recommends \
         dbus \
         dbus-x11 \

@@ -133,12 +133,52 @@ wait_for_collection() {
 cat /image-keepassxc-version 2>/dev/null || echo "KeePassXC version: unknown"
 echo "FdoSecrets ConfirmAccessItem=${CONFIRM_ACCESS_ITEM}"
 
-# Launch KeePassXC unlocked against the database; it then exposes the Secret Service.
-# Keep the PID. The previous "( ... & ) || true" detached into a subshell and discarded
+# Launch KeePassXC and unlock it through its own dialog.
+#
+# NOT --pw-stdin. That flag prints "Database password:" and then never completes the
+# unlock in this container -- verified against a pipe, against stdin held open, and
+# against a real PTY via script(1). The database stays locked, and the KeePassXC docs
+# are explicit that there is one Collection per *opened database tab*, so nothing can
+# ever be exposed. That single fact is why this leg has never tested anything.
+#
+# Typing into the dialog is what a user does and it demonstrably works. It costs a
+# dependency on xdotool and a window to wait for, which is a fair price for a leg that
+# actually exercises the provider.
+#
+# Keep the PID. The original "( ... & ) || true" detached into a subshell and discarded
 # the launch result, so a KeePassXC that died on startup looked exactly like one that
-# was merely slow — every failure presented as a 45-second timeout.
-printf '%s\n' "$PW" | keepassxc --pw-stdin "$DB" > "$KPXC_LOG" 2>&1 &
+# was merely slow -- every failure presented as a 45-second timeout.
+keepassxc "$DB" > "$KPXC_LOG" 2>&1 &
 KPXC_PID=$!
+
+# Wait for the unlock dialog, then type the password into it.
+unlock_database() {
+    local waited=0 win=""
+    until [ -n "$win" ]; do
+        win="$(xdotool search --name "\[Locked\]" 2>/dev/null | head -1)"
+        [ -n "$win" ] && break
+        if ! kill -0 "$KPXC_PID" 2>/dev/null; then
+            echo "ERROR: KeePassXC exited before showing its unlock dialog."
+            return 1
+        fi
+        sleep 1; waited=$((waited + 1))
+        if [ "$waited" -ge 30 ]; then
+            echo "ERROR: no unlock window appeared within 30s."
+            return 1
+        fi
+    done
+    xdotool windowactivate --sync "$win" 2>/dev/null || true
+    sleep 1
+    xdotool type --delay 60 "$PW"
+    sleep 1
+    xdotool key Return
+    echo "Typed the database password into the unlock dialog (after ${waited}s)."
+}
+
+if ! unlock_database; then
+    dump_diagnostics
+    exit 1
+fi
 
 if ! wait_for_secrets 45 "$KPXC_PID"; then
     echo "ERROR: KeePassXC did not register org.freedesktop.secrets."
@@ -168,22 +208,12 @@ if [ "$collection_status" -ne 0 ]; then
         # Died rather than timed out: pointing at the fixture here would repeat the
         # misattribution this script exists to remove.
         echo "KeePassXC exited during startup — see the log above, not the fixture."
-    elif [ ! -e "${DB}.lock" ]; then
-        # KeePassXC writes a .lock beside a database it has open. No lock means the
-        # database never opened, and the KeePassXC docs are explicit that there is one
-        # Collection per *opened database tab* — so nothing can be exposed, whatever
-        # the fixture says. Observed here: --pw-stdin prints its prompt and never
-        # completes the unlock, with a pipe, with stdin held open, and with a PTY.
-        echo "KeePassXC never opened the database — no ${DB}.lock, and the log stops at"
-        echo "the password prompt. The docs put one Collection per opened database tab,"
-        echo "so nothing can be exposed until the unlock itself works. This is the"
-        echo "unlock, not the fixture: look at --pw-stdin, not at test.kdbx."
     else
-        echo "The database is open but exposes no collection, so every test would skip."
+        echo "The database opened but exposes no collection, so every test would skip."
         echo "The exposed group is recorded in the database's own custom data under"
-        echo "FDO_SECRETS_EXPOSED_GROUP; the committed test.kdbx does not carry that key,"
-        echo "and it can only be set from the KeePassXC GUI (Database Settings ->"
-        echo "Secret Service Integration -> Expose entries under this group)."
+        echo "FDO_SECRETS_EXPOSED_GROUP, as a braced UUID -- {xxxxxxxx-xxxx-...} -- not"
+        echo "the bare hex form. It is written by the KeePassXC GUI: Database Settings ->"
+        echo "Secret Service Integration -> Expose entries under this group."
     fi
     if [ "$REQUIRE_COLLECTION" != "false" ]; then
         echo "Refusing to report a pass for a run that asserts nothing."

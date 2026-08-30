@@ -8,12 +8,21 @@
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# ubuntu:24.04 ships with LANG unset, which leaves the JVM at ANSI_X3.4-1968: every
+# non-ASCII character becomes "?" on the way out. That is not only cosmetic -- the
+# logging policy can emit item labels, and a label is mangled exactly when someone
+# needs to read it to diagnose a failure. eclipse-temurin (the gnome-keyring base)
+# already sets a UTF-8 locale, which is why only the Ubuntu-based legs showed it.
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 RUN apt-get update && apt-get install -y --no-install-recommends \
         dbus \
         dbus-x11 \
         xvfb \
         keepassxc \
         libsecret-tools \
+        xdotool \
         openjdk-17-jdk-headless \
         maven \
     && rm -rf /var/lib/apt/lists/*
