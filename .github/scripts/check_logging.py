@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Enforce the logging rules that keep secrets and user-chosen names out of log messages.
 
-Three rules, each of which has already been broken at least once in this repository:
+Four rules, each of which has already been broken at least once in this repository:
 
 1. A sensitive value must not appear anywhere in a log statement. Item labels and collection
    names go through LogPolicy.label(); peppers, secrets and plaintext go nowhere at all. The
@@ -18,6 +18,24 @@ Three rules, each of which has already been broken at least once in this reposit
    only filtering contract the library offers a consumer's SLF4J backend, and getClass()
    names the runtime subclass instead -- so a configured name silently fails to match.
 
+4. A log message must be ASCII. A JVM whose native encoding is not UTF-8 replaces every other
+   character on the way out, so the text arrives corrupted exactly when someone is reading it
+   to diagnose something. Observed: an em dash in ProviderSystemTest printed as
+
+     Provider KeePassXC ? using existing collection id 'test'
+
+   because ubuntu:24.04 leaves LANG unset and the JVM falls back to ANSI_X3.4-1968. Fixing the
+   images is necessary but not sufficient -- a consumer embedding this library inherits their
+   own process's locale, so the text this library emits must not depend on it.
+
+   This rule alone also covers test sources. The mangling above was in a test, and a test
+   message is read at precisely the moment something has gone wrong. The other three rules stay
+   on main sources, where the secrets they guard actually live.
+
+   Not a rule about non-ASCII in general: test data such as "secret" with accents, or
+   Japanese and Chinese labels, exists to prove the library carries non-ASCII values intact.
+   Only the text this project *emits* is constrained, never the text it is asked to store.
+
 Deliberately NOT a rule: '+' concatenation in general. It is worth avoiding for the cost of
 building messages that are then discarded, but that is a performance matter, and rule 1
 already denies it the one thing that would make it a safety matter.
@@ -30,6 +48,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE_ROOTS = ["core/src/main/java", "hardened/src/main/java", "hardened-tpm2/src/main/java"]
+# Rule 4 only. Test log messages get mangled by the same mechanism, and are read at exactly the
+# moment something has gone wrong; the secrets rules stay off test sources, where fixtures
+# legitimately hold the very identifiers those rules forbid.
+TEST_SOURCE_ROOTS = ["core/src/test/java", "hardened/src/test/java", "hardened-tpm2/src/test/java"]
 
 # Identifiers that must never be passed to a logger unwrapped. `label`/`name` are user-chosen
 # and go through LogPolicy.label(); the rest are secret material and have no sanctioned form.
@@ -45,6 +67,8 @@ SANCTIONED = re.compile(
     # recommended usage.
     r"(?:[\w.]*\.)?LogPolicy\.(?:label|cause)\s*\((?:[^()]|\([^()]*\))*\)")
 GETCLASS_LOGGER = re.compile(r"LoggerFactory\.getLogger\s*\(\s*getClass\s*\(\s*\)\s*\)")
+# String literals inside a log statement -- the message text and any literal argument.
+STRING_LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"')
 
 # Opt out of one line with a trailing comment saying why.
 ALLOW = re.compile(r"//\s*log-check:\s*allow\b(.*)$")
@@ -94,7 +118,8 @@ def strip_comments(text):
     return re.sub(r"//[^\n]*", blank, text)
 
 
-def check(path):
+def check(path, secrets_rules=True):
+    """Rule 4 always applies. The secrets rules apply only where secrets live (main sources)."""
     raw = path.read_text()
     # Comments are blanked (line-for-line) before any scanning: a log call written inside a javadoc
     # example is documentation, not code, and must not be policed.
@@ -103,13 +128,26 @@ def check(path):
     rel = path.relative_to(ROOT)
     problems = []
 
-    for m in GETCLASS_LOGGER.finditer(text):
-        n = text.count("\n", 0, m.start()) + 1
-        problems.append((n, "logger named getClass(); name it for the declaring class instead"))
+    if secrets_rules:
+        for m in GETCLASS_LOGGER.finditer(text):
+            n = text.count("\n", 0, m.start()) + 1
+            problems.append((n, "logger named getClass(); name it for the declaring class instead"))
 
     for n, stmt in log_statements(text):
         if ALLOW.search(lines[n - 1]):
             continue
+        # Rule 4, on the literals rather than the code: a non-ASCII identifier is a Java
+        # matter, but a non-ASCII character in the emitted text is what gets corrupted.
+        for lit in STRING_LITERAL.findall(stmt):
+            for ch in lit:
+                if ord(ch) > 127:
+                    problems.append((n, f"non-ASCII {ch!r} (U+{ord(ch):04X}) in a log message; "
+                                        f"it becomes '?' under a non-UTF-8 JVM encoding"))
+                    break
+
+        if not secrets_rules:
+            continue
+
         code = strip_strings(stmt)
         if "String.format" in code:
             problems.append((n, "String.format inside a log call; use SLF4J '{}' parameters"))
@@ -126,7 +164,9 @@ def check(path):
 
 def main():
     files = [p for r in SOURCE_ROOTS for p in (ROOT / r).rglob("*.java")]
+    test_files = [p for r in TEST_SOURCE_ROOTS for p in (ROOT / r).rglob("*.java")]
     problems = [p for f in files for p in check(f)]
+    problems += [p for f in test_files for p in check(f, secrets_rules=False)]
     if problems:
         print(f"Logging policy violations ({len(problems)}):\n", file=sys.stderr)
         for rel, n, msg in problems:
@@ -134,7 +174,8 @@ def main():
         print("\nSee LogPolicy and docs/usage/logging.md. To allow one line deliberately, append"
               "\n  // log-check: allow <reason>", file=sys.stderr)
         return 1
-    print(f"OK — {len(files)} source files obey the logging policy.")
+    print(f"OK - {len(files)} main and {len(test_files)} test source files "
+          f"obey the logging policy.")
     return 0
 
 
