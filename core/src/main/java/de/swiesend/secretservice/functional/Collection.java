@@ -720,12 +720,12 @@ public class Collection implements CollectionInterface {
         }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
-            // Before the call, for the same reason as unlockItem: an unanswered Prompt object
-            // would be left behind on the provider.
-            if (!isPrompting) {
-                log.debug("Locking item {} would need a prompt, and prompting is disabled.", itemPath);
-                return false;
-            }
+            // No pre-call guard here, unlike unlockItem. Locking normally needs no prompt at all:
+            // gnome-keyring answers Lock immediately with a non-empty lock.a and a "/" path. An
+            // earlier version returned false before even issuing the call whenever prompting was
+            // disabled, so a headless consumer that called disablePrompt() at startup could no
+            // longer lock anything -- the item stayed unlocked and the caller saw only a false and
+            // a DEBUG line. Collection-level lock() never had that guard either.
             Optional<Pair<List<DBusPath>, DBusPath>> maybeLock = service.getService().lock(List.of(item.getPath()));
             if (maybeLock.isEmpty()) {
                 log.error("Could not lock item: {}", itemPath);
@@ -738,9 +738,18 @@ public class Collection implements CollectionInterface {
             // this awaited in both cases, which on the "/" path consults
             // getLastHandledSignal(Completed.class), an unrelated earlier prompt's result.
             if (lock.a.isEmpty() && requiresPrompt(lock.b)) {
-                de.swiesend.secretservice.interfaces.Prompt.Completed result =
-                        prompt.await(lock.b, service.getTimeout());
-                log.debug("lock item prompt: {}", result);
+                // Only here does disablePrompt() apply: this is the one branch that would raise a
+                // dialog. The prompt object is left unanswered rather than dismissed, because
+                // Prompt.dismiss() takes no path -- it sends Dismiss to whatever objectPath the
+                // shared Prompt currently holds, which is "/" until some prompt() call reassigns
+                // it. Dismissing the wrong prompt is worse than leaving this one unanswered.
+                if (!isPrompting) {
+                    log.debug("Locking item {} needs a prompt, and prompting is disabled.", itemPath);
+                } else {
+                    de.swiesend.secretservice.interfaces.Prompt.Completed result =
+                            prompt.await(lock.b, service.getTimeout());
+                    log.debug("lock item prompt: {}", result);
+                }
             }
         }
         return item.isLocked();
@@ -789,12 +798,15 @@ public class Collection implements CollectionInterface {
                     // no Completed was ever handled, and it can hand back a stale Completed from an
                     // earlier prompt. Fall through and ask the provider.
                     log.warn("No prompt result for item {}; asking the provider directly.", itemPath);
-                } else if (completed.dismissed && !"/".equals(unlock.b.getPath())) {
-                    // Trustworthy only for a real prompt path, where SignalHandler.await filters
-                    // the Completed signal by path. On the "/" branch Prompt.await falls back to
-                    // getLastHandledSignal(Completed.class), which filters by CLASS only -- so it
-                    // can hand back a dismissal from an unrelated earlier prompt on this
-                    // connection, and returning false on that would deny a read nobody refused.
+                } else if (completed.dismissed) {
+                    // Trustworthy here because the enclosing requiresPrompt(unlock.b) has already
+                    // established a real prompt path, so SignalHandler.await filtered the Completed
+                    // signal by path. It would NOT be trustworthy on a "/" path, where Prompt.await
+                    // falls back to getLastHandledSignal(Completed.class) and filters by CLASS
+                    // only -- that can hand back a dismissal from an unrelated earlier prompt on
+                    // this connection. An explicit !"/".equals(...) test used to guard that here;
+                    // requiresPrompt now excludes it one line up, so the test could never fail and
+                    // the comment described a state this branch cannot reach.
                     log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
                     return false;
                 }
@@ -904,7 +916,8 @@ public class Collection implements CollectionInterface {
         }
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
-            log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
+            log.error("D-Bus lock call failed for collection {}",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             return false;
         }
         Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
@@ -917,7 +930,8 @@ public class Collection implements CollectionInterface {
         boolean promptRequired = requiresPrompt(result.b);
 
         if (lockedImmediately) {
-            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+            log.info("Locked collection {}",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             // Daemon acknowledged the lock; poll only so the "Locked" property has time to
             // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
             return awaitUntil(collection::isLocked);
@@ -925,9 +939,9 @@ public class Collection implements CollectionInterface {
         if (promptRequired) {
             // Locking needs a prompt, which the functional layer does not drive here. Don't wait
             // out the timeout for a state that won't change -- report the failure immediately.
-            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
-                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
-                    + "leaving it unlocked.");
+            log.warn("Locking collection {} requires a prompt, which is not performed here; "
+                            + "leaving it unlocked.",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             return false;
         }
         // Neither locked immediately nor prompted (e.g. a provider that does not support locking
@@ -944,19 +958,22 @@ public class Collection implements CollectionInterface {
                     boolean unlockAccepted = promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent();
                     if (unlockAccepted && !collection.isLocked()) {
                         isUnlockedOnceWithUserPermission = true;
-                        log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                        log.debug("Unlocked collection {}",
+                                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
                         return true;
                     }
                 }
             } else if (encryptedCollectionPassword.isPresent() && service.isGnomeKeyringAvailable()) {
                 boolean result = withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());
                 if (result == true) {
-                    log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                    log.debug("Unlocked collection {}",
+                                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
                 }
                 return result;
             }
         }
-        log.debug("Could not unlock collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+        log.debug("Could not unlock collection {}",
+                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
         return false;
     }
 

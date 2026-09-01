@@ -145,6 +145,23 @@ public final class FakeSecretService {
     public void setStallItemProperties(boolean stall) { this.stallItemProperties = stall; }
     private volatile boolean stallItemProperties;
 
+    /** State change a prompt would authorise, applied only by {@link #approvePendingPrompt()}. */
+    private volatile Runnable pendingApproval;
+
+    /**
+     * Answers the outstanding prompt affirmatively: applies the change it authorises, then emits
+     * Completed. The Lock path uses this instead of a timer because a timer applies the change
+     * whether or not the client ever engaged with the prompt, which makes "the client declined to
+     * prompt" indistinguishable from "the operation happened anyway" -- the test then passes for
+     * the wrong reason. A test that wants the prompt answered says so.
+     */
+    public void approvePendingPrompt() {
+        Runnable apply = pendingApproval;
+        pendingApproval = null;
+        if (apply != null) apply.run();
+        emitCompletedLater(false);
+    }
+
     /** Waits for any pending prompt emission, so teardown does not race it. */
     public void awaitPendingPrompt() {
         Thread t = promptThread;
@@ -251,7 +268,12 @@ public final class FakeSecretService {
                 // Unlock counterpart lets every other case fall through, and so must this: an
                 // earlier version returned here for a Lock naming both paths, silently dropping
                 // the collection and reporting an empty locked list as if the request had vanished.
-                emitCompletedLater(false, () -> itemLocked = true);
+                //
+                // Nothing is scheduled: the lock happens only if a test calls
+                // approvePendingPrompt(). A client that declines to prompt therefore leaves the
+                // item unlocked, which is what a real provider does and what makes the suppressed
+                // case distinguishable from the approved one.
+                pendingApproval = () -> itemLocked = true;
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
             for (DBusPath p : objects) {

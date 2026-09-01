@@ -59,6 +59,13 @@ TEST_SOURCE_ROOTS = ["core/src/test/java", "hardened/src/test/java", "hardened-t
 # Identifiers that must never be passed to a logger unwrapped. `label`/`name` are user-chosen
 # and go through LogPolicy.label(); the rest are secret material and have no sanctioned form.
 SENSITIVE = r"(?:label|itemLabel|collectionLabel|secret|pepper|plain|plaintext|password|passphrase|body)"
+# The accessor form. `collection.getLabel()` carries exactly the value `label` does, but the
+# identifier is `getLabel` -- no word boundary before the capital L -- and the `(?<![.\w])`
+# lookbehind on SENSITIVE rejects anything after a dot anyway. Six live collection-name leaks sat
+# in functional/Collection while the guardrail reported the tree clean, which is worse than not
+# having the rule: the docstring promises concatenation cannot evade it.
+SENSITIVE_ACCESSOR = re.compile(
+    r"\.\s*get(?:Label|Secret|Password|Passphrase|Plaintext|Pepper)\s*\(")
 
 LOG_CALL = re.compile(r"\blog\.(?:trace|debug|info|warn|error)\s*\(", re.M)
 # Values the policy has already vetted: LogPolicy.label(...) / LogPolicy.cause(...), with or
@@ -257,6 +264,9 @@ def check(path, secrets_rules=True):
         # calls on other types, not the user's label.
         for am in re.finditer(r"(?<![.\w])(" + SENSITIVE + r")\b", code):
             problems.append((n, f"'{am.group(1)}' reaches a logger unwrapped; "
+                                f"use LogPolicy.label(...) or do not log it"))
+        for am in SENSITIVE_ACCESSOR.finditer(code):
+            problems.append((n, f"'{am.group(0).strip()}' reaches a logger unwrapped; "
                                 f"use LogPolicy.label(...) or do not log it"))
     return [(rel, n, msg) for n, msg in sorted(set(problems))]
 

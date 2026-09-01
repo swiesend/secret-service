@@ -93,11 +93,16 @@ public interface CollectionInterface extends AutoCloseable {
      *       {@code attributes} was null). Nothing may be inferred about the collection's contents.</li>
      * </ul>
      *
-     * <p><b>Changed in 3.0.0.</b> Earlier releases collapsed both cases to {@code Optional.empty()},
-     * so code of the form {@code if (getItems(a).isPresent()) …} previously implied "there are
-     * matches" and no longer does — such a caller now enters that branch with an empty list. The
-     * legacy {@code SimpleCollection.getItems} adapter deliberately keeps the old shape, returning
-     * {@code null} for both.</p>
+     * <p><b>Changed in 3.0.0, for the no-attributes case only.</b> Passing an empty map used to
+     * collapse "no items" to {@code Optional.empty()}; it now returns {@code Optional.of(List.of())}.
+     * Code of the form {@code if (getItems(Map.of()).isPresent()) …} previously implied "there are
+     * items" and no longer does — such a caller now enters that branch with an empty list.</p>
+     *
+     * <p>A search <em>with</em> attributes is unchanged: it already returned
+     * {@code Optional.of(List.of())} when nothing matched, because the filter it passed through
+     * tested the outer {@code Optional} rather than the list. The legacy
+     * {@code SimpleCollection.getItems} adapter therefore already returned an <em>empty list</em>
+     * for a no-match search and {@code null} only for the no-attributes case, and it still does.</p>
      */
     Optional<List<String>> getItems(Map<String, String> attributes);
 

@@ -44,6 +44,11 @@ class PromptSuppressionTest {
     private CollectionInterface start(boolean itemLocked) throws Exception {
         CollectionInterface collection = harness.start(itemLocked);
         fake = harness.fake();
+        // Put item lock/unlock behind a prompt. Without this the fake completes them inline and
+        // the prompt branches are never reached -- these tests then pass by exercising the
+        // no-prompt path instead of the one they name. That is what happened when the shared
+        // harness was extracted and this line was left behind.
+        fake.setRequirePromptForItemOps(true);
         return collection;
     }
 
@@ -65,15 +70,52 @@ class PromptSuppressionTest {
     @Test
     void lockItemPromptsWhenAllowedAndRefusesWhenNot() throws Exception {
         CollectionInterface allowed = start(false);
+        FakeSecretService allowedFake = fake;
+        // Answer the prompt from another thread while lockItem is blocked awaiting it. The fake
+        // applies the lock only on approval, so this is the difference under test rather than a
+        // timer that would have fired either way.
+        Thread approver = new Thread(() -> {
+            try {
+                Thread.sleep(200);
+                allowedFake.approvePendingPrompt();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "approver");
+        approver.setDaemon(true);
+        approver.start();
         assertTrue(allowed.lockItem(FakeSecretService.ITEM_PATH),
                 "with prompting enabled the lock completes through the prompt");
+        approver.join(5_000);
         stop();
 
         CollectionInterface suppressed = start(false);
         assertTrue(suppressed.disablePrompt());
+        // Nobody answers the prompt, so the provider never locks it -- exactly what a real
+        // provider does when the client never sends Prompt().
         assertFalse(suppressed.lockItem(FakeSecretService.ITEM_PATH),
                 "with prompting disabled the item must stay unlocked");
         assertFalse(fake.isItemLocked(), "the item was not locked behind the caller's back");
+    }
+
+    @Test
+    void lockingStillWorksWithoutAPromptWhenPromptingIsDisabled() throws Exception {
+        // disablePrompt() suppresses DIALOGS, not locking. Most providers lock without any prompt
+        // at all -- gnome-keyring answers Lock immediately with a non-empty locked list and a "/"
+        // path -- so a headless consumer that calls disablePrompt() at startup must still be able
+        // to lock an item.
+        //
+        // An earlier version checked isPrompting BEFORE issuing Lock and returned false, so such a
+        // consumer silently could not lock anything. The other tests here cannot see it: they set
+        // setRequirePromptForItemOps(true), which puts every lock behind a prompt, so the
+        // no-prompt path -- the common one -- went untested.
+        CollectionInterface collection = start(false);            // item starts unlocked
+        fake.setRequirePromptForItemOps(false);                  // and locking needs no prompt
+        assertTrue(collection.disablePrompt());
+
+        assertTrue(collection.lockItem(FakeSecretService.ITEM_PATH),
+                "locking needs no dialog here, so disabling prompts must not prevent it");
+        assertTrue(fake.isItemLocked(), "and the item really is locked");
     }
 
     @Test
