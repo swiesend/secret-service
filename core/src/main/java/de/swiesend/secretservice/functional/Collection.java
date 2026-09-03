@@ -575,6 +575,15 @@ public class Collection implements CollectionInterface {
         // item. Answering "provably absent" would license a caller's destructive branch on it, and
         // every sibling method returns empty for the same input.
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        // Scoped to THIS collection, as documented. getItem() wraps whatever path it is handed, so
+        // without this a path under a different collection answered of(true) -- and a caller using
+        // the answer to decide "this item is mine, overwrite it" would act on someone else's item.
+        // of(false), not empty: a path outside this collection is provably not an item of this
+        // collection; there is nothing uncertain about it.
+        if (collection != null
+                && !objectPath.startsWith(collection.getObjectPath() + "/")) {
+            return Optional.of(false);
+        }
         return getItem(objectPath).flatMap(de.swiesend.secretservice.Item::exists);
     }
 
@@ -739,12 +748,16 @@ public class Collection implements CollectionInterface {
             // getLastHandledSignal(Completed.class), an unrelated earlier prompt's result.
             if (lock.a.isEmpty() && requiresPrompt(lock.b)) {
                 // Only here does disablePrompt() apply: this is the one branch that would raise a
-                // dialog. The prompt object is left unanswered rather than dismissed, because
-                // Prompt.dismiss() takes no path -- it sends Dismiss to whatever objectPath the
-                // shared Prompt currently holds, which is "/" until some prompt() call reassigns
-                // it. Dismissing the wrong prompt is worse than leaving this one unanswered.
+                // dialog. The refused prompt is DISMISSED, not abandoned: the provider allocated a
+                // Prompt object for this reply, and walking away leaves it registered until the
+                // connection closes -- one leaked object per call, unbounded for a headless
+                // consumer that retries. Dismiss is sent to lock.b's own path rather than through
+                // the shared Prompt object, whose objectPath is whatever the last prompt() call
+                // set (initially "/") and could target an unrelated prompt.
                 if (!isPrompting) {
-                    log.debug("Locking item {} needs a prompt, and prompting is disabled.", itemPath);
+                    log.debug("Locking item {} needs a prompt, and prompting is disabled; dismissing it.",
+                            itemPath);
+                    dismissPrompt(lock.b);
                 } else {
                     de.swiesend.secretservice.interfaces.Prompt.Completed result =
                             prompt.await(lock.b, service.getTimeout());
@@ -1181,6 +1194,22 @@ public class Collection implements CollectionInterface {
             log.debug("Item {} stayed locked because prompting is disabled; not read.", objectPath);
         }
         return false;
+    }
+
+    /**
+     * Dismisses the prompt at {@code promptPath} directly, addressing the reply's own object path.
+     * The shared {@link Prompt} cannot do this: its Dismiss goes to whatever objectPath it
+     * currently holds, which is unrelated to the prompt being refused here.
+     */
+    private void dismissPrompt(DBusPath promptPath) {
+        boolean dismissed = service.getService().getMessageHandler()
+                .send(Static.Service.SECRETS, promptPath.getPath(), Static.Interfaces.PROMPT,
+                        "Dismiss", "")
+                .isPresent();
+        if (!dismissed) {
+            log.debug("Could not dismiss the refused prompt at {}; the provider keeps it until "
+                    + "this connection closes.", promptPath.getPath());
+        }
     }
 
     public boolean disablePrompt() {

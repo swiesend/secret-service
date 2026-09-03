@@ -58,7 +58,7 @@ TEST_SOURCE_ROOTS = ["core/src/test/java", "hardened/src/test/java", "hardened-t
 
 # Identifiers that must never be passed to a logger unwrapped. `label`/`name` are user-chosen
 # and go through LogPolicy.label(); the rest are secret material and have no sanctioned form.
-SENSITIVE = r"(?:label|itemLabel|collectionLabel|secret|pepper|plain|plaintext|password|passphrase|body)"
+SENSITIVE = r"(?:label|itemLabel|collectionLabel|name|collectionName|walletName|secret|pepper|plain|plaintext|password|passphrase|body)"
 # The accessor form. `collection.getLabel()` carries exactly the value `label` does, but the
 # identifier is `getLabel` -- no word boundary before the capital L -- and the `(?<![.\w])`
 # lookbehind on SENSITIVE rejects anything after a dot anyway. Six live collection-name leaks sat

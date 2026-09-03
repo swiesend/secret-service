@@ -39,12 +39,18 @@ public class SimpleCollectionTest {
         // an assertion failure, if this regresses.
         SimpleCollection collection = new SimpleCollection("test", "test");
 
-        List<String> found = collection.getItems(Map.of("no-such-attribute", "no-such-value"));
+        try {
+            List<String> found = collection.getItems(Map.of("no-such-attribute", "no-such-value"));
 
-        assertNotNull(found, "a successful search matching nothing is an empty list, never null");
-        assertTrue(found.isEmpty(), "nothing should have matched");
-        for (String path : found) {
-            assertNotNull(path);   // the shape a 1.x caller uses, and the one that NPEs on null
+            assertNotNull(found, "a successful search matching nothing is an empty list, never null");
+            assertTrue(found.isEmpty(), "nothing should have matched");
+            for (String path : found) {
+                assertNotNull(path);   // the shape a 1.x caller uses, and the one that NPEs on null
+            }
+        } finally {
+            // Every other test in this file deletes its collection; leaving it behind pollutes
+            // subsequent tests and subsequent runs.
+            collection.delete();
         }
     }
 

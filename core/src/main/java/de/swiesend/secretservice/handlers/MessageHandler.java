@@ -152,14 +152,21 @@ public class MessageHandler {
                         // The daemon knew the object well enough to refuse it, so it exists.
                         logParameterised(error, parameters, Level.INFO);
                         return Reply.failed(Outcome.DENIED, error, errorText);
+                    case "org.freedesktop.DBus.Error.UnknownMethod":
+                        // WARN, not ERROR: getPropertyChecked reinterprets this reply as the
+                        // perfectly ordinary ABSENT when it names the path as missing -- which is
+                        // how gnome-keyring, the primary provider, reports every deleted item. At
+                        // ERROR, a caller sweeping a collection with exists() produced one ERROR
+                        // line per absent item for a non-error outcome.
+                        logParameterised(error, parameters, Level.WARN);
+                        return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
                     case "org.freedesktop.DBus.Error.NoReply":
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
-                    case "org.freedesktop.DBus.Error.UnknownMethod":
                     case "org.freedesktop.DBus.Error.InvalidArgs":
                     case "org.freedesktop.DBus.Error.Failed":
-                        // UnknownMethod/InvalidArgs/Failed are about the CALL, not the object's
-                        // existence; NoReply and ServiceUnknown are about the daemon. None of them
-                        // license the conclusion "it is not there".
+                        // InvalidArgs/Failed are about the CALL, not the object's existence;
+                        // NoReply and ServiceUnknown are about the daemon. None of them license
+                        // the conclusion "it is not there".
                         logParameterised(error, parameters, Level.ERROR);
                         return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
                     case "org.freedesktop.DBus.Local.Disconnected":

@@ -76,7 +76,14 @@ class PromptSuppressionTest {
         // timer that would have fired either way.
         Thread approver = new Thread(() -> {
             try {
-                Thread.sleep(200);
+                // Poll for the prompt instead of sleeping a fixed 200ms: lockItem does two D-Bus
+                // round trips before the fake sets its pending approval, and on a loaded runner
+                // those can outlast any fixed sleep -- the approver would then answer a prompt
+                // that does not exist yet, and the test fails for scheduling reasons.
+                long deadline = java.lang.System.nanoTime() + 5_000_000_000L;
+                while (!allowedFake.hasPendingPrompt() && java.lang.System.nanoTime() < deadline) {
+                    Thread.sleep(20);
+                }
                 allowedFake.approvePendingPrompt();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

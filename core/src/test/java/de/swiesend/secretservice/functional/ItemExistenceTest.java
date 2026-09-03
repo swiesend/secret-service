@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.NoSuchElementException;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,9 +80,35 @@ class ItemExistenceTest {
 
     @Test
     void aPathThatWasNeverAnItemIsAbsent() {
-        assertEquals(Optional.of(false),
-                collection.itemExists("/org/freedesktop/secrets/collection/test/999999"),
+        // A path UNDER this collection, unlike an earlier version that probed a path under a
+        // different collection -- which only "worked" because itemExists ignored collection
+        // membership.
+        String itemPath = collection.createItem("victim", "secret", Map.of()).orElseThrow();
+        String neverAnItem = itemPath.substring(0, itemPath.lastIndexOf('/')) + "/999999";
+        assertEquals(Optional.of(false), collection.itemExists(neverAnItem),
                 "a path with no object behind it is absent");
+    }
+
+    @Test
+    void aPathInAnotherCollectionIsNotAnItemOfThisOne() throws Exception {
+        // itemExists is documented as scoped to THIS collection. Answering of(true) for a path
+        // under some other collection hands a caller "this item is mine" for an item that is not.
+        //
+        // The foreign item must genuinely EXIST: with a made-up path the provider answers "no such
+        // object" and the assertion passes with or without any scoping -- an earlier version of
+        // this test did exactly that and proved nothing.
+        CollectionInterface other = session.collection("test-item-existence-other",
+                Optional.of("password")).get();
+        try {
+            String foreignPath = other.createItem("foreign", "secret", Map.of()).orElseThrow();
+            assertEquals(Optional.of(true), other.itemExists(foreignPath),
+                    "the foreign item exists in its own collection");
+            assertEquals(Optional.of(false), collection.itemExists(foreignPath),
+                    "an item of another collection is not an item of this one");
+        } finally {
+            other.delete();
+            other.close();
+        }
     }
 
     @Test

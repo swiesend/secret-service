@@ -155,6 +155,9 @@ public final class FakeSecretService {
      * prompt" indistinguishable from "the operation happened anyway" -- the test then passes for
      * the wrong reason. A test that wants the prompt answered says so.
      */
+    /** Whether a Lock reply's prompt is outstanding -- lets a test wait instead of racing. */
+    public boolean hasPendingPrompt() { return pendingApproval != null; }
+
     public void approvePendingPrompt() {
         Runnable apply = pendingApproval;
         pendingApproval = null;

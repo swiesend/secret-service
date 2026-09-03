@@ -22,6 +22,13 @@ class LogPolicyTest {
 
     @Test
     void labelsAreHiddenByDefault() {
+        // The JVM cannot unset an environment variable, and SECRET_SERVICE_LOG_LABELS=true is the
+        // documented way to enable labels in a container -- so on a machine configured that way
+        // this assertion would fail while both the machine and the code behave as documented.
+        // Skipping is the honest answer; the env path itself is untestable in-JVM for the same
+        // reason, which is why no test covers it.
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv(LogPolicy.ENV) == null,
+                LogPolicy.ENV + " is set in this environment, so the default does not apply here");
         LogPolicy.resetToConfiguredSetting();
         assertFalse(LogPolicy.labelsLogged(),
                 "labels must be off unless asked for -- logs travel further than keyrings do");
