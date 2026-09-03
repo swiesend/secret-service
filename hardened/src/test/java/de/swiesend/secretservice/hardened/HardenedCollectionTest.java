@@ -391,6 +391,61 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void rotateEpochSucceedsWhenFilteredSearchLies() {
+        // The rewrap loop used to enumerate via a filtered getItems -- served by SearchItems, the
+        // call this project documents as provider-unreliable and which rewrapCovered refuses to
+        // trust. Fed a successful-but-empty lie, the loop rewrapped nothing, rewrapCovered then
+        // found both items still on the old epoch and refused, and rotation could NEVER succeed
+        // on such a provider. Enumerating via the Items property makes the lie irrelevant.
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .build();
+        h.createItem("a", "secret-a").orElseThrow();
+        h.createItem("b", "secret-b").orElseThrow();
+
+        fake.setFilteredGetItemsLies(true);
+
+        assertTrue(h.rotateEpoch(),
+                "rotation must not depend on SearchItems; the Items property enumeration is honest");
+        assertEquals(1, h.keystoreEntryCountForTest(),
+                "a fully successful rotation retains only the new epoch");
+    }
+
+    @Test
+    void aFailedRotationAbandonsItsUnreferencedEpochEntry() {
+        // Every failed rotation used to leave the freshly minted epoch entry in the keystore --
+        // each retry mints a new UUID, so entries accumulated without bound until a rotation
+        // fully succeeded. When the failure provably left nothing sealed under the new epoch,
+        // the entry is now abandoned and the previous epoch restored as current.
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .build();
+        String path = h.createItem("a", "secret-a").orElseThrow();
+        assertEquals(1, h.keystoreEntryCountForTest());
+
+        // Fail the rewrap before anything is created under the new epoch: the label read fails,
+        // the old envelope stays, rewrapped == 0.
+        fake.setNextGetItemLabelFails(true);
+        assertFalse(h.rotateEpoch(), "the rewrap failure must fail the rotation");
+
+        assertEquals(1, h.keystoreEntryCountForTest(),
+                "the failed rotation's epoch entry is provably unreferenced and must be abandoned");
+
+        // The conservative core: nothing was lost. The item still reads, and a retry succeeds.
+        assertEquals("secret-a", h.withSecret(path, String::new).orElseThrow());
+        assertTrue(h.rotateEpoch(), "a clean retry succeeds");
+        assertEquals(1, h.keystoreEntryCountForTest());
+        // The rewrap is create-then-delete, so the item lives at a NEW path now; read it by value.
+        Map<String, String> after = h.withSecrets(m -> {
+            Map<String, String> copy = new HashMap<>();
+            m.forEach((k, v) -> copy.put(k, new String(v)));
+            return copy;
+        }).orElseThrow();
+        assertTrue(after.containsValue("secret-a"),
+                "the item survives the retry rotation with its secret intact");
+    }
+
+    @Test
     void rotateEpochProvidesForwardSecrecyForPqItems() {
         // Write a PQ item, capture its envelope bytes, rotate the epoch, then try to read
         // the captured envelope as if it had been exfiltrated pre-rotation. The keystore's

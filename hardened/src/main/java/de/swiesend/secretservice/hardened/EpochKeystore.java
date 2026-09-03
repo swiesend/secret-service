@@ -542,6 +542,34 @@ final class EpochKeystore {
      * would leave alive, so a pre-rotation backup plus the current keystore can no longer
      * decapsulate any superseded envelope.
      */
+    /**
+     * Undoes a failed rotation's {@link #adoptAsCurrent}: removes {@code epochId}'s entry and makes
+     * {@code restoreCurrent} current again, in one persist. Refuses -- returning false, changing
+     * nothing -- unless {@code restoreCurrent} still holds keys and {@code epochId} is not the same
+     * entry. The CALLER owns the proof that no item references {@code epochId}; this method only
+     * makes the keystore change atomic and rolls back its own in-memory state if the persist fails.
+     * Every uncertain path keeps the entry: a leaked keypair costs 3.6 KB, a destroyed one costs
+     * every item sealed under it.
+     */
+    synchronized boolean abandonEpoch(String epochId, String restoreCurrent) {
+        validateEpochId(epochId);
+        validateEpochId(restoreCurrent);
+        loadIfPresent();
+        if (epochId.equals(restoreCurrent) || !entries.containsKey(restoreCurrent)) return false;
+        EpochKeyPair removed = entries.remove(epochId);
+        if (removed == null) return true; // already gone; nothing to abandon
+        String previousCurrent = currentEpochId;
+        currentEpochId = restoreCurrent;
+        try {
+            persist();
+            return true;
+        } catch (RuntimeException e) {
+            entries.put(epochId, removed);
+            currentEpochId = previousCurrent;
+            return false;
+        }
+    }
+
     synchronized void retainOnly(String epochId) {
         loadIfPresent();
         // Refuse to "retain" an epoch we do not hold. retainAll(Set.of(unknown)) empties the map,
@@ -637,10 +665,17 @@ final class EpochKeystore {
     private byte[] aeadEncrypt(byte[] kek, byte[] plain) throws GeneralSecurityException {
         byte[] nonce = new byte[NONCE_LEN];
         new SecureRandom().nextBytes(nonce);
-        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-        c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(TAG_BITS, nonce));
-        byte[] ct = c.doFinal(plain);
-        Arrays.fill(kek, (byte) 0);
+        // The KEK-zeroing finally spans getInstance/init too: either can throw (a misconfigured
+        // JCE, a provider without AES/GCM), and outside the finally that stranded the
+        // pepper-derived KEK on the heap with no remaining reference to clear it.
+        byte[] ct;
+        try {
+            Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+            c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(TAG_BITS, nonce));
+            ct = c.doFinal(plain);
+        } finally {
+            Arrays.fill(kek, (byte) 0);
+        }
         ByteBuffer out = ByteBuffer.allocate(NONCE_LEN + ct.length);
         out.put(nonce);
         out.put(ct);
@@ -653,9 +688,11 @@ final class EpochKeystore {
         }
         byte[] nonce = Arrays.copyOf(noncePlusCt, NONCE_LEN);
         byte[] ct = Arrays.copyOfRange(noncePlusCt, NONCE_LEN, noncePlusCt.length);
-        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-        c.init(Cipher.DECRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(TAG_BITS, nonce));
+        // As in aeadEncrypt: getInstance/init inside the KEK-zeroing finally, so a throw there
+        // cannot strand the key.
         try {
+            Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+            c.init(Cipher.DECRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(TAG_BITS, nonce));
             return c.doFinal(ct);
         } finally {
             Arrays.fill(kek, (byte) 0);
