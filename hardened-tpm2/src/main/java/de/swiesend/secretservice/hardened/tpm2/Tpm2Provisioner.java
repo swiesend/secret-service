@@ -82,10 +82,16 @@ import java.util.function.Supplier;
  * <p><b>The sealed pepper is base64-encoded, not verbatim.</b> {@link #seal} encodes the
  * supplied bytes, so {@code Tpm2KeyMaterialProvider.getPepper()} returns
  * {@code base64(pepperBytes)} — not the bytes the operator passed in. This matters for
- * the cross-host escrow the {@code --pepper-*} options exist for: a pepper escrowed as
- * raw {@code P} and configured elsewhere (e.g. into a {@code FileKeyMaterialProvider})
- * as {@code P} derives <em>different</em> DEKs and cannot read a single item. Escrow
- * {@code base64(P)}, or seal on every host from the same source bytes. Pepper
+ * the cross-host escrow the {@code --pepper-*} options exist for: the two providers must
+ * hand the DEK derivation the <em>same</em> value, and they transform their input
+ * differently. This provider returns {@code base64(P)}; {@code FileKeyMaterialProvider}
+ * base64-<em>decodes</em> its line before returning it. So a file line of
+ * {@code base64(P)} yields {@code P} -- one hop short -- and every item written on the
+ * other host fails AEAD authentication, reported as tampering. To pair the two, the
+ * escrow file line must be {@code base64(base64(P))}, i.e. the base64 encoding of the
+ * exact value this provider returns. The less error-prone route is to skip the pairing
+ * entirely: seal on every host from the same source bytes with {@code --pepper-file},
+ * so each host runs this provider and no cross-provider transform is involved. Pepper
  * round-trip uses UTF-8, so caller-supplied input must be valid UTF-8 text — typically
  * ASCII (a base64 random pepper from {@code openssl rand -base64 32} works perfectly).</p>
  *
