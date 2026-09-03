@@ -754,10 +754,14 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         }
         String next = newEpochId();
         log.info("rotateEpoch: {} -> {} (rewrap pending items)", previous, next);
-        // Rewrap every hardened item under the new epoch. Filter out the keystore item itself
-        // so rotation doesn't recursively try to rewrap its own keystore (which is encrypted
-        // under the pepper, not under the per-epoch KEM).
-        Optional<List<String>> paths = wrapped.getItems(Map.of(ATTR_VERSION, ATTR_VERSION_V1));
+        // Enumerate EVERYTHING and filter locally, exactly as withSecrets does and for the same
+        // reason: a filtered query is served by SearchItems, which this project documents as
+        // provider-unreliable and which EpochKeystore.loadIfPresent and rewrapCovered both refuse
+        // to trust. Fed by a lossy SearchItems, this loop rewrapped a subset, rewrapCovered then
+        // found survivors on the old epoch and refused -- correctly -- and rotation could never
+        // succeed on that provider. The unfiltered form is served from the Items property; the
+        // hardened.version filter moves into the loop below.
+        Optional<List<String>> paths = wrapped.getItems(Map.of());
         if (paths.isEmpty()) {
             // Enumeration FAILED (as opposed to succeeding with nothing found -- the functional
             // Collection now distinguishes the two). We cannot know what would have needed
@@ -789,10 +793,14 @@ public final class HardenedCollection implements HardenedCollectionInterface {
             // Skip the keystore item -- it lives under hardened.kind=epoch-keystore and is
             // managed by EpochKeystore directly, not by the per-item DEK derivation.
             Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
-            // Skip the keystore item, and skip anything whose attributes we cannot read at all --
-            // rewrapping an item we cannot classify is the riskier of the two options.
+            // Skip the keystore item, skip foreign (non-hardened) items -- the enumeration is
+            // unfiltered now, so they appear here -- and skip anything whose attributes we cannot
+            // read at all: rewrapping an item we cannot classify is the riskier option. If an
+            // unreadable one was in fact a hardened item, rewrapCovered finds it still naming the
+            // old epoch and refuses the key destruction, so the skip stays fail-closed.
             if (attrs.isEmpty()
-                    || EpochKeystore.KIND_VALUE.equals(attrs.get().get(EpochKeystore.ATTR_KIND))) {
+                    || EpochKeystore.KIND_VALUE.equals(attrs.get().get(EpochKeystore.ATTR_KIND))
+                    || !ATTR_VERSION_V1.equals(attrs.get().get(ATTR_VERSION))) {
                 continue;
             }
             Boolean ok;
@@ -806,8 +814,14 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 } catch (IllegalArgumentException e) {
                     return Boolean.FALSE;
                 }
-                Envelope env = Envelope.fromBytes(envBytes);
-                Arrays.fill(envBytes, (byte) 0);
+                // fromBytes inside try/finally, like every sibling decode site: a corrupt or
+                // foreign body -- potentially plaintext -- must be zeroed even when parsing throws.
+                Envelope env;
+                try {
+                    env = Envelope.fromBytes(envBytes);
+                } finally {
+                    Arrays.fill(envBytes, (byte) 0);
+                }
                 char[] plain = decryptToChars(env, path, a.get());
                 if (plain == null) return Boolean.FALSE;
                 try {
@@ -870,6 +884,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
                 if (!rewrapCovered(next, rewrapped)) {
                     log.warn("rotateEpoch: could not verify that every item now references epoch {}; "
                             + "keeping all epoch keys. Re-run rotation once the collection is readable.", next);
+                    abandonFailedEpoch(next, previous, rewrapped);
                     return false;
                 }
                 keystore.retainOnly(next);
@@ -882,6 +897,7 @@ public final class HardenedCollection implements HardenedCollectionInterface {
         } else {
             log.warn("rotateEpoch: at least one rewrap failed; keeping previous epoch {} alive "
                     + "in the keystore so straggler items remain readable.", previous);
+            abandonFailedEpoch(next, previous, rewrapped);
         }
         return allOk;
     }
@@ -934,6 +950,9 @@ public final class HardenedCollection implements HardenedCollectionInterface {
      * mutate process env from a JUnit test portably). Still requires {@link Builder#allowMigration(boolean)}
      * so the builder-side gate is still pinned by tests.
      */
+    /** Number of epoch entries currently held in the keystore. */
+    int keystoreEntryCountForTest() { return keystore.sizeForTest(); }
+
     MigrationReport migrateNonHardenedToHardenedForTest(java.util.function.Predicate<MigrationCandidate> selector) {
         Objects.requireNonNull(selector, "selector");
         if (!allowMigration) {
@@ -1407,6 +1426,91 @@ public final class HardenedCollection implements HardenedCollectionInterface {
      * nothing left to rewrap -- rotating an empty collection is legitimate; rotating a collection we
      * merely failed to read is not.</p>
      */
+    /**
+     * Best-effort cleanup after a failed rotation: drops the epoch entry {@code adoptAsCurrent}
+     * just created and restores {@code previous} as current -- but only when that is PROVABLY
+     * safe. Without this, every failed rotation left a fresh X25519+ML-KEM entry (~3.6 KB) in the
+     * single keystore item, unbounded across retries (each mints a new UUID) until serialize()'s
+     * 65535 ceiling.
+     *
+     * <p>Deliberately conservative -- every guard fails toward keeping the entry, because a leaked
+     * keypair costs kilobytes and a destroyed one costs every item sealed under it:</p>
+     * <ul>
+     *   <li>{@code rewrapped > 0}: items were already resealed under {@code next}; its key is
+     *       load-bearing and stays. The entry is reclaimed by {@code retainOnly} when a later
+     *       rotation fully succeeds.</li>
+     *   <li>the verification sweep must POSITIVELY prove no surviving envelope names
+     *       {@code next} -- any unreadable item, failed enumeration, or corrupt envelope keeps the
+     *       entry.</li>
+     *   <li>the keystore change itself is atomic and self-reverting (see
+     *       {@link EpochKeystore#abandonEpoch}).</li>
+     * </ul>
+     *
+     * <p>Sound only under the class contract that writers are quiesced around
+     * {@link #rotateEpoch}: no concurrent write can seal a new item under {@code next} between the
+     * sweep and the removal.</p>
+     */
+    private void abandonFailedEpoch(String next, String previous, int rewrapped) {
+        if (rewrapped > 0) {
+            log.info("rotateEpoch: epoch {} already covers {} rewrapped item(s); keeping its keys "
+                    + "until a fully successful rotation retires it.", next, rewrapped);
+            return;
+        }
+        if (!noItemReferences(next)) {
+            log.info("rotateEpoch: could not prove epoch {} is unreferenced; keeping its keys. "
+                    + "A leaked entry is recoverable, a destroyed one is not.", next);
+            return;
+        }
+        try {
+            if (keystore.abandonEpoch(next, previous)) {
+                this.epochId = previous;
+                log.info("rotateEpoch: abandoned unreferenced epoch {} and restored {} as current.",
+                        next, previous);
+            }
+        } catch (RuntimeException e) {
+            log.warn("rotateEpoch: could not abandon epoch {}: {}; its entry remains in the "
+                    + "keystore.", next, e.toString());
+        }
+    }
+
+    /**
+     * Whether a full sweep PROVES that no surviving hardened envelope is sealed under
+     * {@code epochId}. Mirrors {@link #rewrapCovered}'s read pattern: enumeration via the Items
+     * property, bodies read only for items declaring themselves ours, the epoch taken from the
+     * AEAD-authenticated header and never from attributes. Any failure to read or classify
+     * returns false -- absence of proof, not proof of absence.
+     */
+    private boolean noItemReferences(String epochId) {
+        Optional<List<String>> all = wrapped.getItems(Map.of());
+        if (all.isEmpty()) return false;
+        for (String path : all.get()) {
+            Optional<Map<String, String>> attrs = wrapped.getAttributes(path);
+            if (attrs.isEmpty()) return false;
+            if (EpochKeystore.KIND_VALUE.equals(attrs.get().get(EpochKeystore.ATTR_KIND))) continue;
+            if (!declaresHardened(attrs.get())) continue;
+            Optional<String> envEpoch = wrapped.withSecret(path, body -> {
+                byte[] raw;
+                try {
+                    raw = decodeBase64(body);
+                } catch (IllegalArgumentException notBase64) {
+                    return NOT_OURS;
+                }
+                try {
+                    if (!Envelope.looksLikeEnvelope(raw)) return NOT_OURS;
+                    return new String(Envelope.fromBytes(raw).epochId(), StandardCharsets.US_ASCII);
+                } catch (RuntimeException corruptEnvelope) {
+                    return null;
+                } finally {
+                    Arrays.fill(raw, (byte) 0);
+                }
+            });
+            if (envEpoch.isEmpty() || envEpoch.get() == null) return false;
+            if (NOT_OURS.equals(envEpoch.get())) continue;
+            if (epochId.equals(envEpoch.get())) return false;
+        }
+        return true;
+    }
+
     private boolean rewrapCovered(String newEpoch, int rewrapped) {
         // Enumerate EVERYTHING, not the hardened.version filter the rewrap loop uses. Attributes are
         // plaintext and daemon-mutable, and this project already documents SearchItems as unreliable
