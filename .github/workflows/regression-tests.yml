@@ -3,8 +3,13 @@ name: Regression Tests
 on:
   push:
     branches: [main, develop-2.x.x]
+  # Every pull request, whatever it targets. Filtering by base branch meant a PR stacked on
+  # another PR ran no tests at all: its base is a feature branch, so none of the patterns matched
+  # and the suite silently did not apply. A 19-commit stack sat verified only on a contributor's
+  # machine until the branch below it merged and the base changed -- the point at which finding a
+  # problem is most expensive. Push is still filtered; there is no value in re-running a branch's
+  # own pushes once its PR covers them.
   pull_request:
-    branches: [main, develop-2.x.x]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

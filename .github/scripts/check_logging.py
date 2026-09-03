@@ -280,7 +280,11 @@ def main():
         print(f"Logging policy violations ({len(problems)}):\n", file=sys.stderr)
         for rel, n, msg in problems:
             print(f"  {rel}:{n}: {msg}", file=sys.stderr)
-        print("\nSee LogPolicy and docs/usage/logging.md. To allow one line deliberately, append"
+        # Points at LogPolicy and this file's own docstring, both of which exist wherever the
+        # script does. It named docs/usage/logging.md, which arrives in a later branch, so on this
+        # one the advice sent the reader to a file that was not there.
+        print("\nSee LogPolicy and the rules at the top of this script."
+              "\nTo allow one line deliberately, append"
               "\n  // log-check: allow <reason>", file=sys.stderr)
         return 1
     print(f"OK - {len(files)} main and {len(test_files)} test source files "

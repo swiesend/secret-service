@@ -8,8 +8,9 @@ name: System Tests
 on:
   push:
     branches: [main, develop-2.x.x]
+  # Unfiltered, for the reason given in regression-tests.yml: a base-branch filter switches the
+  # whole suite off for a stacked pull request without saying so.
   pull_request:
-    branches: [main, develop-2.x.x]
   workflow_dispatch:
 
 concurrency:
