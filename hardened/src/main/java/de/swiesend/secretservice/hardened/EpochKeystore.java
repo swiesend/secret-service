@@ -542,33 +542,6 @@ final class EpochKeystore {
      * would leave alive, so a pre-rotation backup plus the current keystore can no longer
      * decapsulate any superseded envelope.
      */
-    /**
-     * Undoes a failed rotation's {@link #adoptAsCurrent}: removes {@code epochId}'s entry and makes
-     * {@code restoreCurrent} current again, in one persist. Refuses -- returning false, changing
-     * nothing -- unless {@code restoreCurrent} still holds keys and {@code epochId} is not the same
-     * entry. The CALLER owns the proof that no item references {@code epochId}; this method only
-     * makes the keystore change atomic and rolls back its own in-memory state if the persist fails.
-     * Every uncertain path keeps the entry: a leaked keypair costs 3.6 KB, a destroyed one costs
-     * every item sealed under it.
-     */
-    synchronized boolean abandonEpoch(String epochId, String restoreCurrent) {
-        validateEpochId(epochId);
-        validateEpochId(restoreCurrent);
-        loadIfPresent();
-        if (epochId.equals(restoreCurrent) || !entries.containsKey(restoreCurrent)) return false;
-        EpochKeyPair removed = entries.remove(epochId);
-        if (removed == null) return true; // already gone; nothing to abandon
-        String previousCurrent = currentEpochId;
-        currentEpochId = restoreCurrent;
-        try {
-            persist();
-            return true;
-        } catch (RuntimeException e) {
-            entries.put(epochId, removed);
-            currentEpochId = previousCurrent;
-            return false;
-        }
-    }
 
     synchronized void retainOnly(String epochId) {
         loadIfPresent();
@@ -600,6 +573,49 @@ final class EpochKeystore {
             }
             log.info("EpochKeystore: retained only epoch {}; destroyed all superseded epoch keys.",
                     epochId);
+        }
+    }
+
+    /**
+     * Undoes a failed rotation's {@link #adoptAsCurrent}: removes {@code epochId}'s entry and makes
+     * {@code restoreCurrent} current again, in one persist. Refuses -- returning false, changing
+     * nothing -- unless {@code restoreCurrent} still holds keys and {@code epochId} is not the same
+     * entry. The CALLER owns the proof that no item references {@code epochId}; this method only
+     * makes the keystore change atomic and rolls back its own in-memory state if the persist fails.
+     * Every uncertain path keeps the entry: a leaked keypair costs 3.6 KB, a destroyed one costs
+     * every item sealed under it.
+     */
+    synchronized boolean abandonEpoch(String epochId, String restoreCurrent) {
+        validateEpochId(epochId);
+        validateEpochId(restoreCurrent);
+        loadIfPresent();
+        if (epochId.equals(restoreCurrent) || !entries.containsKey(restoreCurrent)) return false;
+        EpochKeyPair removed = entries.remove(epochId);
+        if (removed == null) return true; // already gone; nothing to abandon
+        try {
+            currentEpochId = restoreCurrent;
+            persist();
+            return true;
+        } catch (RuntimeException e) {
+            // Deliberately NOT the siblings' symmetric rollback. persist is create -> advance ->
+            // delete and is not crash-atomic: a throw between the first two leaves the REDUCED
+            // snapshot (without epochId's keys) durably on disk, and the next load prefers it.
+            // This is the only mutator whose persist REMOVES key material, so the safe in-memory
+            // state after an ambiguous failure is different from "put everything back":
+            //
+            //  - entries get epochId's keypair back, so reads keep working whichever snapshot
+            //    the disk actually holds, and a later successful persist re-secures the keys
+            //    durably instead of losing them;
+            //  - currentEpochId STAYS restoreCurrent. Restoring it to the abandoned epoch --
+            //    the symmetric move -- meant the very next createItem sealed an item under keys
+            //    whose only durable copy may already be gone: observed as an item unreadable
+            //    after restart, exactly the destruction this method exists to avoid;
+            //  - generation is NOT rolled back: the half-persist may have consumed this
+            //    generation on disk, and re-using it would create a second snapshot with the
+            //    same generation, leaving the next load to pick between ties.
+            entries.put(epochId, removed);
+            currentEpochId = restoreCurrent;
+            return false;
         }
     }
 

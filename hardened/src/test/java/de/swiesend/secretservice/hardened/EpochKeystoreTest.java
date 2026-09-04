@@ -311,8 +311,13 @@ class EpochKeystoreTest {
             if (throwOnRead) throw new IllegalStateException("anchor read failed (simulated TPM error)");
             return value;
         }
+        int advanceCalls;
+        int throwOnAdvanceCallNumber; // 1-based; 0 = never. Lets a test fail one SPECIFIC persist
+                                      // (e.g. the abandon's) while the ones before it succeed.
         @Override public long advanceTo(long target) {
-            if (throwOnAdvance) throw new IllegalStateException("anchor advance failed (simulated TPM error)");
+            advanceCalls++;
+            if (throwOnAdvance || advanceCalls == throwOnAdvanceCallNumber)
+                throw new IllegalStateException("anchor advance failed (simulated TPM error)");
             if (target > value) value = target;
             return value;
         }

@@ -90,8 +90,12 @@ import java.util.function.Supplier;
  * other host fails AEAD authentication, reported as tampering. To pair the two, the
  * escrow file line must be {@code base64(base64(P))}, i.e. the base64 encoding of the
  * exact value this provider returns. The less error-prone route is to skip the pairing
- * entirely: seal on every host from the same source bytes with {@code --pepper-file},
- * so each host runs this provider and no cross-provider transform is involved. Pepper
+ * entirely: seal on every host from the same escrowed line, so each host runs this
+ * provider and no cross-provider transform is involved -- feed it via
+ * {@code --pepper-stdin} (e.g. {@code cat escrow.b64 | ... --pepper-stdin}),
+ * {@code --pepper-env VAR}, or {@code --pepper-fd N}; those are the options that exist.
+ * (An earlier version of this paragraph recommended a {@code --pepper-file} option this
+ * CLI has never had, sending operators straight back to the pairing trap above.) Pepper
  * round-trip uses UTF-8, so caller-supplied input must be valid UTF-8 text — typically
  * ASCII (a base64 random pepper from {@code openssl rand -base64 32} works perfectly).</p>
  *

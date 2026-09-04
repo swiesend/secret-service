@@ -446,6 +446,44 @@ class HardenedCollectionTest {
     }
 
     @Test
+    void aHalfPersistedAbandonmentNeverStrandsItems() throws Exception {
+        // The dangerous shape: a failed rotation's abandonment half-persists -- the reduced
+        // keystore snapshot (without the failed epoch's keys) is durably created, then the anchor
+        // advance throws. The next load prefers the reduced snapshot. If the instance were still
+        // writing under the failed epoch, every such item would be unreadable after restart --
+        // key destruction. The fix orders epochId restoration BEFORE the keystore change, so the
+        // reduced snapshot only ever drops keys nothing references.
+        EpochKeystoreTest.FakeAnchor anchor = new EpochKeystoreTest.FakeAnchor();
+        HardenedCollection h = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .generationAnchor(anchor)
+                .build();
+        String before = h.createItem("before", "secret-before").orElseThrow(); // advance #1
+
+        fake.setNextGetItemLabelFails(true);      // the rewrap fails; rewrapped == 0
+        anchor.throwOnAdvanceCallNumber = 3;      // #2 = adoptAsCurrent, #3 = the abandonment
+        assertFalse(h.rotateEpoch(), "the rotation fails");
+
+        // The caller-side fix under test: post-failure writes go under the PREVIOUS epoch, whose
+        // keys the reduced snapshot retains -- not under the epoch whose durability is in doubt.
+        String after = h.createItem("after", "secret-after").orElseThrow();
+
+        // Simulated restart over the same collection: a fresh instance loads whatever snapshot
+        // the half-failed abandonment left on disk. close() first -- the live-decorator guard
+        // rightly refuses two decorators over one collection.
+        h.close();
+        HardenedCollection restarted = HardenedCollection.builder(fake, provider)
+                .acknowledgeSameUidExposure(true)
+                .generationAnchor(anchor)
+                .build();
+        assertEquals("secret-before", restarted.withSecret(before, String::new).orElseThrow(),
+                "the pre-rotation item survives the restart");
+        assertEquals("secret-after", restarted.withSecret(after, String::new).orElseThrow(),
+                "the post-failure item survives the restart -- without the epochId restoration "
+                        + "it was sealed under keys the reduced snapshot dropped");
+    }
+
+    @Test
     void rotateEpochProvidesForwardSecrecyForPqItems() {
         // Write a PQ item, capture its envelope bytes, rotate the epoch, then try to read
         // the captured envelope as if it had been exfiltrated pre-rotation. The keystore's
