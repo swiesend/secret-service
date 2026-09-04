@@ -19,6 +19,10 @@ concurrency:
 
 jobs:
   system-tests:
+    # Observed failure mode: a job stuck on a hung step sat for 3.3 hours with only
+    # GitHub\'s 6-hour default as a backstop. Normal runtime is ~2 minutes; anything
+    # near 20 minutes is a hang, and failing fast is what makes it diagnosable.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
