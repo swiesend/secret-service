@@ -26,6 +26,9 @@ concurrency:
 
 jobs:
   build:
+    # Bounded like the other workflows: a hung job must fail in minutes, not sit on
+    # a runner until GitHub's 6-hour default. Normal runtime is ~3 minutes.
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -71,6 +74,7 @@ jobs:
     # Deploy only from main (push or manual dispatch), never from PRs.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     permissions:
       pages: write
