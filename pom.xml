@@ -24,6 +24,8 @@
 
     <modules>
         <module>core</module>
+        <module>hardened</module>
+        <module>hardened-tpm2</module>
     </modules>
 
     <licenses>
