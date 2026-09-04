@@ -3,8 +3,13 @@ name: Regression Tests
 on:
   push:
     branches: [main, develop-2.x.x]
+  # Every pull request, whatever it targets. Filtering by base branch meant a PR stacked on
+  # another PR ran no tests at all: its base is a feature branch, so none of the patterns matched
+  # and the suite silently did not apply. A 19-commit stack sat verified only on a contributor's
+  # machine until the branch below it merged and the base changed -- the point at which finding a
+  # problem is most expensive. Push is still filtered; there is no value in re-running a branch's
+  # own pushes once its PR covers them.
   pull_request:
-    branches: [main, develop-2.x.x]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -12,6 +17,10 @@ concurrency:
 
 jobs:
   regression-tests:
+    # Observed failure mode: a job stuck on a hung step sat for 3.3 hours with only
+    # GitHub\'s 6-hour default as a backstop. Normal runtime is ~2 minutes; anything
+    # near 15 minutes is a hang, and failing fast is what makes it diagnosable.
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,6 +33,11 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+
+      # Cheap, source-only, and first: a leak that reaches a log is not undone by deleting the
+      # log. Runs before the container build so a violation fails in seconds, not minutes.
+      - name: Check the logging policy
+        run: python3 .github/scripts/check_logging.py
 
       - name: Build test container
         run: docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test .

@@ -8,8 +8,9 @@ name: System Tests
 on:
   push:
     branches: [main, develop-2.x.x]
+  # Unfiltered, for the reason given in regression-tests.yml: a base-branch filter switches the
+  # whole suite off for a stacked pull request without saying so.
   pull_request:
-    branches: [main, develop-2.x.x]
   workflow_dispatch:
 
 concurrency:
@@ -18,6 +19,10 @@ concurrency:
 
 jobs:
   system-tests:
+    # Observed failure mode: a job stuck on a hung step sat for 3.3 hours with only
+    # GitHub\'s 6-hour default as a backstop. Normal runtime is ~2 minutes; anything
+    # near 20 minutes is a hang, and failing fast is what makes it diagnosable.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

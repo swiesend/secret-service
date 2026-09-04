@@ -8,7 +8,7 @@ This is the unified instruction file for all AI agents (Claude Code, GitHub Copi
 
 - **Group/Artifact:** `de.swiesend:secret-service`
 - **License:** MIT
-- **JDK:** Requires JDK 17+ to build
+- **JDK:** Requires JDK 25+ to build
 
 ## Build Commands
 
@@ -24,7 +24,7 @@ Maven 3.6.0+ is enforced. No Gradle support.
 ## Project Structure
 
 ```
-src/main/java/
+core/src/main/java/
   module-info.java                              # JPMS module: de.swiesend.secretservice
   de/swiesend/secretservice/
     functional/                                 # NEW FUNCTIONAL API (recommended)
@@ -47,7 +47,7 @@ src/main/java/
     TransportEncryption.java                    # DH key exchange + AES-128-CBC
     Static.java                                 # Constants, conversion utilities
 
-src/test/java/
+core/src/test/java/
   de/swiesend/secretservice/
     functional/                                 # Functional API tests
       SecretServiceTest.java, CollectionTest.java, SystemTest.java
@@ -90,7 +90,6 @@ src/test/java/
 ```java
 module de.swiesend.secretservice {
     requires transitive org.freedesktop.dbus;
-    requires at.favre.lib.hkdf;
     requires org.slf4j;
     opens de.swiesend.secretservice to org.freedesktop.dbus;
     exports de.swiesend.secretservice;
@@ -108,7 +107,6 @@ module de.swiesend.secretservice {
 |---|---|---|
 | `dbus-java-core` | 5.2.0 | D-Bus communication |
 | `dbus-java-transport-native-unixsocket` | 5.2.0 | Unix socket transport |
-| `hkdf` (at.favre.lib) | 2.0.0 | HMAC-based key derivation |
 | `slf4j-api` | 2.0.17 | Logging |
 | `junit-jupiter` | 5.10.5 | Testing (test scope) |
 
