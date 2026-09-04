@@ -29,6 +29,9 @@ concurrency:
 
 jobs:
   tpm-tests:
+    # Bounded like the other workflows: a hung job must fail in minutes, not sit on
+    # a runner until GitHub's 6-hour default. Normal runtime is ~3 minutes.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     name: tpm-tests (ms-tpm-20-ref simulator; unit + gnome-keyring system test)
     steps:
