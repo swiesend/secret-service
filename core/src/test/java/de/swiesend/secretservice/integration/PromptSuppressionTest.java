@@ -84,7 +84,12 @@ class PromptSuppressionTest {
                 while (!allowedFake.hasPendingPrompt() && java.lang.System.nanoTime() < deadline) {
                     Thread.sleep(20);
                 }
-                allowedFake.approvePendingPrompt();
+                // Only if a prompt actually arrived. Approving unconditionally after the deadline
+                // emitted a spurious Completed(false) for a prompt that never existed, which a
+                // later await on the same bus could consume as a stale answer.
+                if (allowedFake.hasPendingPrompt()) {
+                    allowedFake.approvePendingPrompt();
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

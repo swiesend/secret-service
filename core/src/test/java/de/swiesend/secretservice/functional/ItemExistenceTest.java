@@ -97,8 +97,15 @@ class ItemExistenceTest {
         // The foreign item must genuinely EXIST: with a made-up path the provider answers "no such
         // object" and the assertion passes with or without any scoping -- an earlier version of
         // this test did exactly that and proved nothing.
-        CollectionInterface other = session.collection("test-item-existence-other",
-                Optional.of("password")).get();
+        CollectionInterface other;
+        try {
+            other = session.collection("test-item-existence-other", Optional.of("password")).get();
+        } catch (NoSuchElementException e) {
+            // Same fallback as setUp: providers without the gnome-keyring password interface
+            // return empty for password-created collections. Without this, the test errored with
+            // a bare NoSuchElementException unrelated to the scoping behaviour under test.
+            other = session.collection("test-item-existence-other", Optional.empty()).get();
+        }
         try {
             String foreignPath = other.createItem("foreign", "secret", Map.of()).orElseThrow();
             assertEquals(Optional.of(true), other.itemExists(foreignPath),

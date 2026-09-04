@@ -45,6 +45,7 @@ public final class FakeSecretService {
 
     public static final String BUS_NAME = "org.freedesktop.secrets";
     public static final String SERVICE_PATH = "/org/freedesktop/secrets";
+    public static final String DEFAULT_ALIAS_PATH = "/org/freedesktop/secrets/aliases/default";
     public static final String COLLECTION_PATH = "/org/freedesktop/secrets/collection/fake";
     /** The client resolves a collection by label, so the Label property must match this. */
     public static final String COLLECTION_LABEL = "fake";
@@ -155,8 +156,6 @@ public final class FakeSecretService {
      * prompt" indistinguishable from "the operation happened anyway" -- the test then passes for
      * the wrong reason. A test that wants the prompt answered says so.
      */
-    /** Whether a Lock reply's prompt is outstanding -- lets a test wait instead of racing. */
-    public boolean hasPendingPrompt() { return pendingApproval != null; }
 
     public void approvePendingPrompt() {
         Runnable apply = pendingApproval;
@@ -164,6 +163,9 @@ public final class FakeSecretService {
         if (apply != null) apply.run();
         emitCompletedLater(false);
     }
+
+    /** Whether a Lock reply's prompt is outstanding -- lets a test wait instead of racing. */
+    public boolean hasPendingPrompt() { return pendingApproval != null; }
 
     /** Waits for any pending prompt emission, so teardown does not race it. */
     public void awaitPendingPrompt() {
@@ -187,6 +189,11 @@ public final class FakeSecretService {
     public void export() throws Exception {
         connection.exportObject(SERVICE_PATH, new ServiceImpl());
         connection.exportObject(COLLECTION_PATH, new CollectionImpl());
+        // The same collection, addressed as the default alias -- how openDefault() reaches it.
+        // gnome-keyring serves the default collection at BOTH paths while its items live only
+        // under the canonical one; itemExists' scoping regression (comparing item paths against
+        // the alias prefix) was only reachable through this addressing, so the fake must offer it.
+        connection.exportObject(DEFAULT_ALIAS_PATH, new CollectionImpl());
         connection.exportObject(ITEM_PATH, new ItemImpl());
         connection.exportObject(SESSION_PATH, new SessionImpl());
         connection.requestBusName(BUS_NAME);

@@ -358,6 +358,14 @@ public class Collection implements CollectionInterface {
 
     private Optional<DBusPath> performPrompt(DBusPath path) {
         if (!isPrompting) {
+            // Actually dismiss it. This trace has always claimed "dismissed the prompt" while the
+            // early return dismissed nothing, so every caller reaching here -- deleteItem, delete,
+            // collection creation, the unlock path -- leaked one provider-side Prompt object per
+            // call for the life of the connection: the same class of leak lockItem's dismissal
+            // closed, through the method that was supposed to be the single gate.
+            if (requiresPrompt(path)) {
+                dismissPrompt(path);
+            }
             log.trace("dismissed the prompt");
             return Optional.empty();
         }
@@ -580,7 +588,18 @@ public class Collection implements CollectionInterface {
         // the answer to decide "this item is mine, overwrite it" would act on someone else's item.
         // of(false), not empty: a path outside this collection is provably not an item of this
         // collection; there is nothing uncertain about it.
+        //
+        // Only when this collection's own path is CANONICAL. openDefault() addresses the
+        // collection as /org/freedesktop/secrets/aliases/default while its items live under the
+        // canonical /org/freedesktop/secrets/collection/<id>/ -- a first version of this check
+        // compared against the alias and answered "provably absent" for every item the default
+        // collection actually holds, deterministically, without asking the daemon. For an
+        // alias-addressed collection the check is skipped and the daemon answers, which was the
+        // (correct, merely unscoped) behaviour before scoping existed. Resolving the alias via
+        // ReadAlias was considered and rejected: one more call that can fail, to reach an answer
+        // the fallthrough already gives.
         if (collection != null
+                && collection.getObjectPath().startsWith(Static.ObjectPaths.collection(""))
                 && !objectPath.startsWith(collection.getObjectPath() + "/")) {
             return Optional.of(false);
         }
@@ -1111,6 +1130,21 @@ public class Collection implements CollectionInterface {
         return labels.containsValue(label);
     }
 
+    /**
+     * Wraps a path as an {@link Item} without checking collection membership -- deliberately.
+     *
+     * <p>Every path-taking method routed through here ({@code getSecret}, {@code withSecret},
+     * {@code getAttributes}, {@code updateItem}, {@code deleteItem}, ...) treats a D-Bus object
+     * path as a capability handle, as this API always has: callers pass paths across collection
+     * objects, and {@code SimpleCollection} relies on that. Silently scoping this method would
+     * change the observable behaviour of six public methods at once.</p>
+     *
+     * <p>{@link #itemExists} is the one deliberate exception, scoped at its own call site: it does
+     * not act on a handle, it answers a question about <em>this collection</em>, and its
+     * {@code of(false)} licenses destructive caller branches -- a cross-collection {@code true}
+     * there is misinformation rather than an action the caller chose. Widening the scope to the
+     * acting methods is a real API decision, recorded here so it is made rather than inherited.</p>
+     */
     private Optional<Item> getItem(String path) {
         if (path != null) {
             return Optional.of(new Item(Static.Convert.toObjectPath(path), service.getService()));

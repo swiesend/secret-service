@@ -30,6 +30,7 @@ final class FakeProviderFixture {
     private DBusConnection clientConnection;
     private DBusConnection providerConnection;
     private ServiceInterface service;
+    private SessionInterface session;
     private FakeSecretService fake;
 
     /** Whether this machine can run these tests at all. */
@@ -47,6 +48,11 @@ final class FakeProviderFixture {
 
     FakeSecretService fake() {
         return fake;
+    }
+
+    /** The open session, for tests that construct collections through other entry points. */
+    SessionInterface session() {
+        return session;
     }
 
     /** The low-level Service, for tests that exercise {@code Item}/{@code Collection} directly. */
@@ -100,7 +106,14 @@ final class FakeProviderFixture {
         service = SecretService.create(
                         Optional.of(de.swiesend.secretservice.functional.System.wrap(clientConnection)))
                 .orElseThrow(() -> new IllegalStateException("could not create the service"));
-        SessionInterface session = service.openSession()
+        // A short prompt timeout bounds the failure mode of every prompt test here. The signal
+        // race is real: SignalHandler.await only sees Completed signals arriving after it starts
+        // waiting, so a client descheduled between the Lock reply and entering await misses the
+        // signal and blocks for the full timeout -- 120 seconds by default, 5 here. On timeout
+        // the callers fall through to re-reading the provider's state, which is authoritative,
+        // so a missed signal costs seconds and not correctness.
+        service.setTimeout(java.time.Duration.ofSeconds(5));
+        session = service.openSession()
                 .orElseThrow(() -> new IllegalStateException("could not open a session"));
         return session.collection(FakeSecretService.COLLECTION_LABEL, Optional.empty())
                 .orElseThrow(() -> new IllegalStateException("could not open the fake collection"));
@@ -134,6 +147,7 @@ final class FakeProviderFixture {
             socket = null;
         }
         service = null;
+        session = null;
         clientConnection = null;
         providerConnection = null;
         fake = null;

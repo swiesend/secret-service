@@ -27,8 +27,15 @@ class LogPolicyTest {
         // this assertion would fail while both the machine and the code behave as documented.
         // Skipping is the honest answer; the env path itself is untestable in-JVM for the same
         // reason, which is why no test covers it.
-        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv(LogPolicy.ENV) == null,
-                LogPolicy.ENV + " is set in this environment, so the default does not apply here");
+        // Skip only when the value actually turns labels ON. LogPolicy treats "false"/"0" and
+        // unparseable values as leaving labels hidden, so a container hardened with
+        // SECRET_SERVICE_LOG_LABELS=false still satisfies this assertion -- skipping on mere
+        // presence permanently retired the regression guard on exactly such machines.
+        String env = System.getenv(LogPolicy.ENV);
+        boolean envTurnsLabelsOn = env != null
+                && (env.trim().equalsIgnoreCase("true") || env.trim().equals("1"));
+        org.junit.jupiter.api.Assumptions.assumeFalse(envTurnsLabelsOn,
+                LogPolicy.ENV + " enables labels in this environment, so the default does not apply");
         LogPolicy.resetToConfiguredSetting();
         assertFalse(LogPolicy.labelsLogged(),
                 "labels must be off unless asked for -- logs travel further than keyrings do");

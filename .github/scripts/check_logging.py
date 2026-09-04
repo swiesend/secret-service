@@ -64,8 +64,12 @@ SENSITIVE = r"(?:label|itemLabel|collectionLabel|name|collectionName|walletName|
 # lookbehind on SENSITIVE rejects anything after a dot anyway. Six live collection-name leaks sat
 # in functional/Collection while the guardrail reported the tree clean, which is worse than not
 # having the rule: the docstring promises concatenation cannot evade it.
+# The (?<!getClass\(\)) lookbehind spares getClass().getName() -- a class name, not a user's.
+# Any other receiver's getName()/getCollectionName()/getWalletName() carries exactly the value
+# the bare identifiers above guard, and the accessor form is the evasion shape that hid six live
+# label leaks from an earlier version of this rule.
 SENSITIVE_ACCESSOR = re.compile(
-    r"\.\s*get(?:Label|Secret|Password|Passphrase|Plaintext|Pepper)\s*\(")
+    r"(?<!getClass\(\))\.\s*get(?:Label|Name|CollectionName|WalletName|Secret|Password|Passphrase|Plaintext|Pepper)\s*\(")
 
 LOG_CALL = re.compile(r"\blog\.(?:trace|debug|info|warn|error)\s*\(", re.M)
 # Values the policy has already vetted: LogPolicy.label(...) / LogPolicy.cause(...), with or
