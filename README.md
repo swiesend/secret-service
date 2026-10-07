@@ -69,7 +69,7 @@ The library provides two API layers, both using transport-encrypted secrets over
 
 ### Dependency
 
-Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version. The current version requires at least _JDK 17_.
+Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version. The current version requires **JDK 25**.
 
 ```xml
 <dependency>

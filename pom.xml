@@ -62,10 +62,10 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- The release level every module compiles to: declared once here and inherited. -->
-        <maven.compiler.release>17</maven.compiler.release>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <java.version>17</java.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+        <java.version>25</java.version>
 
         <!-- 3rd party dependencies -->
         <hkdf.version>2.0.0</hkdf.version>
@@ -74,6 +74,8 @@
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>
+        <!-- The JUnit Platform release of the Jupiter version above; move them together. -->
+        <junit-platform.version>1.10.5</junit-platform.version>
     </properties>
 
     <dependencyManagement>
@@ -124,6 +126,13 @@
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter-engine</artifactId>
                 <version>${junit-jupiter.version}</version>
+            </dependency>
+            <!-- A module whose tests run declares it. Without it, surefire 3.5.4 adds its own
+                 launcher (1.12.1), which fails against the 1.10 platform of the engine above. -->
+            <dependency>
+                <groupId>org.junit.platform</groupId>
+                <artifactId>junit-platform-launcher</artifactId>
+                <version>${junit-platform.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -208,11 +217,18 @@
                 </plugin>
                 <plugin>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.14.0</version>
+                    <!-- 3.14.1, not 3.14.0: its ASM 9.8 reads Java 25 class files. Under Maven
+                         3.10, 3.14.0 fails the compile with "Unsupported class file major
+                         version 69" (apache/maven-compiler-plugin#961). -->
+                    <version>3.14.1</version>
                 </plugin>
                 <plugin>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.5.2</version>
+                    <!-- 3.5.4 or later: its ASM 9.8 reads Java 25 class files. 3.5.2 cannot read
+                         module-info.class at release 25, and then runs the tests on the class path
+                         instead of the module path, without a warning. ModulePathTest catches
+                         that. -->
+                    <version>3.5.4</version>
                 </plugin>
                 <plugin>
                     <artifactId>maven-jar-plugin</artifactId>
@@ -240,7 +256,9 @@
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.8.12</version>
+                    <!-- 0.8.12 cannot analyse Java 25 class files ("Unsupported class file major
+                         version 69"), which breaks -Pcoverage at release 25. -->
+                    <version>0.8.15</version>
                 </plugin>
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
@@ -336,7 +354,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.2</version>
+                <version>3.5.4</version>
                 <configuration>
                     <excludedGroups>system-test</excludedGroups>
                 </configuration>
