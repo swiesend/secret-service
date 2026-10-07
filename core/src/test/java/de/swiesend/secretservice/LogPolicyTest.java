@@ -98,6 +98,22 @@ class LogPolicyTest {
     }
 
     @Test
+    void aThirdPartyFailureRendersAsItsTypeAndNeverItsMessage() {
+        // A KeyMaterialProvider builds its exception message from whatever it has to hand, and what
+        // it has to hand is the pepper. Logging e.toString() at that boundary would turn someone
+        // else's mistake into this library's disclosure. There is deliberately no switch to widen
+        // this -- unlike a label, the text was never the user's to disclose.
+        Throwable leaky = new IllegalStateException("failed with pepper=hunter2");
+
+        LogPolicy.setLabelsLogged(true);   // even fully permissive, the message must not appear
+        String rendered = LogPolicy.cause(leaky).toString();
+
+        assertEquals("java.lang.IllegalStateException", rendered);
+        assertFalse(rendered.contains("hunter2"), "a third-party message must never be logged");
+        assertEquals("<no cause>", LogPolicy.cause(null).toString());
+    }
+
+    @Test
     void aMissingLabelDoesNotRenderAsNull() {
         LogPolicy.setLabelsLogged(true);
         assertEquals("<no label>", LogPolicy.label(null).toString());

@@ -8,8 +8,10 @@ import java.security.GeneralSecurityException;
  * HKDF-SHA256 (RFC 5869) extract-then-expand over the JDK's native Key Derivation Function API
  * ({@code javax.crypto.KDF}, final since JDK 25 / JEP 510). The pseudo-random key stays inside
  * the provider and is never exposed to the caller.
+ *
+ * <p>Public for the hardened modules, which derive their keys with the same primitive.</p>
  */
-final class Hkdf {
+public final class Hkdf {
 
     private Hkdf() {}
 
@@ -26,7 +28,7 @@ final class Hkdf {
      * @param length the number of output bytes
      * @return the derived key material
      */
-    static byte[] extractThenExpandSha256(byte[] salt, byte[] ikm, byte[] info, int length) {
+    public static byte[] extractThenExpandSha256(byte[] salt, byte[] ikm, byte[] info, int length) {
         byte[] s = (salt == null) ? new byte[HASH_LEN] : salt;
         byte[] i = (info == null) ? new byte[0] : info;
         try {
