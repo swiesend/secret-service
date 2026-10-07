@@ -19,12 +19,12 @@ mvn package                # Build JAR
 mvn clean -Pcoverage test  # Run tests with JaCoCo coverage
 ```
 
-Maven 3.6.0+ is enforced. No Gradle support.
+Maven 3.6.3+ is enforced. No Gradle support.
 
 ## Project Structure
 
 ```
-pom.xml                                         # build aggregator only; never published
+pom.xml                                         # parent: shared build config; published, modules inherit it
 core/pom.xml                                    # the library: de.swiesend:secret-service
 core/src/main/java/
   module-info.java                              # JPMS module: de.swiesend.secretservice
