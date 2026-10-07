@@ -130,7 +130,8 @@ public class Collection implements CollectionInterface {
 
         Optional<de.swiesend.secretservice.Collection> maybeCollection = c.getOrCreateCollection(label);
         if (maybeCollection.isEmpty()) {
-            log.warn("Could not acquire collection with name {}", label);
+            // A collection name is user-chosen too, and just as descriptive as an item label.
+            log.warn("Could not acquire collection with name {}", LogPolicy.label(label));
             return Optional.empty();
         }
         c.collection = maybeCollection.get();
@@ -242,13 +243,13 @@ public class Collection implements CollectionInterface {
                     .getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS) != null);
             Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
             if (signal == null) {
-                log.warn("Collection \"" + label + "\" was not created.");
+                log.warn("Collection {} was not created.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
             DBusPath signalPath = signal.collection;
             if (signalPath == null || signalPath.getPath() == null) {
-                log.error(String.format("Received bad signal `CollectionCreated` without proper collection path: %s", signal));
+                log.error("Received bad signal `CollectionCreated` without proper collection path: {}", signal);
                 return Optional.empty();
             }
             path = Static.Convert.toObjectPath(signalPath.getPath());
@@ -320,7 +321,9 @@ public class Collection implements CollectionInterface {
 
     private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(DBusPath path, String label) {
         if (path == null) {
-            log.error(String.format("Could not acquire collection with label: \"%s\"", label));
+            // Parameterised, not String.format: the argument is then rendered only if the message
+            // is actually emitted, so a suppressed label is never built at all.
+            log.error("Could not acquire collection with label: {}", LogPolicy.label(label));
             return Optional.empty();
         }
 
@@ -414,7 +417,7 @@ public class Collection implements CollectionInterface {
 
         Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
         if (encrypted == null) {
-            log.error("Could not encrypt secret for item \"{}\".", label);
+            log.error("Could not encrypt secret for item {}.", LogPolicy.label(label));
             return Optional.empty();
         }
 
@@ -422,7 +425,7 @@ public class Collection implements CollectionInterface {
             Map<String, Variant> properties = Item.createProperties(label, attributes);
             Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
             if (pair == null || pair.a == null) {
-                log.error("createItem D-Bus call returned no result for label \"{}\".", label);
+                log.error("createItem D-Bus call returned no result for item {}.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
@@ -434,7 +437,7 @@ public class Collection implements CollectionInterface {
             // Prompt required (e.g. KeePassXC per-item unlock)
             de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
             if (completed == null || completed.dismissed) {
-                log.warn("Prompt was dismissed or timed out for item \"{}\".", label);
+                log.warn("Prompt was dismissed or timed out for item {}.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
@@ -516,6 +519,11 @@ public class Collection implements CollectionInterface {
             log.error("Cannot delete an unspecified item.");
             return false;
         }
+        // Before unlockWithUserPermission: a refusal must not first raise an unlock prompt.
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to delete: {} is not an item of this collection.", objectPath);
+            return false;
+        }
 
         unlockWithUserPermission();
 
@@ -565,8 +573,40 @@ public class Collection implements CollectionInterface {
     @Override
     public Optional<Map<String, String>> getAttributes(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to read attributes: {} is not an item of this collection.", objectPath);
+            return Optional.empty();
+        }
         unlock();
         return getItem(objectPath).flatMap(item -> item.getAttributes());
+    }
+
+    @Override
+    public Optional<Boolean> itemExists(String objectPath) {
+        // Deliberately no unlock() here: a locked item still answers the existence question (the
+        // daemon refuses it by name, which is DENIED, i.e. present), and unlocking can prompt --
+        // far too heavy for a question asked while classifying someone else's item.
+        // empty, not of(false): a null path is a programming error and proves nothing about any
+        // item. Answering "provably absent" would license a caller's destructive branch on it, and
+        // every sibling method returns empty for the same input.
+        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        // Scoped to THIS collection, as documented. getItem() wraps whatever path it is handed, so
+        // without this a path under a different collection would answer of(true) -- and a caller
+        // using the answer to decide "this item is mine, overwrite it" would act on someone else's
+        // item. of(false), not empty: a path outside this collection is provably not an item of
+        // this collection; there is nothing uncertain about it.
+        //
+        // Only when this collection's own path is CANONICAL. openDefault() addresses the
+        // collection as /org/freedesktop/secrets/aliases/default while its items live under the
+        // canonical /org/freedesktop/secrets/collection/<id>/, so comparing against the alias
+        // would answer "provably absent" for every item the default collection holds, without
+        // asking the daemon. For an alias-addressed collection the check is skipped and the
+        // daemon answers. Resolving the alias with ReadAlias would cost one more call that can
+        // fail, to reach an answer the fallthrough already gives.
+        if (!ownsPath(objectPath)) {
+            return Optional.of(false);
+        }
+        return getItem(objectPath).flatMap(de.swiesend.secretservice.Item::exists);
     }
 
     @Override
@@ -576,14 +616,16 @@ public class Collection implements CollectionInterface {
 
         // KeePassXC returns nothing for SearchItems({}) (empty map = no criteria match).
         // Use the Items property directly when no filter is specified — it always returns all items.
+        // An empty result is a SUCCESSFUL search that found nothing: Optional.of(emptyList).
+        // Optional.empty() is reserved for "the search failed". A caller that deletes or
+        // overwrites based on the answer has to be able to tell "no items" from "the daemon did
+        // not answer".
         if (attributes.isEmpty()) {
             return collection.getItems()
-                    .filter(list -> !list.isEmpty())
                     .map(Static.Convert::toStrings);
         }
 
         return Optional.ofNullable(collection.searchItems(attributes))
-                .filter(objects -> !objects.isEmpty())
                 .flatMap(objects -> objects.map(Static.Convert::toStrings));
     }
 
@@ -659,6 +701,10 @@ public class Collection implements CollectionInterface {
     @Override
     public Optional<String> getItemLabel(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to read the label: {} is not an item of this collection.", objectPath);
+            return Optional.empty();
+        }
         unlock();
         return getItem(objectPath)
                 .flatMap(item -> item.getLabel());
@@ -667,6 +713,11 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean setItemLabel(String objectPath, String label) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return false;
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to relabel: {} is not an item of this collection.", objectPath);
+            return false;
+        }
+
         if (label == null) {
             log.error("The label may not be null.");
             return false;
@@ -706,6 +757,11 @@ public class Collection implements CollectionInterface {
             log.error("Cannot lock an unspecified item.");
             return false;
         }
+        if (!ownsPath(itemPath)) {
+            log.warn("Refusing to lock: {} is not an item of this collection.", itemPath);
+            return false;
+        }
+
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
             // No isPrompting check before the call. Locking normally needs no prompt at all --
@@ -743,6 +799,11 @@ public class Collection implements CollectionInterface {
             log.error("Cannot unlock an unspecified item.");
             return false;
         }
+        if (!ownsPath(itemPath)) {
+            log.warn("Refusing to unlock: {} is not an item of this collection.", itemPath);
+            return false;
+        }
+
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (item.isLocked()) {
             // Before the call, not after. Unlocking a locked item essentially always needs a
@@ -807,6 +868,10 @@ public class Collection implements CollectionInterface {
      */
     private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to read the secret: {} is not an item of this collection.", objectPath);
+            return Optional.empty();
+        }
         unlock();
         if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
 
@@ -895,7 +960,8 @@ public class Collection implements CollectionInterface {
         }
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
-            log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
+            log.error("D-Bus lock call failed for collection {}",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             return false;
         }
         Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
@@ -908,7 +974,8 @@ public class Collection implements CollectionInterface {
         boolean promptRequired = requiresPrompt(result.b);
 
         if (lockedImmediately) {
-            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+            log.info("Locked collection {}",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             // Daemon acknowledged the lock; poll only so the "Locked" property has time to
             // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
             return awaitUntil(collection::isLocked);
@@ -916,9 +983,9 @@ public class Collection implements CollectionInterface {
         if (promptRequired) {
             // Locking needs a prompt, which the functional layer does not drive here. Don't wait
             // out the timeout for a state that won't change -- report the failure immediately.
-            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
-                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
-                    + "leaving it unlocked.");
+            log.warn("Locking collection {} requires a prompt, which is not performed here; "
+                            + "leaving it unlocked.",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             return false;
         }
         // Neither locked immediately nor prompted (e.g. a provider that does not support locking
@@ -935,19 +1002,22 @@ public class Collection implements CollectionInterface {
                     boolean unlockAccepted = promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent();
                     if (unlockAccepted && !collection.isLocked()) {
                         isUnlockedOnceWithUserPermission = true;
-                        log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                        log.debug("Unlocked collection {}",
+                                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
                         return true;
                     }
                 }
             } else if (encryptedCollectionPassword.isPresent() && service.isGnomeKeyringAvailable()) {
                 boolean result = withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());
                 if (result == true) {
-                    log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                    log.debug("Unlocked collection {}",
+                                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
                 }
                 return result;
             }
         }
-        log.debug("Could not unlock collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+        log.debug("Could not unlock collection {}",
+                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
         return false;
     }
 
@@ -979,6 +1049,10 @@ public class Collection implements CollectionInterface {
 
         if (Static.Utils.isNullOrEmpty(password)) {
             log.error("The password may not be null or empty.");
+            return false;
+        }
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to update: {} is not an item of this collection.", objectPath);
             return false;
         }
 
@@ -1072,6 +1146,30 @@ public class Collection implements CollectionInterface {
         return labels.containsValue(label);
     }
 
+    /**
+     * Whether {@code objectPath} can be an item of THIS collection. Every public path-taking
+     * method checks this before acting, so {@code collectionA.deleteItem(pathUnderB)} refuses
+     * instead of deleting B's item: a path is not a bare capability handle that lets one
+     * collection object act on another collection's items.
+     *
+     * <p>Judged only when this collection's own path is CANONICAL
+     * ({@code /org/freedesktop/secrets/collection/...}). {@code openDefault()} addresses the
+     * collection through its ALIAS while items live under the canonical id, so a prefix
+     * comparison there would disown every item the default collection holds. For alias-addressed
+     * collections this answers true and the daemon adjudicates.</p>
+     */
+    private boolean ownsPath(String objectPath) {
+        if (collection == null) return true; // nothing to scope against; the daemon adjudicates
+        String own = collection.getObjectPath();
+        if (!own.startsWith(Static.ObjectPaths.collection(""))) return true; // alias-addressed
+        return objectPath != null && objectPath.startsWith(own + "/");
+    }
+
+    /**
+     * Wraps a path as an {@link Item}. Membership is enforced by {@link #ownsPath} at every public
+     * entry point rather than here, so internal callers handing over enumerated (in-scope) paths
+     * skip a redundant check and the refusals happen where they can be logged per operation.
+     */
     private Optional<Item> getItem(String path) {
         if (path != null) {
             return Optional.of(new Item(Static.Convert.toObjectPath(path), service.getService()));

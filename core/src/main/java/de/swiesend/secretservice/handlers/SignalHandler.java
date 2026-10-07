@@ -20,7 +20,8 @@ import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 public class SignalHandler implements DBusSigHandler {
 
     private final static int bufferSize = 1024;
-    private Logger log = LoggerFactory.getLogger(getClass());
+    // Named for the declaring class, not getClass(); see MessageHandler for why.
+    private static final Logger log = LoggerFactory.getLogger(SignalHandler.class);
     private DBusConnection connection = null;
     private String sourcePath = null;
     private List<AutoCloseable> registrations = new ArrayList<>();
@@ -199,11 +200,11 @@ public class SignalHandler implements DBusSigHandler {
         }
 
         try {
-            log.info(String.format("Await signal %s.%s(%s) within %d seconds.",
+            log.info("Await signal {}.{}({}) within {} seconds.",
                     signal.getEnclosingClass().getSimpleName(),
                     signal.getSimpleName(),
                     path,
-                    timeout.getSeconds()));
+                    timeout.getSeconds());
         } catch (NullPointerException e) {
             log.error("Await signal for unknown class.");
         }

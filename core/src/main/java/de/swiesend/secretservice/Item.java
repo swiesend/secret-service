@@ -132,6 +132,29 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
         return response.isPresent() ? response.get() : false;
     }
 
+    /**
+     * Whether this item still exists, keeping apart the two things an empty
+     * {@link #getAttributes()} conflates.
+     *
+     * <ul>
+     *   <li>{@code Optional.of(true)} — it is there (it answered, or refused us by name).</li>
+     *   <li>{@code Optional.of(false)} — it is provably gone: the daemon named it as unknown.</li>
+     *   <li>{@code Optional.empty()} — <b>cannot tell</b>: no reply, disconnected, or an error that
+     *       implies nothing about existence.</li>
+     * </ul>
+     *
+     * <p>Callers that delete, overwrite or re-create on the strength of "not found" must treat the
+     * empty case as "still there" and fail closed. A refusal ({@code IsLocked}, {@code Denied})
+     * counts as existence: the daemon resolved the object well enough to deny it.</p>
+     */
+    public Optional<Boolean> exists() {
+        return switch (getPropertyChecked("Attributes").outcome()) {
+            case OK, DENIED -> Optional.of(true);
+            case ABSENT -> Optional.of(false);
+            case UNAVAILABLE -> Optional.empty();
+        };
+    }
+
     @Override
     public Optional<Map<String, String>> getAttributes() {
         return getProperty("Attributes").flatMap(variant ->
