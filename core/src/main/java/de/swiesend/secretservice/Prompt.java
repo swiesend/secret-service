@@ -44,10 +44,10 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
                 //       then it comes from the gnome-keyring. KeePassXC generates random alphanumeric ids.
                 windowID = objectPath.substring(objectPath.lastIndexOf("/") + 1);
             } catch (IndexOutOfBoundsException | NullPointerException e) {
-                log.warn(String.format("No proper window ID. Continuing with window ID: \"%s\"", windowID));
+                log.warn("No proper window ID. Continuing with window ID: {}", windowID);
             }
         } else {
-            log.warn(String.format("No proper prompt path. Continuing with window ID: \"%s\"", windowID));
+            log.warn("No proper prompt path. Continuing with window ID: {}", windowID);
         }
 
         return send("Prompt", "s", windowID).isPresent();

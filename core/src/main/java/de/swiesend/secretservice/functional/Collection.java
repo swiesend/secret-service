@@ -130,7 +130,8 @@ public class Collection implements CollectionInterface {
 
         Optional<de.swiesend.secretservice.Collection> maybeCollection = c.getOrCreateCollection(label);
         if (maybeCollection.isEmpty()) {
-            log.warn("Could not acquire collection with name {}", label);
+            // A collection name is user-chosen too, and just as descriptive as an item label.
+            log.warn("Could not acquire collection with name {}", LogPolicy.label(label));
             return Optional.empty();
         }
         c.collection = maybeCollection.get();
@@ -242,13 +243,13 @@ public class Collection implements CollectionInterface {
                     .getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS) != null);
             Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
             if (signal == null) {
-                log.warn("Collection \"" + label + "\" was not created.");
+                log.warn("Collection {} was not created.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
             DBusPath signalPath = signal.collection;
             if (signalPath == null || signalPath.getPath() == null) {
-                log.error(String.format("Received bad signal `CollectionCreated` without proper collection path: %s", signal));
+                log.error("Received bad signal `CollectionCreated` without proper collection path: {}", signal);
                 return Optional.empty();
             }
             path = Static.Convert.toObjectPath(signalPath.getPath());
@@ -320,7 +321,9 @@ public class Collection implements CollectionInterface {
 
     private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(DBusPath path, String label) {
         if (path == null) {
-            log.error(String.format("Could not acquire collection with label: \"%s\"", label));
+            // Parameterised, not String.format: the argument is then rendered only if the message
+            // is actually emitted, so a suppressed label is never built at all.
+            log.error("Could not acquire collection with label: {}", LogPolicy.label(label));
             return Optional.empty();
         }
 
@@ -414,7 +417,7 @@ public class Collection implements CollectionInterface {
 
         Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
         if (encrypted == null) {
-            log.error("Could not encrypt secret for item \"{}\".", label);
+            log.error("Could not encrypt secret for item {}.", LogPolicy.label(label));
             return Optional.empty();
         }
 
@@ -422,7 +425,7 @@ public class Collection implements CollectionInterface {
             Map<String, Variant> properties = Item.createProperties(label, attributes);
             Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
             if (pair == null || pair.a == null) {
-                log.error("createItem D-Bus call returned no result for label \"{}\".", label);
+                log.error("createItem D-Bus call returned no result for item {}.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
@@ -434,7 +437,7 @@ public class Collection implements CollectionInterface {
             // Prompt required (e.g. KeePassXC per-item unlock)
             de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
             if (completed == null || completed.dismissed) {
-                log.warn("Prompt was dismissed or timed out for item \"{}\".", label);
+                log.warn("Prompt was dismissed or timed out for item {}.", LogPolicy.label(label));
                 return Optional.empty();
             }
 
@@ -925,7 +928,8 @@ public class Collection implements CollectionInterface {
         }
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
-            log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
+            log.error("D-Bus lock call failed for collection {}",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             return false;
         }
         Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
@@ -938,7 +942,8 @@ public class Collection implements CollectionInterface {
         boolean promptRequired = requiresPrompt(result.b);
 
         if (lockedImmediately) {
-            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+            log.info("Locked collection {}",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             // Daemon acknowledged the lock; poll only so the "Locked" property has time to
             // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
             return awaitUntil(collection::isLocked);
@@ -946,9 +951,9 @@ public class Collection implements CollectionInterface {
         if (promptRequired) {
             // Locking needs a prompt, which the functional layer does not drive here. Don't wait
             // out the timeout for a state that won't change -- report the failure immediately.
-            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
-                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
-                    + "leaving it unlocked.");
+            log.warn("Locking collection {} requires a prompt, which is not performed here; "
+                            + "leaving it unlocked.",
+                    LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
             return false;
         }
         // Neither locked immediately nor prompted (e.g. a provider that does not support locking
@@ -965,19 +970,22 @@ public class Collection implements CollectionInterface {
                     boolean unlockAccepted = promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent();
                     if (unlockAccepted && !collection.isLocked()) {
                         isUnlockedOnceWithUserPermission = true;
-                        log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                        log.debug("Unlocked collection {}",
+                                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
                         return true;
                     }
                 }
             } else if (encryptedCollectionPassword.isPresent() && service.isGnomeKeyringAvailable()) {
                 boolean result = withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());
                 if (result == true) {
-                    log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                    log.debug("Unlocked collection {}",
+                                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
                 }
                 return result;
             }
         }
-        log.debug("Could not unlock collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+        log.debug("Could not unlock collection {}",
+                LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
         return false;
     }
 

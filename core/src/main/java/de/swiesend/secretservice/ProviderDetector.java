@@ -150,12 +150,12 @@ public final class ProviderDetector {
                     try {
                         String nameOwner = bus.GetNameOwner(name);
                         if (secretsOwner.equals(nameOwner)) {
-                            log.debug("Detected provider {} - shared unique owner {} ({} == {})",
+                            log.debug("Detected provider {} - shared unique owner {} ({} == {})", // log-check: allow bus name from the Provider enum, not user data
                                     candidate.displayName, secretsOwner, SECRETS_BUS_NAME, name);
                             return candidate;
                         }
                     } catch (Exception ex) {
-                        log.trace("GetNameOwner({}) failed: {}", name, ex.getMessage());
+                        log.trace("GetNameOwner({}) failed: {}", name, ex.getMessage()); // log-check: allow bus name from the Provider enum, not user data
                     }
                 }
             }
