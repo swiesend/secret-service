@@ -6,6 +6,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+/**
+ * A collection of secret items.
+ *
+ * <p><b>Item paths are scoped to this collection (changed in 3.0.0).</b> Every method that takes
+ * an item object path -- {@code getSecret}, {@code withSecret}, {@code getAttributes},
+ * {@code getItemLabel}, {@code setItemLabel}, {@code updateItem}, {@code deleteItem},
+ * {@code lockItem}, {@code unlockItem}, {@code itemExists} -- refuses a path that does not belong
+ * to this collection (returning {@code false} / {@code Optional.empty()}, or {@code of(false)}
+ * for {@code itemExists}). Earlier releases treated a path as a bare capability handle, so one
+ * collection object could read or delete another collection's items. Collections addressed
+ * through an alias (the default collection via {@code openDefault()}) are exempt from the prefix
+ * comparison -- their own path is not canonical -- and the daemon adjudicates as before.</p>
+ */
 public interface CollectionInterface extends AutoCloseable {
 
     /**

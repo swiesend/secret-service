@@ -519,6 +519,11 @@ public class Collection implements CollectionInterface {
             log.error("Cannot delete an unspecified item.");
             return false;
         }
+        // Before unlockWithUserPermission: a refusal must not first raise an unlock prompt.
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to delete: {} is not an item of this collection.", objectPath);
+            return false;
+        }
 
         unlockWithUserPermission();
 
@@ -568,6 +573,10 @@ public class Collection implements CollectionInterface {
     @Override
     public Optional<Map<String, String>> getAttributes(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to read attributes: {} is not an item of this collection.", objectPath);
+            return Optional.empty();
+        }
         unlock();
         return getItem(objectPath).flatMap(item -> item.getAttributes());
     }
@@ -692,6 +701,10 @@ public class Collection implements CollectionInterface {
     @Override
     public Optional<String> getItemLabel(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to read the label: {} is not an item of this collection.", objectPath);
+            return Optional.empty();
+        }
         unlock();
         return getItem(objectPath)
                 .flatMap(item -> item.getLabel());
@@ -700,6 +713,11 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean setItemLabel(String objectPath, String label) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return false;
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to relabel: {} is not an item of this collection.", objectPath);
+            return false;
+        }
+
         if (label == null) {
             log.error("The label may not be null.");
             return false;
@@ -739,6 +757,11 @@ public class Collection implements CollectionInterface {
             log.error("Cannot lock an unspecified item.");
             return false;
         }
+        if (!ownsPath(itemPath)) {
+            log.warn("Refusing to lock: {} is not an item of this collection.", itemPath);
+            return false;
+        }
+
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
             // No isPrompting check before the call. Locking normally needs no prompt at all --
@@ -776,6 +799,11 @@ public class Collection implements CollectionInterface {
             log.error("Cannot unlock an unspecified item.");
             return false;
         }
+        if (!ownsPath(itemPath)) {
+            log.warn("Refusing to unlock: {} is not an item of this collection.", itemPath);
+            return false;
+        }
+
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (item.isLocked()) {
             // Before the call, not after. Unlocking a locked item essentially always needs a
@@ -840,6 +868,10 @@ public class Collection implements CollectionInterface {
      */
     private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to read the secret: {} is not an item of this collection.", objectPath);
+            return Optional.empty();
+        }
         unlock();
         if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
 
@@ -1019,6 +1051,10 @@ public class Collection implements CollectionInterface {
             log.error("The password may not be null or empty.");
             return false;
         }
+        if (!ownsPath(objectPath)) {
+            log.warn("Refusing to update: {} is not an item of this collection.", objectPath);
+            return false;
+        }
 
         unlock();
 
@@ -1111,9 +1147,10 @@ public class Collection implements CollectionInterface {
     }
 
     /**
-     * Whether {@code objectPath} can be an item of THIS collection. {@link #itemExists} checks
-     * this, so a path under another collection is answered "provably absent" instead of being
-     * handed to the daemon, which would confirm the foreign item.
+     * Whether {@code objectPath} can be an item of THIS collection. Every public path-taking
+     * method checks this before acting, so {@code collectionA.deleteItem(pathUnderB)} refuses
+     * instead of deleting B's item: a path is not a bare capability handle that lets one
+     * collection object act on another collection's items.
      *
      * <p>Judged only when this collection's own path is CANONICAL
      * ({@code /org/freedesktop/secrets/collection/...}). {@code openDefault()} addresses the
@@ -1128,6 +1165,11 @@ public class Collection implements CollectionInterface {
         return objectPath != null && objectPath.startsWith(own + "/");
     }
 
+    /**
+     * Wraps a path as an {@link Item}. Membership is enforced by {@link #ownsPath} at every public
+     * entry point rather than here, so internal callers handing over enumerated (in-scope) paths
+     * skip a redundant check and the refusals happen where they can be logged per operation.
+     */
     private Optional<Item> getItem(String path) {
         if (path != null) {
             return Optional.of(new Item(Static.Convert.toObjectPath(path), service.getService()));
