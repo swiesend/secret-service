@@ -570,6 +570,34 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
+    public Optional<Boolean> itemExists(String objectPath) {
+        // Deliberately no unlock() here: a locked item still answers the existence question (the
+        // daemon refuses it by name, which is DENIED, i.e. present), and unlocking can prompt --
+        // far too heavy for a question asked while classifying someone else's item.
+        // empty, not of(false): a null path is a programming error and proves nothing about any
+        // item. Answering "provably absent" would license a caller's destructive branch on it, and
+        // every sibling method returns empty for the same input.
+        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        // Scoped to THIS collection, as documented. getItem() wraps whatever path it is handed, so
+        // without this a path under a different collection would answer of(true) -- and a caller
+        // using the answer to decide "this item is mine, overwrite it" would act on someone else's
+        // item. of(false), not empty: a path outside this collection is provably not an item of
+        // this collection; there is nothing uncertain about it.
+        //
+        // Only when this collection's own path is CANONICAL. openDefault() addresses the
+        // collection as /org/freedesktop/secrets/aliases/default while its items live under the
+        // canonical /org/freedesktop/secrets/collection/<id>/, so comparing against the alias
+        // would answer "provably absent" for every item the default collection holds, without
+        // asking the daemon. For an alias-addressed collection the check is skipped and the
+        // daemon answers. Resolving the alias with ReadAlias would cost one more call that can
+        // fail, to reach an answer the fallthrough already gives.
+        if (!ownsPath(objectPath)) {
+            return Optional.of(false);
+        }
+        return getItem(objectPath).flatMap(de.swiesend.secretservice.Item::exists);
+    }
+
+    @Override
     public Optional<List<String>> getItems(Map<String, String> attributes) {
         if (attributes == null) return Optional.empty();
         unlock();
@@ -1072,6 +1100,24 @@ public class Collection implements CollectionInterface {
     private boolean existsLabel(String label) {
         Map<DBusPath, String> labels = getLabels();
         return labels.containsValue(label);
+    }
+
+    /**
+     * Whether {@code objectPath} can be an item of THIS collection. {@link #itemExists} checks
+     * this, so a path under another collection is answered "provably absent" instead of being
+     * handed to the daemon, which would confirm the foreign item.
+     *
+     * <p>Judged only when this collection's own path is CANONICAL
+     * ({@code /org/freedesktop/secrets/collection/...}). {@code openDefault()} addresses the
+     * collection through its ALIAS while items live under the canonical id, so a prefix
+     * comparison there would disown every item the default collection holds. For alias-addressed
+     * collections this answers true and the daemon adjudicates.</p>
+     */
+    private boolean ownsPath(String objectPath) {
+        if (collection == null) return true; // nothing to scope against; the daemon adjudicates
+        String own = collection.getObjectPath();
+        if (!own.startsWith(Static.ObjectPaths.collection(""))) return true; // alias-addressed
+        return objectPath != null && objectPath.startsWith(own + "/");
     }
 
     private Optional<Item> getItem(String path) {
