@@ -57,6 +57,31 @@ public interface CollectionInterface extends AutoCloseable {
     Optional<Map<String, String>> getAttributes(String objectPath);
 
     /**
+     * Whether this collection still holds an item at {@code objectPath}, separating the two cases
+     * that {@link #getAttributes} and {@link #getSecret} collapse into {@link Optional#empty()}.
+     *
+     * <ul>
+     *   <li>{@code Optional.of(true)} — present (it answered, or refused access by name).</li>
+     *   <li>{@code Optional.of(false)} — provably absent: the daemon named it as unknown.</li>
+     *   <li>{@code Optional.empty()} — <b>cannot tell</b>: no reply, disconnected, or an error that
+     *       implies nothing about existence.</li>
+     * </ul>
+     *
+     * <p>Use this before acting destructively on a failed read. A read that came back empty during
+     * a routine sweep is usually an item another application deleted a moment ago — harmless — but
+     * it can equally be a daemon that stopped answering, and only the first of those licenses
+     * "carry on without it".</p>
+     *
+     * <p>The default implementation answers {@code Optional.empty()} for every path, which is the
+     * safe reading for an implementation that cannot tell.</p>
+     *
+     * @since 3.0.0
+     */
+    default Optional<Boolean> itemExists(String objectPath) {
+        return Optional.empty();
+    }
+
+    /**
      * Object paths of the items matching every entry in {@code attributes}; an empty map returns
      * all items in the collection.
      *

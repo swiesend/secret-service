@@ -42,6 +42,14 @@ public abstract class Messaging {
         return msg.getProperty(serviceName, objectPath, interfaceName, property);
     }
 
+    /**
+     * As {@link #getProperty}, but reporting why the read yielded nothing; see
+     * {@link MessageHandler.Outcome}.
+     */
+    protected MessageHandler.Reply getPropertyChecked(String property) {
+        return msg.getPropertyChecked(serviceName, objectPath, interfaceName, property);
+    }
+
     protected Optional<Variant> getAllProperties() {
         return msg.getAllProperties(serviceName, objectPath, interfaceName);
     }
