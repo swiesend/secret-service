@@ -207,29 +207,29 @@ __Transport Encryption:__
 
 Both APIs use transport encryption (DH key exchange + AES-128-CBC) automatically.
 For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
-[Transport Encryption Example](src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
+[Transport Encryption Example](core/src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
 
 ### Low-Level API
 
 The low-level API gives access to all defined D-Bus `Methods`, `Properties` and `Signals` of the Secret Service interface:
 
-* [Service](src/main/java/de/swiesend/secretservice/Service.java)
-* [Collection](src/main/java/de/swiesend/secretservice/Collection.java)
-* [Item](src/main/java/de/swiesend/secretservice/Item.java)
-* [Session](src/main/java/de/swiesend/secretservice/Session.java)
-* [Prompt](src/main/java/de/swiesend/secretservice/Prompt.java)
+* [Service](core/src/main/java/de/swiesend/secretservice/Service.java)
+* [Collection](core/src/main/java/de/swiesend/secretservice/Collection.java)
+* [Item](core/src/main/java/de/swiesend/secretservice/Item.java)
+* [Session](core/src/main/java/de/swiesend/secretservice/Session.java)
+* [Prompt](core/src/main/java/de/swiesend/secretservice/Prompt.java)
 
 For the usage of the low-level API see the tests:
 
-* [ServiceTest](src/test/java/de/swiesend/secretservice/integration/ServiceTest.java)
-* [CollectionTest](src/test/java/de/swiesend/secretservice/integration/CollectionTest.java)
-* [ItemTest](src/test/java/de/swiesend/secretservice/integration/ItemTest.java)
-* [SessionTest](src/test/java/de/swiesend/secretservice/integration/SessionTest.java)
-* [PromptTest](src/test/java/de/swiesend/secretservice/integration/PromptTest.java)
+* [ServiceTest](core/src/test/java/de/swiesend/secretservice/integration/ServiceTest.java)
+* [CollectionTest](core/src/test/java/de/swiesend/secretservice/integration/CollectionTest.java)
+* [ItemTest](core/src/test/java/de/swiesend/secretservice/integration/ItemTest.java)
+* [SessionTest](core/src/test/java/de/swiesend/secretservice/integration/SessionTest.java)
+* [PromptTest](core/src/test/java/de/swiesend/secretservice/integration/PromptTest.java)
 
 #### D-Bus Interfaces
 
-The underlying introspected XML D-Bus interfaces are available as [resources](src/test/resources).
+The underlying introspected XML D-Bus interfaces are available as [resources](core/src/test/resources).
 
 ## Testing & Tools
 
