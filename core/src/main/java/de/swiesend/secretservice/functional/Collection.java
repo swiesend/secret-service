@@ -355,6 +355,12 @@ public class Collection implements CollectionInterface {
 
     private Optional<DBusPath> performPrompt(DBusPath path) {
         if (!isPrompting) {
+            // The provider allocated a Prompt object for this reply. Walking away leaves it
+            // registered until the connection closes, one per call. requiresPrompt excludes "/",
+            // which names no prompt object.
+            if (requiresPrompt(path)) {
+                dismissPrompt(path);
+            }
             log.trace("dismissed the prompt");
             return Optional.empty();
         }
@@ -702,12 +708,9 @@ public class Collection implements CollectionInterface {
         }
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
-            // Before the call, for the same reason as unlockItem: an unanswered Prompt object
-            // would be left behind on the provider.
-            if (!isPrompting) {
-                log.debug("Locking item {} would need a prompt, and prompting is disabled.", itemPath);
-                return false;
-            }
+            // No isPrompting check before the call. Locking normally needs no prompt at all --
+            // gnome-keyring answers Lock with a non-empty locked list and a "/" path -- and
+            // disablePrompt() suppresses dialogs, not locking. Only the branch below can raise one.
             Optional<Pair<List<DBusPath>, DBusPath>> maybeLock = service.getService().lock(List.of(item.getPath()));
             if (maybeLock.isEmpty()) {
                 log.error("Could not lock item: {}", itemPath);
@@ -715,14 +718,20 @@ public class Collection implements CollectionInterface {
             }
             Pair<List<DBusPath>, DBusPath> lock = maybeLock.get();
             log.debug("lock item: {}", lock);
-            // Only when a prompt is genuinely required. A non-empty lock.a means the provider
-            // already locked the item, and a "/" path means there is no prompt object to talk to --
-            // this awaited in both cases, which on the "/" path consults
-            // getLastHandledSignal(Completed.class), an unrelated earlier prompt's result.
+            // Only when a prompt is genuinely required: a non-empty lock.a means the provider
+            // already locked the item, and "/" names no prompt object. Awaiting on "/" would
+            // consult getLastHandledSignal(Completed.class), which filters by class only and can
+            // return an unrelated prompt's result.
             if (lock.a.isEmpty() && requiresPrompt(lock.b)) {
-                de.swiesend.secretservice.interfaces.Prompt.Completed result =
-                        prompt.await(lock.b, service.getTimeout());
-                log.debug("lock item prompt: {}", result);
+                if (!isPrompting) {
+                    log.debug("Locking item {} needs a prompt, and prompting is disabled; dismissing it.",
+                            itemPath);
+                    dismissPrompt(lock.b);
+                } else {
+                    de.swiesend.secretservice.interfaces.Prompt.Completed result =
+                            prompt.await(lock.b, service.getTimeout());
+                    log.debug("lock item prompt: {}", result);
+                }
             }
         }
         return item.isLocked();
@@ -771,12 +780,12 @@ public class Collection implements CollectionInterface {
                     // no Completed was ever handled, and it can hand back a stale Completed from an
                     // earlier prompt. Fall through and ask the provider.
                     log.warn("No prompt result for item {}; asking the provider directly.", itemPath);
-                } else if (completed.dismissed && !"/".equals(unlock.b.getPath())) {
-                    // Trustworthy only for a real prompt path, where SignalHandler.await filters
-                    // the Completed signal by path. On the "/" branch Prompt.await falls back to
-                    // getLastHandledSignal(Completed.class), which filters by CLASS only -- so it
-                    // can hand back a dismissal from an unrelated earlier prompt on this
-                    // connection, and returning false on that would deny a read nobody refused.
+                } else if (completed.dismissed) {
+                    // Trustworthy because the enclosing requiresPrompt(unlock.b) guarantees a real
+                    // prompt path, for which SignalHandler.await filters the Completed signal by
+                    // path. On "/" Prompt.await would fall back to
+                    // getLastHandledSignal(Completed.class), which filters by class only and could
+                    // return a dismissal from an unrelated earlier prompt.
                     log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
                     return false;
                 }
@@ -1146,6 +1155,22 @@ public class Collection implements CollectionInterface {
             log.debug("Item {} stayed locked because prompting is disabled; not read.", objectPath);
         }
         return false;
+    }
+
+    /**
+     * Dismisses the prompt at {@code promptPath}, addressing that prompt's own object path. The
+     * shared {@link Prompt} cannot do this: its Dismiss goes to whatever object path its last
+     * {@code prompt()} call set, initially "/", which may belong to an unrelated prompt.
+     */
+    private void dismissPrompt(DBusPath promptPath) {
+        boolean dismissed = service.getService().getMessageHandler()
+                .send(Static.Service.SECRETS, promptPath.getPath(), Static.Interfaces.PROMPT,
+                        "Dismiss", "")
+                .isPresent();
+        if (!dismissed) {
+            log.debug("Could not dismiss the refused prompt at {}; the provider keeps it until "
+                    + "this connection closes.", promptPath.getPath());
+        }
     }
 
     public boolean disablePrompt() {

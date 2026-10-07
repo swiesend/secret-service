@@ -137,6 +137,25 @@ public final class FakeSecretService {
     public void setRequirePromptForItemOps(boolean require) { this.requirePromptForItemOps = require; }
     private volatile boolean requirePromptForItemOps;
 
+    /** State change the outstanding Lock prompt would authorise; applied only on approval. */
+    private volatile Runnable pendingApproval;
+
+    /**
+     * Answers the outstanding Lock prompt affirmatively: applies the change it authorises, then
+     * emits Completed. Lock uses explicit approval rather than a timer, because a timer applies the
+     * change whether or not the client ever engaged with the prompt, which makes "the client
+     * declined to prompt" indistinguishable from "it happened anyway".
+     */
+    public void approvePendingPrompt() {
+        Runnable apply = pendingApproval;
+        pendingApproval = null;
+        if (apply != null) apply.run();
+        emitCompletedLater(false);
+    }
+
+    /** Whether a Lock prompt is outstanding, so a test can wait for it instead of racing it. */
+    public boolean hasPendingPrompt() { return pendingApproval != null; }
+
     /** Waits for any pending prompt emission, so teardown does not race it. */
     public void awaitPendingPrompt() {
         Thread t = promptThread;
@@ -239,11 +258,12 @@ public final class FakeSecretService {
         public Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects) {
             boolean itemRequested = objects.stream().anyMatch(p -> ITEM_PATH.equals(p.getPath()));
             if (itemRequested && requirePromptForItemOps && !itemLocked) {
-                // Only the item goes behind a prompt, and only when it is not already locked. The
-                // Unlock counterpart lets every other case fall through, and so must this: an
-                // earlier version returned here for a Lock naming both paths, silently dropping
-                // the collection and reporting an empty locked list as if the request had vanished.
-                emitCompletedLater(false, () -> itemLocked = true);
+                // Only the item goes behind a prompt, and only when it is not already locked;
+                // every other case falls through, as in Unlock. Nothing is scheduled: the item is
+                // locked only when a test calls approvePendingPrompt(), so a client that declines
+                // to prompt leaves it unlocked, as a real provider does when Prompt() is never
+                // called.
+                pendingApproval = () -> itemLocked = true;
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
             for (DBusPath p : objects) {
