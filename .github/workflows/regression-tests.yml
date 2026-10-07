@@ -3,8 +3,9 @@ name: Regression Tests
 on:
   push:
     branches: [main, develop-2.x.x]
+  # Unfiltered on purpose: a base-branch filter skips the whole suite, without reporting
+  # anything, for a pull request stacked on another pull request.
   pull_request:
-    branches: [main, develop-2.x.x]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -13,6 +14,10 @@ concurrency:
 jobs:
   regression-tests:
     runs-on: ubuntu-latest
+    # Normal runtime is about two minutes. The bound is generous enough that a slow runner
+    # never trips it, and short enough that a hung step fails long before GitHub's
+    # six-hour default.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
