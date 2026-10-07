@@ -318,6 +318,14 @@ public final class FakeSecretService {
         java.lang.System.err.println(message);
     }
 
+    /** The secret's value as the last {@code GetSecret} sent it: encrypted, as it crossed the bus. */
+    public byte[] lastCiphertext() {
+        byte[] ct = lastCiphertext;
+        return ct == null ? null : ct.clone();
+    }
+
+    private volatile byte[] lastCiphertext;
+
     public boolean isItemLocked() {
         return itemLocked;
     }
@@ -714,6 +722,7 @@ public final class FakeSecretService {
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
                 String value = ITEM_PATH.equals(path) ? secretValue : SECOND_SECRET_VALUE;
                 byte[] ct = c.doFinal(locked ? new byte[0] : value.getBytes(secretEncoding));
+                lastCiphertext = ct.clone();
                 return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
