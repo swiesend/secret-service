@@ -3,8 +3,10 @@ package de.swiesend.secretservice;
 /**
  * What the library is willing to put into a log message.
  *
- * <p>Governed here: human-chosen names ({@link #label}), a value the library holds but did not
- * author. They are off by default and can be switched on for debugging.</p>
+ * <p>Two things are governed here, both about values the library holds but did not author:
+ * human-chosen names ({@link #label}), which are off by default and can be switched on for
+ * debugging; and failures raised by third-party implementations ({@link #cause}), whose text is
+ * never logged and has no switch.</p>
  *
  * <h2>Item labels and collection names</h2>
  *
@@ -124,6 +126,40 @@ public final class LogPolicy {
         public String toString() {
             if (labelsLogged) return label == null ? "<no label>" : label;
             return objectPath != null ? objectPath : HIDDEN;
+        }
+    }
+
+    /**
+     * Renders a failure that came out of <b>someone else's code</b> -- a {@code KeyMaterialProvider},
+     * a {@code GenerationAnchor}, a wrapped collection -- as its exception type alone, never its
+     * message.
+     *
+     * <p>The library cannot vouch for text it did not write. An implementation is free to build its
+     * message out of whatever it has to hand, and what a {@code KeyMaterialProvider} has to hand is
+     * the pepper. Logging {@code e.toString()} at such a boundary would take a third party's
+     * mistake and make it the library's disclosure.</p>
+     *
+     * <p>The type is kept because it is the part that identifies the failure mode -- an
+     * {@code IllegalStateException} from a provider closed underneath you reads differently from an
+     * {@code IOException} -- and it cannot carry a secret. There is no switch to widen this: unlike
+     * a label, this text was never the user's to disclose. An implementer who wants detail in the
+     * log should log it inside their own implementation, where they know what is safe to print.</p>
+     *
+     * <p>Use it only at that boundary. Exceptions this library raises itself carry messages written
+     * to be read, and should be logged in full.</p>
+     */
+    public static Object cause(Throwable t) {
+        return new CauseArgument(t);
+    }
+
+    /** Deferred rendering; see {@link #cause(Throwable)}. */
+    private record CauseArgument(Throwable t) {
+        @Override
+        public String toString() {
+            if (t == null) return "<no cause>";
+            // Class name only. Deliberately not getMessage(), and deliberately not the cause
+            // chain -- a wrapped exception's message is no more trustworthy than the outer one's.
+            return t.getClass().getName();
         }
     }
 }
