@@ -8,8 +8,9 @@ name: System Tests
 on:
   push:
     branches: [main, develop-2.x.x]
+  # Unfiltered on purpose: a base-branch filter skips the whole suite, without reporting
+  # anything, for a pull request stacked on another pull request.
   pull_request:
-    branches: [main, develop-2.x.x]
   workflow_dispatch:
 
 concurrency:
@@ -31,6 +32,10 @@ jobs:
             experimental: true
     name: system-tests (${{ matrix.provider }})
     continue-on-error: ${{ matrix.experimental }}
+    # Each leg normally takes about two minutes. The bound is generous enough that a slow
+    # runner never trips it, and short enough that a hung provider bring-up fails long
+    # before GitHub's six-hour default.
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
