@@ -8,11 +8,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -111,6 +113,54 @@ class ItemExistenceTest {
                     "the foreign item exists in its own collection");
             assertEquals(Optional.of(false), collection.itemExists(foreignPath),
                     "an item of another collection is not an item of this one");
+        } finally {
+            other.delete();
+            other.close();
+        }
+    }
+
+    @Test
+    void actingMethodsRefuseAnItemOfAnotherCollection() throws Exception {
+        // The ACTING methods are scoped as well as itemExists: a path is not a bare capability
+        // handle, so collectionA.deleteItem(pathUnderB) refuses instead of deleting B's item.
+        // Every refusal is checked against a REAL foreign item, and B's item must be provably
+        // untouched afterwards -- a wrong kind of "refusal" that still mutated B would pass a
+        // return-value-only test.
+        CollectionInterface other;
+        try {
+            other = session.collection("test-item-existence-acting", Optional.of("password")).get();
+        } catch (NoSuchElementException e) {
+            other = session.collection("test-item-existence-acting", Optional.empty()).get();
+        }
+        try {
+            String foreign = other.createItem("foreign-acting", "foreign-secret", Map.of()).orElseThrow();
+
+            assertEquals(Optional.empty(), collection.getSecret(foreign),
+                    "getSecret must refuse a foreign item");
+            assertEquals(Optional.empty(), collection.withSecret(foreign, String::new),
+                    "withSecret must refuse a foreign item");
+            assertEquals(Optional.empty(), collection.getAttributes(foreign),
+                    "getAttributes must refuse a foreign item");
+            assertEquals(Optional.empty(), collection.getItemLabel(foreign),
+                    "getItemLabel must refuse a foreign item");
+            assertFalse(collection.setItemLabel(foreign, "hijacked"),
+                    "setItemLabel must refuse a foreign item");
+            assertFalse(collection.updateItem(foreign, "hijacked", "overwritten", Map.of()),
+                    "updateItem must refuse a foreign item");
+            assertFalse(collection.lockItem(foreign), "lockItem must refuse a foreign item");
+            assertFalse(collection.unlockItem(foreign), "unlockItem must refuse a foreign item");
+            assertFalse(collection.deleteItem(foreign), "deleteItem must refuse a foreign item");
+            String own = collection.createItem("own-acting", "own-secret", Map.of()).orElseThrow();
+            assertFalse(collection.deleteItems(List.of(own, foreign)),
+                    "deleteItems must refuse a list that names a foreign item");
+            assertEquals(Optional.of(true), collection.itemExists(own),
+                    "all or nothing: the refused call keeps this collection's own item too");
+
+            // The other collection's view is the proof nothing acted.
+            assertEquals(Optional.of("foreign-acting"), other.getItemLabel(foreign),
+                    "the foreign item keeps its label");
+            assertEquals("foreign-secret", other.withSecret(foreign, String::new).orElseThrow(),
+                    "the foreign item keeps its secret");
         } finally {
             other.delete();
             other.close();

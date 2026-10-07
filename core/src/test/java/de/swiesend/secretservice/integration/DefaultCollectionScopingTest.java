@@ -65,5 +65,12 @@ class DefaultCollectionScopingTest {
                 byAlias.itemExists(FakeSecretService.COLLECTION_PATH + "/999999")
                         .filter(present -> present),
                 "a path with no object behind it must never be reported present");
+
+        // The ACTING methods must stay usable through the alias too: scoping is judged only for
+        // canonically-addressed collections, so an alias-opened default collection can still read
+        // its own items. Without that carve-out, scoping the acting methods would disown the
+        // default collection's items across the whole read/write surface.
+        assertEquals(Optional.of("fake-item"), byAlias.getItemLabel(FakeSecretService.ITEM_PATH),
+                "an alias-addressed collection still reads its own item's label");
     }
 }
