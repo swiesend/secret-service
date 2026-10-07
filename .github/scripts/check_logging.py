@@ -71,13 +71,13 @@ SENSITIVE_ACCESSOR = re.compile(
     r"(?<!getClass\(\))\.\s*get(?:Label|Name|CollectionName|WalletName|Secret|Password|Passphrase|Plaintext|Pepper)\s*\(")
 
 LOG_CALL = re.compile(r"\blog\.(?:trace|debug|info|warn|error)\s*\(", re.M)
-# Values the policy has already vetted: LogPolicy.label(...), with or without a package
-# qualifier. Removed before the sensitive-identifier scan.
+# Values the policy has already vetted: LogPolicy.label(...) / LogPolicy.cause(...), with or
+# without a package qualifier. Removed before the sensitive-identifier scan.
 SANCTIONED = re.compile(
     # One level of nesting, so the two-argument form with a method call is recognised:
     #   LogPolicy.label(label, item.getObjectPath())
     # A plain [^()]* cannot span the inner parentheses and would reject the recommended usage.
-    r"(?:[\w.]*\.)?LogPolicy\.label\s*\((?:[^()]|\([^()]*\))*\)")
+    r"(?:[\w.]*\.)?LogPolicy\.(?:label|cause)\s*\((?:[^()]|\([^()]*\))*\)")
 GETCLASS_LOGGER = re.compile(r"LoggerFactory\.getLogger\s*\(\s*getClass\s*\(\s*\)\s*\)")
 # String literals inside a log statement -- the message text and any literal argument.
 STRING_LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"')
