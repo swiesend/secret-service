@@ -95,6 +95,12 @@ final class FakeProviderFixture {
         service = SecretService.create(
                         Optional.of(de.swiesend.secretservice.functional.System.wrap(clientConnection)))
                 .orElseThrow(() -> new IllegalStateException("could not create the service"));
+        // Bounds the cost of a missed Completed signal. SignalHandler.await only sees signals that
+        // arrive after it starts waiting, so a client descheduled between the Lock reply and the
+        // await misses the signal and waits for the full timeout -- 120 seconds by default. On
+        // timeout the callers re-read the provider's state, which is authoritative, so a missed
+        // signal costs seconds here, not correctness.
+        service.setTimeout(java.time.Duration.ofSeconds(5));
         SessionInterface session = service.openSession()
                 .orElseThrow(() -> new IllegalStateException("could not open a session"));
         return session.collection(FakeSecretService.COLLECTION_LABEL, Optional.empty())
