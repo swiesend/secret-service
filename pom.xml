@@ -62,10 +62,10 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- The release level every module compiles to: declared once here and inherited. -->
-        <maven.compiler.release>17</maven.compiler.release>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <java.version>17</java.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+        <java.version>25</java.version>
 
         <!-- 3rd party dependencies -->
         <hkdf.version>2.0.0</hkdf.version>
@@ -208,7 +208,10 @@
                 </plugin>
                 <plugin>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.14.0</version>
+                    <!-- 3.14.1, not 3.14.0: its ASM 9.8 reads Java 25 class files. Under Maven
+                         3.10, 3.14.0 fails the compile with "Unsupported class file major
+                         version 69" (apache/maven-compiler-plugin#961). -->
+                    <version>3.14.1</version>
                 </plugin>
                 <plugin>
                     <artifactId>maven-surefire-plugin</artifactId>
@@ -240,7 +243,9 @@
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.8.12</version>
+                    <!-- 0.8.12 cannot analyse Java 25 class files ("Unsupported class file major
+                         version 69"), which breaks -Pcoverage at release 25. -->
+                    <version>0.8.15</version>
                 </plugin>
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
