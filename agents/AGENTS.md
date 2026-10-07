@@ -128,7 +128,10 @@ All public API boundary methods validate parameters:
 
 ## Code Conventions
 
-- **Logging:** SLF4J via `LoggerFactory.getLogger(getClass())` per class
+- **Logging:** SLF4J via `LoggerFactory.getLogger(<DeclaringClass>.class)` per class — **not**
+  `getClass()`, which names the runtime subclass so a consumer's configured logger name silently
+  fails to match. Enforced by `.github/scripts/check_logging.py`, which also forbids logging a
+  label or secret unwrapped and `String.format` inside a log call.
 - **Resource cleanup:** Use `AutoCloseable` / try-with-resources. Sensitive byte arrays cleared with `Arrays.fill(bytes, (byte) 0)`
 - **Naming:** Standard Java conventions (PascalCase classes, camelCase methods, `get`/`set`/`is` prefixes)
 - **Error handling:** Custom exceptions in `errors/` package. D-Bus exceptions caught and logged via `MessageHandler`
