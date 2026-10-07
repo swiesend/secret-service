@@ -463,7 +463,21 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public List<String> getItems(Map<String, String> attributes) {
         if (attributes == null) return null;
-        return delegate.getItems(attributes).orElse(null);
+        Optional<List<String>> result = delegate.getItems(attributes);
+
+        // Deliberately asymmetric: this is the 1.x contract, and this adapter exists so that
+        // downstream code keeps working unchanged.
+        //
+        //   no attributes -> no items is null
+        //   attributes    -> a search that matches nothing is an EMPTY LIST, never null
+        //
+        // Returning null for both looks tidier and breaks the second case: a 1.x caller doing
+        // `for (String path : getItems(attrs))` after a no-match search would throw
+        // NullPointerException.
+        if (attributes.isEmpty()) {
+            return result.filter(paths -> !paths.isEmpty()).orElse(null);
+        }
+        return result.orElse(null);
     }
 
     /**

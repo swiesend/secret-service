@@ -56,6 +56,29 @@ public interface CollectionInterface extends AutoCloseable {
 
     Optional<Map<String, String>> getAttributes(String objectPath);
 
+    /**
+     * Object paths of the items matching every entry in {@code attributes}; an empty map returns
+     * all items in the collection.
+     *
+     * <p><b>An empty result and a failed search are different things</b>, and callers that destroy
+     * or overwrite data on the strength of this answer must distinguish them:</p>
+     * <ul>
+     *   <li>{@code Optional.of(List.of())} — the search <em>succeeded</em> and matched nothing.</li>
+     *   <li>{@code Optional.empty()} — the search <em>failed</em> (the daemon did not answer, or
+     *       {@code attributes} was null). Nothing may be inferred about the collection's contents.</li>
+     * </ul>
+     *
+     * <p><b>Changed in 3.0.0, for the no-attributes case only.</b> Passing an empty map used to
+     * collapse "no items" to {@code Optional.empty()}; it now returns {@code Optional.of(List.of())}.
+     * Code of the form {@code if (getItems(Map.of()).isPresent()) …} previously implied "there are
+     * items" and no longer does — such a caller now enters that branch with an empty list.</p>
+     *
+     * <p>A search <em>with</em> attributes is unchanged: it already returned
+     * {@code Optional.of(List.of())} when nothing matched, because the filter it passed through
+     * tested the outer {@code Optional} rather than the list. The legacy
+     * {@code SimpleCollection.getItems} adapter therefore already returned an <em>empty list</em>
+     * for a no-match search and {@code null} only for the no-attributes case, and it still does.</p>
+     */
     Optional<List<String>> getItems(Map<String, String> attributes);
 
     /**
