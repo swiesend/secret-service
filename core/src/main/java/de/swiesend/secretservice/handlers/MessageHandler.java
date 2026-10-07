@@ -46,13 +46,19 @@ public class MessageHandler {
             connection.sendMessage(message);
 
             org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(MAX_DELAY_MILLIS);
-            if (log.isTraceEnabled()) log.trace("Response: " + response);
+            // The reply's shape, never its values. A reply carries item labels, attributes and
+            // secret values -- encrypted under the session key here, plaintext in a plain session
+            // opened through the low-level API -- and a log travels further than a keyring does.
+            if (log.isTraceEnabled())
+                log.trace("Reply to {}/{}: {}", iface, method,
+                        response == null ? "none" : response.getClass().getSimpleName());
 
             Object[] parameters = null;
             if (response != null) {
                 parameters = response.getParameters();
                 if (log.isDebugEnabled())
-                    log.debug("Response parameters for method " + iface + "/" + method + ": " + Arrays.deepToString(parameters));
+                    log.debug("Reply to {}/{}: {} parameter(s) of signature {}", iface, method,
+                            parameters == null ? 0 : parameters.length, response.getSig());
             }
 
             if (response instanceof org.freedesktop.dbus.messages.Error) {
@@ -137,7 +143,8 @@ public class MessageHandler {
     }
 
     public boolean setProperty(String service, String path, String iface, String property, Variant value) {
-        if (log.isDebugEnabled()) log.debug(iface + "@" + property + " with variant: " + value);
+        // The signature, not the value: setting an item's Label property sends the new label.
+        if (log.isDebugEnabled()) log.debug("Set {}@{} to a value of signature {}", iface, property, value.getSig());
         Optional<Object[]> maybeResponse = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES, "Set", "ssv", iface, property, value);
         if (maybeResponse.isPresent() && !fireAndForget) {
             Optional<Variant> maybePropertyValue = getProperty(service, path, iface, property);
