@@ -92,7 +92,6 @@ core/src/test/java/
 ```java
 module de.swiesend.secretservice {
     requires transitive org.freedesktop.dbus;
-    requires at.favre.lib.hkdf;
     requires org.slf4j;
     opens de.swiesend.secretservice to org.freedesktop.dbus;
     exports de.swiesend.secretservice;
@@ -110,7 +109,6 @@ module de.swiesend.secretservice {
 |---|---|---|
 | `dbus-java-core` | 5.2.0 | D-Bus communication |
 | `dbus-java-transport-native-unixsocket` | 5.2.0 | Unix socket transport |
-| `hkdf` (at.favre.lib) | 2.0.0 | HMAC-based key derivation |
 | `slf4j-api` | 2.0.17 | Logging |
 | `junit-jupiter` | 5.10.5 | Testing (test scope) |
 
