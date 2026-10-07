@@ -146,6 +146,16 @@
                         <configuration combine.self="override">
                             <groups>system-test</groups>
                         </configuration>
+                        <executions>
+                            <!-- The override above replaces the plugin-level configuration only; the
+                                 execution keeps its own groups and would run ReplyLoggingTest here too. -->
+                            <execution>
+                                <id>payload-logging</id>
+                                <configuration>
+                                    <skip>true</skip>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
@@ -339,8 +349,29 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
                 <configuration>
-                    <excludedGroups>system-test</excludedGroups>
+                    <excludedGroups>system-test,payload-logging</excludedGroups>
                 </configuration>
+                <executions>
+                    <!-- ReplyLoggingTest, in a JVM of its own with the library's loggers at TRACE.
+                         slf4j-simple fixes a logger's level when the logger is created, so the
+                         default run, at INFO, cannot raise it for one test. -->
+                    <execution>
+                        <id>payload-logging</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <groups>payload-logging</groups>
+                            <excludedGroups>system-test</excludedGroups>
+                            <!-- A renamed tag or class would otherwise leave this execution with no
+                                 test to run, and it would pass. -->
+                            <failIfNoTests>true</failIfNoTests>
+                            <systemPropertyVariables>
+                                <org.slf4j.simpleLogger.log.de.swiesend.secretservice>trace</org.slf4j.simpleLogger.log.de.swiesend.secretservice>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                </executions>
                 <dependencies>
                     <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-engine -->
                     <dependency>

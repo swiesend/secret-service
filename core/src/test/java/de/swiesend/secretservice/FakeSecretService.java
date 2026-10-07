@@ -171,6 +171,14 @@ public final class FakeSecretService {
         java.lang.System.err.println(message);
     }
 
+    /** The secret's value as the last {@code GetSecret} sent it: encrypted, as it crossed the bus. */
+    public byte[] lastCiphertext() {
+        byte[] ct = lastCiphertext;
+        return ct == null ? null : ct.clone();
+    }
+
+    private volatile byte[] lastCiphertext;
+
     public boolean isItemLocked() {
         return itemLocked;
     }
@@ -338,6 +346,7 @@ public final class FakeSecretService {
                 Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
                 byte[] ct = c.doFinal(SECRET_VALUE.getBytes(StandardCharsets.UTF_8));
+                lastCiphertext = ct.clone();
                 return new Secret(new DBusPath(SESSION_PATH), iv, ct, "text/plain; charset=utf8");
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
