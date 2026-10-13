@@ -2,9 +2,9 @@
 
 The [secret-service](https://github.com/swiesend/secret-service) library implements the [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/).
 
-## Unreleased
+## [3.0.0] - unreleased
 
-Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
+The stable release of the 3.x line, and its last on **JDK 17**: 4.0 requires JDK 25. `SimpleCollection` is still here, deprecated; 4.0 removes it. The date is set when the release is tagged.
 
 - `Added`:
   - Standalone developer **GUI** extracted to a separate `tools/gui` module (not part of the library jar).
