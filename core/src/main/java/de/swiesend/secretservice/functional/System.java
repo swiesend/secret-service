@@ -36,7 +36,8 @@ public class System implements SystemInterface {
             DBusConnection dbus = DBusConnectionBuilder.forSessionBus().build();
             return Optional.of(new System(dbus, true));
         } catch (DBusException e) {
-            log.warn(String.format("Could not communicate properly with the D-Bus: [%s]: %s", e.getClass().getSimpleName(), e.getMessage()));
+            log.warn("Could not communicate properly with the D-Bus: [{}]: {}",
+                    e.getClass().getSimpleName(), e.getMessage());
         }
         return Optional.empty();
     }

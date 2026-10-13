@@ -6,6 +6,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+/**
+ * A collection of secret items.
+ *
+ * <p><b>Item paths are scoped to this collection (changed in 3.0.0).</b> Every method that takes
+ * an item object path -- {@code getSecret}, {@code withSecret}, {@code getAttributes},
+ * {@code getItemLabel}, {@code setItemLabel}, {@code updateItem}, {@code deleteItem},
+ * {@code lockItem}, {@code unlockItem}, {@code itemExists} -- refuses a path that does not belong
+ * to this collection (returning {@code false} / {@code Optional.empty()}, or {@code of(false)}
+ * for {@code itemExists}). Earlier releases treated a path as a bare capability handle, so one
+ * collection object could read or delete another collection's items. Collections addressed
+ * through an alias (the default collection via {@code openDefault()}) are exempt from the prefix
+ * comparison -- their own path is not canonical -- and the daemon adjudicates as before.</p>
+ */
 public interface CollectionInterface extends AutoCloseable {
 
     /**
@@ -56,6 +69,54 @@ public interface CollectionInterface extends AutoCloseable {
 
     Optional<Map<String, String>> getAttributes(String objectPath);
 
+    /**
+     * Whether this collection still holds an item at {@code objectPath}, separating the two cases
+     * that {@link #getAttributes} and {@link #getSecret} collapse into {@link Optional#empty()}.
+     *
+     * <ul>
+     *   <li>{@code Optional.of(true)} — present (it answered, or refused access by name).</li>
+     *   <li>{@code Optional.of(false)} — provably absent: the daemon named it as unknown.</li>
+     *   <li>{@code Optional.empty()} — <b>cannot tell</b>: no reply, disconnected, or an error that
+     *       implies nothing about existence.</li>
+     * </ul>
+     *
+     * <p>Use this before acting destructively on a failed read. A read that came back empty during
+     * a routine sweep is usually an item another application deleted a moment ago — harmless — but
+     * it can equally be a daemon that stopped answering, and only the first of those licenses
+     * "carry on without it".</p>
+     *
+     * <p>The default implementation answers {@code Optional.empty()} for every path, which is the
+     * safe reading for an implementation that cannot tell.</p>
+     *
+     * @since 3.0.0
+     */
+    default Optional<Boolean> itemExists(String objectPath) {
+        return Optional.empty();
+    }
+
+    /**
+     * Object paths of the items matching every entry in {@code attributes}; an empty map returns
+     * all items in the collection.
+     *
+     * <p><b>An empty result and a failed search are different things</b>, and callers that destroy
+     * or overwrite data on the strength of this answer must distinguish them:</p>
+     * <ul>
+     *   <li>{@code Optional.of(List.of())} — the search <em>succeeded</em> and matched nothing.</li>
+     *   <li>{@code Optional.empty()} — the search <em>failed</em> (the daemon did not answer, or
+     *       {@code attributes} was null). Nothing may be inferred about the collection's contents.</li>
+     * </ul>
+     *
+     * <p><b>Changed in 3.0.0, for the no-attributes case only.</b> Passing an empty map used to
+     * collapse "no items" to {@code Optional.empty()}; it now returns {@code Optional.of(List.of())}.
+     * Code of the form {@code if (getItems(Map.of()).isPresent()) …} previously implied "there are
+     * items" and no longer does — such a caller now enters that branch with an empty list.</p>
+     *
+     * <p>A search <em>with</em> attributes is unchanged: it already returned
+     * {@code Optional.of(List.of())} when nothing matched, because the filter it passed through
+     * tested the outer {@code Optional} rather than the list. The legacy
+     * {@code SimpleCollection.getItems} adapter therefore already returned an <em>empty list</em>
+     * for a no-match search and {@code null} only for the no-attributes case, and it still does.</p>
+     */
     Optional<List<String>> getItems(Map<String, String> attributes);
 
     /**

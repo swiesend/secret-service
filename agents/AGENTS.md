@@ -8,7 +8,7 @@ This is the unified instruction file for all AI agents (Claude Code, GitHub Copi
 
 - **Group/Artifact:** `de.swiesend:secret-service`
 - **License:** MIT
-- **JDK:** Requires JDK 17+ to build
+- **JDK:** Requires JDK 25+ to build
 
 ## Build Commands
 
@@ -19,12 +19,12 @@ mvn package                # Build JAR
 mvn clean -Pcoverage test  # Run tests with JaCoCo coverage
 ```
 
-Maven 3.6.0+ is enforced. No Gradle support.
+Maven 3.6.3+ is enforced. No Gradle support.
 
 ## Project Structure
 
 ```
-pom.xml                                         # build aggregator only; never published
+pom.xml                                         # parent: shared build config; published, modules inherit it
 core/pom.xml                                    # the library: de.swiesend:secret-service
 core/src/main/java/
   module-info.java                              # JPMS module: de.swiesend.secretservice
@@ -92,7 +92,6 @@ core/src/test/java/
 ```java
 module de.swiesend.secretservice {
     requires transitive org.freedesktop.dbus;
-    requires at.favre.lib.hkdf;
     requires org.slf4j;
     opens de.swiesend.secretservice to org.freedesktop.dbus;
     exports de.swiesend.secretservice;
@@ -110,7 +109,6 @@ module de.swiesend.secretservice {
 |---|---|---|
 | `dbus-java-core` | 5.2.0 | D-Bus communication |
 | `dbus-java-transport-native-unixsocket` | 5.2.0 | Unix socket transport |
-| `hkdf` (at.favre.lib) | 2.0.0 | HMAC-based key derivation |
 | `slf4j-api` | 2.0.17 | Logging |
 | `junit-jupiter` | 5.10.5 | Testing (test scope) |
 
@@ -130,7 +128,10 @@ All public API boundary methods validate parameters:
 
 ## Code Conventions
 
-- **Logging:** SLF4J via `LoggerFactory.getLogger(getClass())` per class
+- **Logging:** SLF4J via `LoggerFactory.getLogger(<DeclaringClass>.class)` per class — **not**
+  `getClass()`, which names the runtime subclass so a consumer's configured logger name silently
+  fails to match. Enforced by `.github/scripts/check_logging.py`, which also forbids logging a
+  label or secret unwrapped, `String.format` inside a log call, and non-ASCII in a log message.
 - **Resource cleanup:** Use `AutoCloseable` / try-with-resources. Sensitive byte arrays cleared with `Arrays.fill(bytes, (byte) 0)`
 - **Naming:** Standard Java conventions (PascalCase classes, camelCase methods, `get`/`set`/`is` prefixes)
 - **Error handling:** Custom exceptions in `errors/` package. D-Bus exceptions caught and logged via `MessageHandler`

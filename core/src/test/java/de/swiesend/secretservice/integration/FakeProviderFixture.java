@@ -30,6 +30,7 @@ final class FakeProviderFixture {
     private DBusConnection clientConnection;
     private DBusConnection providerConnection;
     private ServiceInterface service;
+    private SessionInterface session;
     private FakeSecretService fake;
 
     /** Whether this machine can run these tests at all. */
@@ -47,6 +48,16 @@ final class FakeProviderFixture {
 
     FakeSecretService fake() {
         return fake;
+    }
+
+    /** The open session, for tests that construct collections through other entry points. */
+    SessionInterface session() {
+        return session;
+    }
+
+    /** The low-level Service, for tests that exercise {@code Item}/{@code Collection} directly. */
+    de.swiesend.secretservice.Service rawService() {
+        return service.getService();
     }
 
     /**
@@ -101,7 +112,7 @@ final class FakeProviderFixture {
         // timeout the callers re-read the provider's state, which is authoritative, so a missed
         // signal costs seconds here, not correctness.
         service.setTimeout(java.time.Duration.ofSeconds(5));
-        SessionInterface session = service.openSession()
+        session = service.openSession()
                 .orElseThrow(() -> new IllegalStateException("could not open a session"));
         return session.collection(FakeSecretService.COLLECTION_LABEL, Optional.empty())
                 .orElseThrow(() -> new IllegalStateException("could not open the fake collection"));
@@ -109,9 +120,9 @@ final class FakeProviderFixture {
 
     /** Idempotent: the two-phase tests call this mid-test and again from {@code @AfterEach}. */
     void stop() {
-        // Before disconnecting: a pending emitter would otherwise fail mid-send and mutate fake
-        // state after the test has finished reading it.
-        if (fake != null) fake.awaitPendingPrompt();
+        // Before disconnecting: a signal still queued would otherwise fail mid-send after the test
+        // has finished reading the fake.
+        if (fake != null) fake.close();
         try { if (service != null) service.close(); } catch (Exception ignored) { }
         try { if (clientConnection != null) clientConnection.disconnect(); } catch (Exception ignored) { }
         try { if (providerConnection != null) providerConnection.disconnect(); } catch (Exception ignored) { }
@@ -135,6 +146,7 @@ final class FakeProviderFixture {
             socket = null;
         }
         service = null;
+        session = null;
         clientConnection = null;
         providerConnection = null;
         fake = null;
