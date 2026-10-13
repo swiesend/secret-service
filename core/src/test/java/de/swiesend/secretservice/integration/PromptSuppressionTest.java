@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,9 +41,10 @@ class PromptSuppressionTest {
     private CollectionInterface start(boolean itemLocked) throws Exception {
         CollectionInterface collection = harness.start(itemLocked);
         fake = harness.fake();
-        // Put item lock/unlock behind a prompt. Without it the fake completes them inline, and
-        // these tests exercise the no-prompt path instead of the prompt branches they name.
-        fake.setRequirePromptForItemOps(true);
+        // Put item locking behind a prompt as well; unlocking a locked item always is. Without it
+        // the fake locks inline, and these tests exercise the no-prompt path instead of the prompt
+        // branches they name.
+        fake.setRequirePromptForItemLock(true);
         return collection;
     }
 
@@ -51,6 +53,7 @@ class PromptSuppressionTest {
         CollectionInterface allowed = start(true);
         assertTrue(allowed.unlockItem(FakeSecretService.ITEM_PATH),
                 "with prompting enabled the unlock completes through the prompt");
+        assertEquals(1, fake.promptCalls().size(), "the client showed the prompt");
         stop();
 
         CollectionInterface suppressed = start(true);
@@ -59,44 +62,27 @@ class PromptSuppressionTest {
                 "with prompting disabled the item must stay locked, not be unlocked by a dialog "
                         + "the caller opted out of");
         assertTrue(fake.isItemLocked(), "the item was not unlocked behind the caller's back");
+        assertTrue(fake.promptCalls().isEmpty(), "and no dialog was shown");
     }
 
     @Test
     void lockItemPromptsWhenAllowedAndRefusesWhenNot() throws Exception {
+        // The fake approves a prompt only when the client shows it with Prompt(), so the item gets
+        // locked only if the client engaged with the dialog.
         CollectionInterface allowed = start(false);
-        FakeSecretService allowedFake = fake;
-        // Answer the prompt from another thread while lockItem waits for it. Poll rather than
-        // sleep a fixed time: lockItem makes two D-Bus round trips before the fake has a prompt
-        // outstanding, and a loaded runner can outlast any fixed sleep.
-        Thread approver = new Thread(() -> {
-            try {
-                long deadline = java.lang.System.nanoTime() + 5_000_000_000L;
-                while (!allowedFake.hasPendingPrompt() && java.lang.System.nanoTime() < deadline) {
-                    Thread.sleep(20);
-                }
-                // Only a prompt that exists: answering after the deadline would emit a Completed
-                // signal that a later await on the same bus could take as a stale answer.
-                if (allowedFake.hasPendingPrompt()) {
-                    allowedFake.approvePendingPrompt();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }, "approver");
-        approver.setDaemon(true);
-        approver.start();
         assertTrue(allowed.lockItem(FakeSecretService.ITEM_PATH),
                 "with prompting enabled the lock completes through the prompt");
-        approver.join(5_000);
+        assertEquals(1, fake.promptCalls().size(), "the client showed the prompt");
         stop();
 
         CollectionInterface suppressed = start(false);
         assertTrue(suppressed.disablePrompt());
-        // Nobody answers the prompt, so the item stays unlocked, as on a real provider when the
-        // client never sends Prompt().
+        // The client never sends Prompt(), so nobody answers the dialog and the item stays
+        // unlocked, as on a real provider.
         assertFalse(suppressed.lockItem(FakeSecretService.ITEM_PATH),
                 "with prompting disabled the item must stay unlocked");
         assertFalse(fake.isItemLocked(), "the item was not locked behind the caller's back");
+        assertTrue(fake.promptCalls().isEmpty(), "and no dialog was shown");
     }
 
     @Test
@@ -105,7 +91,7 @@ class PromptSuppressionTest {
         // prompt -- gnome-keyring answers Lock with a non-empty locked list and a "/" path -- so a
         // headless consumer that disables prompts must still be able to lock an item.
         CollectionInterface collection = start(false);
-        fake.setRequirePromptForItemOps(false);   // locking needs no prompt here
+        fake.setRequirePromptForItemLock(false);   // locking needs no prompt here
         assertTrue(collection.disablePrompt());
 
         assertTrue(collection.lockItem(FakeSecretService.ITEM_PATH),
