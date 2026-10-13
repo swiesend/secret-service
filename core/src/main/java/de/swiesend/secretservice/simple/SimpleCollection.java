@@ -83,7 +83,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
             delegate = de.swiesend.secretservice.functional.Collection
                     .openDefault(Optional.of(session))
                     .orElseThrow(() -> new IOException("Could not open the default collection."));
+        } catch (IOException e) {
+            closeAfterFailedOpen();
+            throw e;
         } catch (RuntimeException e) {
+            closeAfterFailedOpen();
             throw new IOException("Could not initialize the secret service.", e);
         }
     }
@@ -115,7 +119,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                     .open(label, maybePassword, Optional.of(session))
                     .orElseThrow(() -> new IOException(
                             String.format("Could not acquire collection with name %s", label)));
+        } catch (IOException e) {
+            closeAfterFailedOpen();
+            throw e;
         } catch (RuntimeException e) {
+            closeAfterFailedOpen();
             throw new IOException("Could not initialize the secret service.", e);
         }
     }
@@ -195,12 +203,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 // Necessary in order to check if the secret service supports the expected transport encryption
                 // algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
                 // "org.freedesktop.DBus.Error.ServiceUnknown <: org.freedesktop.dbus.exceptions.DBusException"
-                TransportEncryption transport = new TransportEncryption(connection);
-                Optional<TransportEncryption.OpenedSession> opened = transport.initialize().flatMap(init -> init.openSession());
-                boolean isSessionSupported = opened.isPresent();
-                transport.close();
-
-                return isSessionSupported;
+                try (TransportEncryption transport = new TransportEncryption(connection)) {
+                    return transport.initialize().flatMap(init -> init.openSession()).isPresent();
+                }
             } catch (DBusException | ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
@@ -286,6 +291,19 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         daemonThread.setDaemon(true);
         Runtime.getRuntime().addShutdownHook(daemonThread);
         return daemonThread;
+    }
+
+    /**
+     * Closes the service that {@link #init()} opened, when the constructor fails after it: the
+     * caller never gets the instance whose {@link #close()} would.
+     */
+    private void closeAfterFailedOpen() {
+        if (service == null) return;
+        try {
+            service.close();
+        } catch (Exception e) {
+            log.warn("Failed to close the secret service after a failed open.", e);
+        }
     }
 
     private void init() throws IOException {

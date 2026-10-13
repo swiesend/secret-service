@@ -126,6 +126,9 @@ public class SecretService implements ServiceInterface {
                     session.close();
                 }
             }
+            // Before the system: on a wrapped connection, which outlives this service, the
+            // handlers would otherwise stay registered for the life of the connection.
+            service.getSignalHandler().disconnect();
             if (maybeSystem.isPresent()) {
                 maybeSystem.get().close();
             }

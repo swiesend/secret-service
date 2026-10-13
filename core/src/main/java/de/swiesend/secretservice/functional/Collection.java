@@ -37,7 +37,7 @@ public class Collection implements CollectionInterface {
     private Optional<String> label = Optional.empty();
     private String id = null;
     private Optional<Secret> encryptedCollectionPassword = Optional.empty();
-    private Prompt prompt = null;
+    Prompt prompt = null;
     private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
 
     private DBusPath path = null;
@@ -131,6 +131,7 @@ public class Collection implements CollectionInterface {
         Optional<de.swiesend.secretservice.Collection> maybeCollection = c.getOrCreateCollection(label);
         if (maybeCollection.isEmpty()) {
             log.warn("Could not acquire collection with name {}", label);
+            c.closeAfterFailedOpen();
             return Optional.empty();
         }
         c.collection = maybeCollection.get();
@@ -167,7 +168,20 @@ public class Collection implements CollectionInterface {
             return Optional.of(c);
         } catch (Exception e) {
             log.error("Could not open collection by id {}: {}", id, e.getMessage());
+            c.closeAfterFailedOpen();
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Releases what {@link #init} and the failed open acquired: the signal handlers, the encrypted
+     * password, and the service when init() created it.
+     */
+    private void closeAfterFailedOpen() {
+        try {
+            close();
+        } catch (Exception e) {
+            log.warn("Could not release the collection after a failed open.", e);
         }
     }
 
@@ -1085,6 +1099,11 @@ public class Collection implements CollectionInterface {
     public void close() throws Exception {
         if (!isClosed) {
             clear();
+            // This collection's own signal handlers. The connection usually outlives the
+            // collection -- SimpleCollection's, or a session's that opens several -- and keeps
+            // them registered otherwise.
+            if (prompt != null) prompt.getSignalHandler().disconnect();
+            if (collection != null) collection.getSignalHandler().disconnect();
             if (clearSessionAtClose) {
                 // Close the service (which cascades to registered sessions and the
                 // underlying SystemInterface/D-Bus connection). Closing only the session

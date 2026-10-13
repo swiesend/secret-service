@@ -45,14 +45,12 @@ public interface ServiceInterface extends AutoCloseable {
                 // Necessary in order to check if the provided 'secret service' supports the expected transport
                 // encryption algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
                 // "org.freedesktop.DBus.Error.ServiceUnknown <: org.freedesktop.dbus.exceptions.DBusException"
-                TransportEncryption transport = new TransportEncryption(connection);
-                boolean isSessionSupported = transport
-                        .initialize()
-                        .flatMap(TransportEncryption.InitializedSession::openSession)
-                        .isPresent();
-                transport.close();
-
-                return isSessionSupported;
+                try (TransportEncryption transport = new TransportEncryption(connection)) {
+                    return transport
+                            .initialize()
+                            .flatMap(TransportEncryption.InitializedSession::openSession)
+                            .isPresent();
+                }
             } catch (ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. " +
                         "You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
