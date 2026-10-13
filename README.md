@@ -244,7 +244,9 @@ The CI test environments live under [`.github/providers/`](.github/providers) â€
 provider (`gnome-keyring`, `kwallet`, `keepassxc`), each starting a path-based D-Bus via the shared
 `dbus-up.sh`. The default regression workflow runs against gnome-keyring; the
 [`system-tests`](.github/workflows/system-tests.yml) workflow runs the system suite across all three
-providers (the KWallet/KeePassXC legs are best-effort and non-blocking).
+providers (the KWallet/KeePassXC legs are best-effort and non-blocking). The KWallet leg fails for
+now: headless, kwalletd5 creates no wallet, so there is no collection to test, and the leg says so
+instead of passing with every test skipped.
 
 ```bash
 docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test .
