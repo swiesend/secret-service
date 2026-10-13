@@ -162,6 +162,14 @@ public final class FakeSecretService {
     public void setRequirePromptForCollectionLock(boolean require) { this.requirePromptForCollectionLock = require; }
     private volatile boolean requirePromptForCollectionLock;
 
+    /**
+     * Makes unlocking the locked collection require a prompt, as gnome-keyring's password dialog
+     * does: Unlock answers with a prompt path and unlocks only when {@link #approvePendingPrompt()}
+     * answers it.
+     */
+    public void setRequirePromptForCollectionUnlock(boolean require) { this.requirePromptForCollectionUnlock = require; }
+    private volatile boolean requirePromptForCollectionUnlock;
+
     public boolean isCollectionLocked() {
         return collectionLocked;
     }
@@ -261,6 +269,11 @@ public final class FakeSecretService {
             if (!itemRequested) {
                 if (refuseCollectionUnlock) {
                     return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
+                }
+                if (requirePromptForCollectionUnlock && collectionLocked) {
+                    // Unlocked only when a test answers the prompt, as for the Lock prompts.
+                    pendingApproval = () -> collectionLocked = false;
+                    return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
                 }
                 // A collection-level unlock succeeds immediately and, crucially, does NOT touch the
                 // item. That asymmetry is the bug under test.

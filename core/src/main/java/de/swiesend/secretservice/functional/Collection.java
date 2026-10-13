@@ -961,11 +961,24 @@ public class Collection implements CollectionInterface {
         return false;
     }
 
+    /** Whether {@link #unlock()} takes the stored-password branch, which shows no dialog. */
+    private boolean canUnlockWithoutPrompt() {
+        return encryptedCollectionPassword.isPresent() && !isDefault() && service.isGnomeKeyringAvailable();
+    }
+
     @Override
     public boolean unlockWithUserPermission() {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
         if (!isUnlockedOnceWithUserPermission) {
+            // With prompting disabled, only gnome-keyring's stored-password unlock can undo the
+            // lock below. Without it the collection would stay locked for every application on
+            // the desktop -- for the login keyring, all of them would start to prompt -- and the
+            // caller would still be refused.
+            if (!isPrompting && !canUnlockWithoutPrompt()) {
+                log.debug("Prompting is disabled, and nothing could unlock the collection again; not locking it.");
+                return false;
+            }
             switch (lock(false)) {
                 case LOCKED -> {
                     // unlock() below brings up the provider's dialog.
