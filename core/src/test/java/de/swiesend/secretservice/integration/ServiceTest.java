@@ -76,7 +76,11 @@ public class ServiceTest {
         log.info(response.toString());
 
         byte[] peerPublicKey = Static.Utils.toByteArray(response.get().a.getValue());
-        assertEquals(128, peerPublicKey.length);
+        // The peer's DH public value is an unsigned big-endian integer of up to 1024 bits, sent
+        // without leading zero bytes: about one value in 256 has a zero top byte and arrives as
+        // 127 bytes, and rarer ones as fewer.
+        assertTrue(peerPublicKey.length > 0 && peerPublicKey.length <= 128,
+                "the peer public key must be 1 to 128 bytes, was " + peerPublicKey.length);
 
         DBusPath sessionPath = response.get().b;
         assertTrue(sessionPath.getPath().startsWith(Static.ObjectPaths.SESSION + "/s"));
