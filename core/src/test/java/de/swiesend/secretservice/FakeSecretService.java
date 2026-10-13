@@ -38,9 +38,9 @@ import javax.crypto.spec.DHPublicKeySpec;
  * item locked; only {@code Unlock} on the <em>item</em> path clears it. A client that unlocks just
  * the collection therefore cannot read the secret, exactly as on a real KeePassXC.</p>
  *
- * <p>Only the members the read path touches are implemented, and {@code Item.Delete} and
- * {@code CreateCollection}. This is a test fixture, not a provider: it does no access control and
- * keeps its secret in a field.</p>
+ * <p>Only the members the read path touches are implemented, and {@code Item.Delete},
+ * {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a provider: it does
+ * no access control and keeps its secret in a field.</p>
  */
 public final class FakeSecretService {
 
@@ -75,6 +75,7 @@ public final class FakeSecretService {
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
+        Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace);
     }
 
     @DBusInterfaceName(Static.Interfaces.ITEM)
@@ -187,8 +188,23 @@ public final class FakeSecretService {
         Runnable apply = pendingApproval;
         pendingApproval = null;
         if (apply != null) apply.run();
-        emitCompletedLater(false);
+        Variant<?> result = pendingResult;
+        pendingResult = null;
+        emitCompletedLater(false, () -> { }, result == null ? new Variant<>(new ArrayList<DBusPath>(), "ao") : result);
     }
+
+    /** What the outstanding prompt answers with, when it is not an empty list of paths. */
+    private volatile Variant<?> pendingResult;
+
+    /** Where the fake reports an item created through its CreateItem prompt. */
+    public static final String CREATED_ITEM_PATH = COLLECTION_PATH + "/2";
+
+    /** Labels that {@code CreateItem} was called with, in order. */
+    public List<String> createItemCalls() {
+        return List.copyOf(createItemCalls);
+    }
+
+    private final List<String> createItemCalls = Collections.synchronizedList(new ArrayList<>());
 
     /** Whether a Lock prompt is outstanding, so a test can wait for it instead of racing it. */
     public boolean hasPendingPrompt() { return pendingApproval != null; }
@@ -374,6 +390,17 @@ public final class FakeSecretService {
         }
 
         @Override
+        public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace) {
+            Variant<?> label = properties.get(Item.LABEL);
+            createItemCalls.add(label == null ? "" : String.valueOf(label.getValue()));
+            // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
+            // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
+            pendingApproval = () -> { };
+            pendingResult = new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o");
+            return new Pair<>(new DBusPath("/"), new DBusPath(PROMPT_PATH));
+        }
+
+        @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             switch (property) {
@@ -457,12 +484,17 @@ public final class FakeSecretService {
 
     /** @param onAnswered applied when the prompt is answered, before the signal goes out. */
     private void emitCompletedLater(boolean dismissed, Runnable onAnswered) {
+        emitCompletedLater(dismissed, onAnswered, new Variant<>(new ArrayList<DBusPath>(), "ao"));
+    }
+
+    /** @param result the prompt's result, which depends on the operation that asked for it */
+    private void emitCompletedLater(boolean dismissed, Runnable onAnswered, Variant<?> result) {
         Thread t = new Thread(() -> {
             try {
                 Thread.sleep(150);
                 if (!dismissed) onAnswered.run();
                 connection.sendMessage(new de.swiesend.secretservice.interfaces.Prompt.Completed(
-                        PROMPT_PATH, dismissed, new Variant<>(new ArrayList<DBusPath>(), "ao")));
+                        PROMPT_PATH, dismissed, result));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {

@@ -394,6 +394,12 @@ public class Collection implements CollectionInterface {
         }
 
         unlock();
+        // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
+        // prompting is disabled. CreateItem on it would bring up the same dialog a second time.
+        if (collection.isLocked()) {
+            log.info("The collection stayed locked, so the item is not created.");
+            return Optional.empty();
+        }
 
         Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
         if (encrypted == null) {
@@ -415,7 +421,19 @@ public class Collection implements CollectionInterface {
             }
 
             // Prompt required (e.g. KeePassXC per-item unlock)
-            de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
+            if (!requiresPrompt(pair.b)) {
+                // Neither an item nor a prompt, which the specification does not allow. Awaiting "/"
+                // would hand back the result of whichever prompt completed last.
+                log.error("createItem returned neither an item nor a prompt.");
+                return Optional.empty();
+            }
+            if (!isPrompting) {
+                log.debug("Creating the item needs a prompt, and prompting is disabled; dismissing it.");
+                dismissPrompt(pair.b);
+                return Optional.empty();
+            }
+            de.swiesend.secretservice.interfaces.Prompt.Completed completed =
+                    prompt.await(pair.b, service.getTimeout());
             if (completed == null || completed.dismissed) {
                 log.warn("Prompt was dismissed or timed out for item \"{}\".", label);
                 return Optional.empty();
