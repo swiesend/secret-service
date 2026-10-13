@@ -38,8 +38,8 @@ import javax.crypto.spec.DHPublicKeySpec;
  * item locked; only {@code Unlock} on the <em>item</em> path clears it. A client that unlocks just
  * the collection therefore cannot read the secret, exactly as on a real KeePassXC.</p>
  *
- * <p>Only the members the read path touches are implemented. This is a test fixture, not a
- * provider: it does no access control and keeps its secret in a field.</p>
+ * <p>Only the members the read path touches are implemented, and {@code Item.Delete}. This is a
+ * test fixture, not a provider: it does no access control and keeps its secret in a field.</p>
  */
 public final class FakeSecretService {
 
@@ -77,6 +77,7 @@ public final class FakeSecretService {
 
     @DBusInterfaceName(Static.Interfaces.ITEM)
     public interface WireItem extends DBusInterface {
+        DBusPath Delete();
         Secret GetSecret(DBusPath session);
     }
 
@@ -174,6 +175,13 @@ public final class FakeSecretService {
     public boolean isItemLocked() {
         return itemLocked;
     }
+
+    /** Whether the store holds an item at {@code path}. */
+    public boolean hasItem(String path) {
+        return ITEM_PATH.equals(path) && !itemDeleted;
+    }
+
+    private volatile boolean itemDeleted;
 
     public void export() throws Exception {
         connection.exportObject(SERVICE_PATH, new ServiceImpl());
@@ -325,6 +333,16 @@ public final class FakeSecretService {
     }
 
     private final class ItemImpl implements WireItem, Properties {
+        @Override
+        public DBusPath Delete() {
+            // Deleted at once, answering "/" for "no prompt necessary", as gnome-keyring does. The
+            // fake does not own org.gnome.keyring, so the client sees a provider other than
+            // gnome-keyring giving that answer.
+            itemDeleted = true;
+            connection.unExportObject(ITEM_PATH);
+            return new DBusPath("/");
+        }
+
         @Override
         public Secret GetSecret(DBusPath session) {
             if (itemLocked || collectionLocked) {
