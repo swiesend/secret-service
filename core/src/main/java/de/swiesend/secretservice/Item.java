@@ -98,26 +98,29 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
         Object[] response = send("GetSecret", "o", session).orElse(null);
         if (Static.Utils.isNullOrEmpty(response)) return Optional.empty();
         try {
-            Object[] inner = (Object[]) response[0];
-
-            DBusPath session_path = (DBusPath) inner[0];
-            byte[] parameters = Static.Convert.toByteArray((ArrayList<Byte>) inner[1]);
-            byte[] value = Static.Convert.toByteArray((ArrayList<Byte>) inner[2]);
-            String contentType = (String) inner[3];
-
-            Secret secret;
-            if (contentType.equals(Secret.TEXT_PLAIN) || contentType.equals(Secret.TEXT_PLAIN_CHARSET_UTF_8)) {
-                // replace the content-type "text/plain" with default "text/plain; charset=utf8"
-                secret = new Secret(session_path, parameters, value);
-            } else {
-                // use given non default content-type
-                secret = new Secret(session_path, parameters, value, contentType);
-            }
-
-            return Optional.of(secret);
-        } catch (ClassCastException | IndexOutOfBoundsException e) {
+            return Optional.of(toSecret((Object[]) response[0]));
+        } catch (ClassCastException | IndexOutOfBoundsException | IllegalStateException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * A {@link Secret} from the {@code (oayays)} struct as dbus-java decodes it without type
+     * information: an {@code Object[]} of the session path, the parameters and the value as
+     * {@code byte[]} or {@code List<Byte>}, and the content type.
+     */
+    static Secret toSecret(Object[] struct) {
+        DBusPath session_path = (DBusPath) struct[0];
+        byte[] parameters = Static.Utils.toByteArray(struct[1]);
+        byte[] value = Static.Utils.toByteArray(struct[2]);
+        String contentType = (String) struct[3];
+
+        if (contentType.equals(Secret.TEXT_PLAIN) || contentType.equals(Secret.TEXT_PLAIN_CHARSET_UTF_8)) {
+            // replace the content-type "text/plain" with default "text/plain; charset=utf8"
+            return new Secret(session_path, parameters, value);
+        }
+        // use given non default content-type
+        return new Secret(session_path, parameters, value, contentType);
     }
 
     @Override
