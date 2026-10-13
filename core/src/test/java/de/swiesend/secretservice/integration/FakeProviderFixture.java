@@ -49,6 +49,11 @@ final class FakeProviderFixture {
         return fake;
     }
 
+    /** The library's connection to the private bus, for tests that drive the low-level API. */
+    DBusConnection clientConnection() {
+        return clientConnection;
+    }
+
     /**
      * Starts the bus and the fake provider, and opens the fake collection through the library.
      *

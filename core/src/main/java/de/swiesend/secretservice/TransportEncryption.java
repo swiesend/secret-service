@@ -14,13 +14,12 @@ import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.DHPublicKeySpec;
 import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import javax.security.auth.DestroyFailedException;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Arrays;
 import java.util.Optional;
 
 public class TransportEncryption implements AutoCloseable {
@@ -33,7 +32,7 @@ public class TransportEncryption implements AutoCloseable {
     private KeyPair keypair = null;
     private PublicKey publicKey = null;
     private PrivateKey privateKey = null;
-    private SecretKey sessionKey = null;
+    private SessionKey sessionKey = null;
     private byte[] yb = null;
 
     private Session session = null;
@@ -89,16 +88,64 @@ public class TransportEncryption implements AutoCloseable {
         return session;
     }
 
+    /**
+     * Erases the session key and drops the DH private key. Encryption and decryption through this
+     * session fail afterwards.
+     */
     public void clear() {
-        if (privateKey != null) try {
-            privateKey.destroy();
-        } catch (DestroyFailedException e) {
-            Secret.clear(privateKey.getEncoded());
-        }
-        if (sessionKey != null) try {
+        // The JDK cannot erase a DH private key: destroy() throws DestroyFailedException, and the
+        // exponent is an immutable BigInteger. Clearing a copy from getEncoded() would change
+        // nothing, so dropping the references is all there is to do.
+        privateKey = null;
+        keypair = null;
+        if (sessionKey != null) {
             sessionKey.destroy();
-        } catch (DestroyFailedException e) {
-            Secret.clear(sessionKey.getEncoded());
+            sessionKey = null;
+        }
+    }
+
+    /**
+     * The AES session key, as a key that can really be erased. A {@code SecretKeySpec} cannot:
+     * its {@code destroy()} throws {@code DestroyFailedException}, and its {@code getEncoded()}
+     * returns a copy, so nothing reaches the bytes it holds.
+     */
+    static final class SessionKey implements SecretKey {
+        @java.io.Serial
+        private static final long serialVersionUID = 1L;
+        private final byte[] key;
+        private volatile boolean destroyed = false;
+
+        SessionKey(byte[] key) {
+            this.key = key.clone();
+        }
+
+        @Override
+        public String getAlgorithm() {
+            return Static.Algorithm.AES;
+        }
+
+        @Override
+        public String getFormat() {
+            return "RAW";
+        }
+
+        // Both synchronized: a copy taken while destroy() runs would be partly zeroed, and a secret
+        // encrypted under it could be read by anyone on the bus. Now a copy is whole or refused.
+        @Override
+        public synchronized byte[] getEncoded() {
+            if (destroyed) throw new IllegalStateException("The session key has been destroyed.");
+            return key.clone();
+        }
+
+        @Override
+        public synchronized void destroy() {
+            Arrays.fill(key, (byte) 0);
+            destroyed = true;
+        }
+
+        @Override
+        public boolean isDestroyed() {
+            return destroyed;
         }
     }
 
@@ -138,6 +185,9 @@ public class TransportEncryption implements AutoCloseable {
             if (yb == null) {
                 throw new IllegalStateException("Missing peer public key. Call Initialized.openSession() first.");
             }
+            byte[] rawSessionKey = null;
+            byte[] pseudoRandomKey = null;
+            byte[] keyingMaterial = null;
             try {
                 DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(fromBinary(yb), dhParameters.getP(), dhParameters.getG());
                 KeyFactory keyFactory = KeyFactory.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
@@ -146,23 +196,26 @@ public class TransportEncryption implements AutoCloseable {
                 KeyAgreement keyAgreement = KeyAgreement.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
                 keyAgreement.init(privateKey);
                 keyAgreement.doPhase(peerPublicKey, true);
-                byte[] rawSessionKey = keyAgreement.generateSecret();
+                rawSessionKey = keyAgreement.generateSecret();
 
                 // HKDF digest into a 128-bit key by extract and expand with "NULL salt and empty info"
                 // see: https://standards.freedesktop.org/secret-service/0.2/ch07s03.html
-                byte[] pseudoRandomKey = HKDF.fromHmacSha256().extract((byte[]) null, rawSessionKey);
-                byte[] keyingMaterial = HKDF.fromHmacSha256().expand(pseudoRandomKey, null, toBytes(AES_BITS));
+                pseudoRandomKey = HKDF.fromHmacSha256().extract((byte[]) null, rawSessionKey);
+                keyingMaterial = HKDF.fromHmacSha256().expand(pseudoRandomKey, null, toBytes(AES_BITS));
 
-                sessionKey = new SecretKeySpec(keyingMaterial, Static.Algorithm.AES);
-
-                if (sessionKey != null) {
-                    return Optional.of(new EncryptedSession());
-                } else {
-                    return Optional.empty();
-                }
+                // A second call would otherwise leave the previous key's bytes behind.
+                if (sessionKey != null) sessionKey.destroy();
+                sessionKey = new SessionKey(keyingMaterial);
+                return Optional.of(new EncryptedSession());
             } catch (NoSuchAlgorithmException | InvalidKeySpecException | InvalidKeyException e) {
                 log.error("Could not generate a new session key for the current session", e);
                 return Optional.empty();
+            } finally {
+                // The DH shared secret and both HKDF stages are key material. SessionKey holds its
+                // own copy, so all three can go as soon as it exists.
+                if (rawSessionKey != null) Secret.clear(rawSessionKey);
+                if (pseudoRandomKey != null) Secret.clear(pseudoRandomKey);
+                if (keyingMaterial != null) Secret.clear(keyingMaterial);
             }
         }
 
@@ -172,6 +225,11 @@ public class TransportEncryption implements AutoCloseable {
 
         public Session getSession() {
             return session;
+        }
+
+        /** Erases the session key and closes the D-Bus session; see {@link TransportEncryption#close()}. */
+        public void close() {
+            TransportEncryption.this.close();
         }
 
         /**
@@ -196,7 +254,9 @@ public class TransportEncryption implements AutoCloseable {
                     log.error("Missing session. Call Initialized.openSession() first.");
                     return Optional.empty();
                 }
-                if (sessionKey == null) {
+                // Read once: clear() can drop the key while this runs.
+                final SessionKey key = sessionKey;
+                if (key == null) {
                     log.error("Missing session key. Call Opened.generateSessionKey() first.");
                     return Optional.empty();
                 }
@@ -208,7 +268,7 @@ public class TransportEncryption implements AutoCloseable {
                 IvParameterSpec ivSpec = new IvParameterSpec(salt);
 
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
-                cipher.init(Cipher.ENCRYPT_MODE, sessionKey, ivSpec);
+                cipher.init(Cipher.ENCRYPT_MODE, key, ivSpec);
 
                 String contentType = Secret.createContentType(charset);
 
@@ -220,6 +280,9 @@ public class TransportEncryption implements AutoCloseable {
                      IllegalBlockSizeException |
                      NoSuchAlgorithmException e) {
                 log.error("Could not encrypt the secret", e);
+            } catch (IllegalStateException e) {
+                // The key was destroyed after it was read above: the session closed meanwhile.
+                log.error("The session was closed while a secret was being encrypted.");
             } finally {
                 Secret.clear(plain);
             }
@@ -230,14 +293,17 @@ public class TransportEncryption implements AutoCloseable {
 
             if (secret == null) return Optional.empty();
 
-            if (sessionKey == null) {
+            // Read once: clear() can drop the key while this runs.
+            final SessionKey key = sessionKey;
+            if (key == null) {
                 log.error("Missing session key. Call Opened.generateSessionKey() first.");
+                return Optional.empty();
             }
             byte[] decrypted = new byte[0];
             try {
                 IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
-                cipher.init(Cipher.DECRYPT_MODE, sessionKey, ivSpec);
+                cipher.init(Cipher.DECRYPT_MODE, key, ivSpec);
                 decrypted = cipher.doFinal(secret.getSecretValue());
                 return Optional.of(Secret.toChars(decrypted));
             } catch (InvalidAlgorithmParameterException |
@@ -247,6 +313,10 @@ public class TransportEncryption implements AutoCloseable {
                      IllegalBlockSizeException |
                      NoSuchAlgorithmException e) {
                 log.error("Could not decrypt the secret", e);
+                return Optional.empty();
+            } catch (IllegalStateException e) {
+                // The key was destroyed after it was read above: the session closed meanwhile.
+                log.error("The session was closed while a secret was being decrypted.");
                 return Optional.empty();
             } finally {
                 Secret.clear(decrypted);

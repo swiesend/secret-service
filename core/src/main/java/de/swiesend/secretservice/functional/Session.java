@@ -105,7 +105,8 @@ public class Session implements SessionInterface {
             for (CollectionInterface collection : this.collections) {
                 collection.close();
             }
-            encryptedSession.getSession().close();
+            // Erases the transport session key as well as closing the D-Bus session.
+            encryptedSession.close();
         }
         log.trace("closed session");
         isClosed = true;
