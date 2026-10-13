@@ -102,6 +102,13 @@ public class MessageHandler {
                         return Optional.empty();
                 }
             } else {
+                if (response == null) {
+                    // Logged because it is not a refusal: the provider can still carry the call out
+                    // after the wait ended, so a caller that retries may do the work twice.
+                    log.warn("No reply to {}/{} within {} ms; the provider may still carry the call out.",
+                            iface, method, MAX_DELAY_MILLIS);
+                    return Optional.empty();
+                }
                 if (parameters != null && parameters.length == 0)
                     return Optional.of(new Object[]{true}); // indicate with a boolean that there was no error
                 else {

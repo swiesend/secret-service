@@ -175,6 +175,10 @@ public final class FakeSecretService {
         return collectionLocked;
     }
 
+    /** Makes {@code Service.SearchItems} reply only after {@code delay}, as an overloaded provider does. */
+    public void setSearchReplyDelay(java.time.Duration delay) { this.searchReplyDelay = delay; }
+    private volatile java.time.Duration searchReplyDelay = java.time.Duration.ZERO;
+
     /** State change the outstanding Lock prompt would authorise; applied only on approval. */
     private volatile Runnable pendingApproval;
 
@@ -346,6 +350,13 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes) {
+            if (!searchReplyDelay.isZero()) {
+                try {
+                    Thread.sleep(searchReplyDelay.toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             // (unlocked, locked). Reporting the item in neither list when it is locked would be a
             // trap for the next test to use this: it would look like the item does not exist.
             List<DBusPath> item = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
