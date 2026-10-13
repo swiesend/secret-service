@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * What a collection asks before an operation that reveals or destroys many secrets.
+ * What a collection asks before an operation that reveals, changes or destroys secrets.
  *
  * <p>A policy gives each {@link Operation} a {@link Requirement}. The collection checks it after the
  * operation's own argument and scope checks, and before the first call that has an effect, so a
@@ -30,12 +30,21 @@ public final class ConsentPolicy {
 
     /** The operations that a policy can put behind a consent. */
     public enum Operation {
-        /** {@code getSecrets()} and {@code withSecrets()}: every secret of the collection. */
+        /** {@code getSecret(path)} and {@code withSecret(path, callback)}: one secret. */
+        READ_ONE,
+        /**
+         * {@code getSecrets()} and {@code withSecrets()}: every secret of the collection. One
+         * consent covers the whole read; it does not also ask {@link #READ_ONE} for each item.
+         */
         READ_ALL,
+        /** {@code updateItem(...)} and {@code setItemLabel(...)}: changes to an existing item. */
+        WRITE,
         /** {@code deleteItem(path)}. */
         DELETE_ONE,
         /** {@code deleteItems(paths)}. One consent covers the whole call. */
-        DELETE_MANY
+        DELETE_MANY,
+        /** {@code delete()}: the collection with all its items. */
+        DELETE_COLLECTION
     }
 
     /** What must happen before an operation runs. */

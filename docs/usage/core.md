@@ -115,9 +115,11 @@ collection.setConsentPolicy(ConsentPolicy.none()
         .handler(request -> askTheUser(request)));
 ```
 
-By default (`ConsentPolicy.none()`) the library asks nobody before `getSecrets()`, `withSecrets()`,
-`deleteItem()` or `deleteItems()`; the provider still prompts on its own terms, for example to unlock a
-locked keyring. `ConsentPolicy.none().require(Operation.DELETE_MANY, Requirement.PROVIDER_PROMPT)`
+A policy can ask before a single read (`READ_ONE`: `getSecret`, `withSecret`), a bulk read
+(`READ_ALL`: `getSecrets`, `withSecrets`), a change to an item (`WRITE`: `updateItem`,
+`setItemLabel`), or a delete (`DELETE_ONE`, `DELETE_MANY`, and `DELETE_COLLECTION` for `delete()`).
+By default (`ConsentPolicy.none()`) the library asks nobody; the provider still prompts on its own
+terms, for example to unlock a locked keyring. `ConsentPolicy.none().require(Operation.DELETE_MANY, Requirement.PROVIDER_PROMPT)`
 asks for one operation only. The provider's dialog names the keyring, not the operation, and while it
 is open the keyring is locked for every other application too. A `CALLBACK` handler locks nothing; if
 it throws, that counts as no, and without a handler the policy's `WhenUnavailable` decides.

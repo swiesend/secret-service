@@ -3,6 +3,7 @@ package de.swiesend.secretservice.integration;
 import de.swiesend.secretservice.FakeSecretService;
 import de.swiesend.secretservice.functional.ConsentPolicy;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import org.freedesktop.dbus.DBusPath;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,9 +15,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.DELETE_COLLECTION;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.DELETE_MANY;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.DELETE_ONE;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.READ_ALL;
+import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.READ_ONE;
+import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.WRITE;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Requirement.CALLBACK;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Requirement.PROVIDER_PROMPT;
 import static de.swiesend.secretservice.functional.ConsentPolicy.WhenUnavailable.PROCEED;
@@ -217,6 +221,65 @@ class ConsentGateTest {
 
         assertEquals(List.of(READ_ALL, DELETE_ONE), asked,
                 "the read is remembered, and the delete is asked about anew");
+    }
+
+    @Test
+    void singleReadsAndChangesAskOnlyWhenThePolicyNamesThem() {
+        List<ConsentPolicy.Request> asked = new ArrayList<>();
+        ConsentPolicy.Handler handler = asked::add;
+
+        collection.setConsentPolicy(ConsentPolicy.none().handler(handler));
+        collection.withSecret(FakeSecretService.ITEM_PATH, String::new);
+        collection.setItemLabel(FakeSecretService.ITEM_PATH, "relabelled");
+        collection.updateItem(FakeSecretService.ITEM_PATH, null, "changed", null);
+        assertTrue(asked.isEmpty(), "none() asks about none of them");
+
+        collection.setConsentPolicy(ConsentPolicy.none()
+                .require(READ_ONE, CALLBACK)
+                .require(WRITE, CALLBACK)
+                .handler(handler));
+        collection.withSecret(FakeSecretService.ITEM_PATH, String::new);
+        collection.setItemLabel(FakeSecretService.ITEM_PATH, "relabelled again");
+        collection.updateItem(FakeSecretService.ITEM_PATH, null, "changed again", null);
+
+        List<String> item = List.of(FakeSecretService.ITEM_PATH);
+        assertEquals(List.of(
+                new ConsentPolicy.Request(READ_ONE, FakeSecretService.COLLECTION_PATH, item),
+                new ConsentPolicy.Request(WRITE, FakeSecretService.COLLECTION_PATH, item),
+                new ConsentPolicy.Request(WRITE, FakeSecretService.COLLECTION_PATH, item)), asked);
+        assertEquals(Optional.of("changed again"), fake.secretOf(FakeSecretService.ITEM_PATH));
+    }
+
+    @Test
+    void aBulkReadAsksOnceAndNotForEachItem() {
+        fake.addItem(FakeSecretService.COLLECTION_PATH, "second", "second-secret", Map.of());
+        List<ConsentPolicy.Operation> asked = new ArrayList<>();
+        collection.setConsentPolicy(ConsentPolicy.none()
+                .require(READ_ALL, CALLBACK)
+                .require(READ_ONE, CALLBACK)
+                .handler(request -> asked.add(request.operation())));
+
+        assertEquals(Optional.of(2), collection.withSecrets(Map::size));
+
+        assertEquals(List.of(READ_ALL), asked);
+    }
+
+    @Test
+    void deletingTheWholeCollectionCanBeAskedAbout() {
+        String path = fake.addCollection("deletable");
+        CollectionInterface deletable = harness.session().collection("deletable", Optional.empty()).orElseThrow();
+
+        deletable.setConsentPolicy(ConsentPolicy.none().require(DELETE_COLLECTION, CALLBACK).handler(request -> false));
+        assertFalse(deletable.delete(), "refused");
+        assertTrue(collectionPaths().contains(path), "and the collection is still there");
+
+        deletable.setConsentPolicy(ConsentPolicy.none().require(DELETE_COLLECTION, CALLBACK).handler(request -> true));
+        assertTrue(deletable.delete());
+        assertFalse(collectionPaths().contains(path));
+    }
+
+    private List<String> collectionPaths() {
+        return harness.rawService().getCollections().orElseThrow().stream().map(DBusPath::getPath).toList();
     }
 
     private List<String> calls(String call) {
