@@ -112,8 +112,10 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         service.lock(lock);
         Thread.sleep(100L); // await signal: Service.CollectionChanged
 
-        assertDoesNotThrow(() -> iugri.unlockWithMasterPassword(collection.getPath(), original));
+        // The call reports failure by its result, never by throwing.
+        assertTrue(iugri.unlockWithMasterPassword(collection.getPath(), original));
         Thread.sleep(100L); // await signal: Service.CollectionChanged
+        assertFalse(collection.isLocked(), "the master password unlocked the collection");
     }
 
     @Test

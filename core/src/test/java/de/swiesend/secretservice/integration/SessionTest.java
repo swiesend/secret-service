@@ -31,7 +31,8 @@ public class SessionTest {
 
     @Test
     public void close() {
-        assertDoesNotThrow(() -> context.session.close());
+        // The call reports failure by its result, never by throwing.
+        assertTrue(context.session.close());
     }
 
     @Test

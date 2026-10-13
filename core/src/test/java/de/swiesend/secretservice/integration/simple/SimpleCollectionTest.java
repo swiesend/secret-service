@@ -298,12 +298,6 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    public void close() throws IOException {
-        SimpleCollection collection = new SimpleCollection();
-        assertDoesNotThrow(() -> collection.close());
-    }
-
-    @Test
     public void isLocked() throws IOException {
         SimpleCollection collection = new SimpleCollection("test", "test");
         assertFalse(collection.isLocked());

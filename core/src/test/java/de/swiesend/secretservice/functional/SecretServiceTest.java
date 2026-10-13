@@ -62,22 +62,31 @@ public class SecretServiceTest {
 
     @Test
     void getTimeout() {
+        assertEquals(de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT, secretService.getTimeout());
     }
 
     @Test
     void setTimeout() {
+        secretService.setTimeout(java.time.Duration.ofSeconds(7));
+        assertEquals(java.time.Duration.ofSeconds(7), secretService.getTimeout());
     }
 
     @Test
-    void close() {
+    void close() throws Exception {
+        secretService.openSession().orElseThrow();
+
+        secretService.close();
+
+        assertTrue(secretService.getSessions().isEmpty(), "close() closes and forgets every session");
     }
 
     @Test
     void getService() {
+        assertEquals(de.swiesend.secretservice.Static.ObjectPaths.SECRETS, secretService.getService().getObjectPath());
     }
 
     @Test
-    @DisplayName("Closing SecretService cascades to sessions and disconnects the owned D-Bus connection")
+    @DisplayName("Closing SecretService cascades to its sessions")
     void closeServiceCascadesToConnectionOwned() throws Exception {
         // Create a standalone service that owns its D-Bus connection
         SystemInterface system = System.connect().get();
@@ -90,11 +99,12 @@ public class SecretServiceTest {
         // Verify session is active
         assertNotNull(session.getEncryptedSession());
 
-        // Close the service — should cascade: sessions → system → D-Bus connection
-        // Note: dbus-java 4.x close() is fire-and-forget; isConnected() may not
-        // reflect the closed state reliably, so we verify close doesn't throw.
-        assertDoesNotThrow(() -> service.close(),
-                "Closing service with owned connection should not throw");
+        // Close the service — should cascade: sessions → system → D-Bus connection. Only the first
+        // step is observable here: System.connect() shares one connection with every other service
+        // in this JVM, so it stays open while another holder has it.
+        service.close();
+
+        assertTrue(service.getSessions().isEmpty(), "the service closed and forgot its session");
     }
 
     @Test
@@ -152,7 +162,10 @@ public class SecretServiceTest {
 
         // The collection internally created a service with an owned connection.
         // After close(), everything should be cleaned up.
+        ServiceInterface own = ((Collection) collection).service;
+        assertEquals(1, own.getSessions().size(), "the precondition: the collection opened a session of its own");
         collection.close();
+        assertTrue(own.getSessions().isEmpty(), "closing the collection closed the service it had created");
 
         // We can't directly access the internal connection to verify, but we can
         // verify a new connection can be established (no leaked file descriptors)

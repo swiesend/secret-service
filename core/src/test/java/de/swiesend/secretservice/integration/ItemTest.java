@@ -199,9 +199,10 @@ public class ItemTest {
     @Test
     @DisplayName("modified at unixtime")
     public void modified() {
-        UInt64 modified = context.item.created().get();
+        UInt64 modified = context.item.modified().get();
         log.info(String.valueOf(modified));
-        assertTrue(modified.longValue() >= 0L);
+        assertTrue(modified.longValue() >= context.item.created().get().longValue(),
+                "an item is not modified before it is created");
     }
 
     @Test
