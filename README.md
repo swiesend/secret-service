@@ -69,13 +69,13 @@ The library provides two API layers, both using transport-encrypted secrets over
 
 ### Dependency
 
-Add the `secret-service` as dependency to your project. The current version requires at least _JDK 17_.
+Add the `secret-service` as dependency to your project. The 3.x line requires at least _JDK 17_; 3.0.0 is its last release on JDK 17, as 4.0 requires JDK 25.
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>3.0.0-beta</version>
+    <version>3.0.0</version>
 </dependency>
 ```
 
