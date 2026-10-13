@@ -214,9 +214,8 @@ public class ProviderSystemTest {
             // NOTHING here locks anything. An earlier version called lockItem() to manufacture the
             // condition, which is not safe against a live provider: KeePassXC's Lock on an item
             // locks the whole database, that database is the user's own, and the only way back is
-            // unlockWithUserPermission() -- which locks and re-prompts, so in a headless run it
-            // blocks until the prompt times out and then leaves the database locked anyway. Worse
-            // than not trying.
+            // to unlock it again -- which prompts, so in a headless run it blocks until the prompt
+            // times out and then leaves the database locked anyway. Worse than not trying.
             //
             // So the test observes rather than arranges: with per-item confirmation enabled, the
             // provider reports a freshly written item as locked on its own. That is the real

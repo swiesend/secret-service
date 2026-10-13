@@ -11,7 +11,9 @@ import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.DateTimeException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -33,7 +35,9 @@ public class Collection implements CollectionInterface {
     SessionInterface session = null;
     ServiceInterface service = null;
     DBusConnection connection = null;
-    private Boolean isUnlockedOnceWithUserPermission = false;
+    private ConsentPolicy consentPolicy = ConsentPolicy.none();
+    /** Until when a granted consent covers an operation; see {@link ConsentPolicy#remember}. */
+    private final Map<ConsentPolicy.Operation, Instant> consentedUntil = new EnumMap<>(ConsentPolicy.Operation.class);
     private Optional<String> label = Optional.empty();
     private String id = null;
     private Optional<Secret> encryptedCollectionPassword = Optional.empty();
@@ -519,14 +523,24 @@ public class Collection implements CollectionInterface {
             log.error("Cannot delete an unspecified item.");
             return false;
         }
-        // Before unlockWithUserPermission: a refusal must not first raise an unlock prompt.
+        // Before the consent: a refusal must not first raise a prompt.
         if (!ownsPath(objectPath)) {
             log.warn("Refusing to delete: {} is not an item of this collection.", objectPath);
             return false;
         }
+        if (!consent(ConsentPolicy.Operation.DELETE_ONE)) {
+            return false;
+        }
+        unlock();
+        return deleteOwnItem(objectPath);
+    }
 
-        unlockWithUserPermission();
-
+    /** Deletes an item whose path the caller has checked against this collection. */
+    private boolean deleteOwnItem(String objectPath) {
+        if (Static.Utils.isNullOrEmpty(objectPath)) {
+            log.error("Cannot delete an unspecified item.");
+            return false;
+        }
         Optional<Item> maybeItem = getItem(objectPath);
         if (maybeItem.isEmpty()) {
             log.error("Item not found: {}", objectPath);
@@ -556,21 +570,25 @@ public class Collection implements CollectionInterface {
             log.error("Cannot delete unspecified items.");
             return false;
         }
-        // Every path before unlockWithUserPermission, as in deleteItem: a call that will be refused
-        // must not first raise an unlock prompt. All or nothing: one path under another collection
-        // refuses the whole call, so a refused call has deleted nothing.
+        // Every path before the consent, as in deleteItem: a call that will be refused must not
+        // first raise a prompt. All or nothing: one path under another collection refuses the
+        // whole call, so a refused call has deleted nothing.
         for (String path : objectPaths) {
             if (!Static.Utils.isNullOrEmpty(path) && !ownsPath(path)) {
                 log.warn("Refusing to delete: {} is not an item of this collection.", path);
                 return false;
             }
         }
-        unlockWithUserPermission();
+        // One consent for the whole call, not one for each item.
+        if (!consent(ConsentPolicy.Operation.DELETE_MANY)) {
+            return false;
+        }
+        unlock();
 
         boolean allDeleted = true;
 
         for (String item : objectPaths) {
-            boolean success = deleteItem(item);
+            boolean success = deleteOwnItem(item);
             if (!success) {
                 allDeleted = false;
             }
@@ -913,7 +931,13 @@ public class Collection implements CollectionInterface {
 
     @Override
     public Optional<Map<String, char[]>> getSecrets() {
-        if (!unlockWithUserPermission()) {
+        if (!consent(ConsentPolicy.Operation.READ_ALL)) {
+            return Optional.empty();
+        }
+        unlock();
+        if (collection.isLocked()) {
+            // Not an empty map: that would claim the collection holds no secrets.
+            log.info("Collection {} stayed locked, so its secrets cannot be read.", collection.getObjectPath());
             return Optional.empty();
         }
 
@@ -1010,7 +1034,6 @@ public class Collection implements CollectionInterface {
                     DBusPath promptPath = maybeResponse.get().b;
                     boolean unlockAccepted = promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent();
                     if (unlockAccepted && !collection.isLocked()) {
-                        isUnlockedOnceWithUserPermission = true;
                         log.debug("Unlocked collection {}",
                                 LogPolicy.label(collection.getLabel().orElse(null), collection.getObjectPath()));
                         return true;
@@ -1031,21 +1054,86 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public boolean unlockWithUserPermission() {
-        // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
-        // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
-        if (!isUnlockedOnceWithUserPermission) {
-            if (!lock()) {
-                log.error("Failed to lock collection before prompting for user permission.");
+    public void setConsentPolicy(ConsentPolicy policy) {
+        this.consentPolicy = Objects.requireNonNull(policy, "policy must not be null");
+        consentedUntil.clear();
+    }
+
+    @Override
+    public ConsentPolicy getConsentPolicy() {
+        return consentPolicy;
+    }
+
+    /**
+     * The consent gate. Each guarded operation calls it after its own argument and scope checks
+     * and before its first call that has an effect, so that a call refused anyway never asks.
+     *
+     * @return whether the operation may run
+     */
+    private boolean consent(ConsentPolicy.Operation operation) {
+        ConsentPolicy policy = consentPolicy;
+        if (policy.requirement(operation) == ConsentPolicy.Requirement.NONE || isConsented(operation)) {
+            return true;
+        }
+        switch (askProvider()) {
+            case GRANTED:
+                remember(policy);
+                return true;
+            case UNAVAILABLE:
+                if (policy.whenUnavailable(operation) == ConsentPolicy.WhenUnavailable.PROCEED) {
+                    log.debug("The provider cannot show the unlock dialog for collection {}; {} goes ahead, "
+                            + "as the consent policy allows.", collection.getObjectPath(), operation);
+                    return true;
+                }
+                log.info("Refusing {}: the provider cannot show the unlock dialog for collection {}, "
+                        + "and the consent policy requires it.", operation, collection.getObjectPath());
                 return false;
-            }
+            default:
+                log.info("Refusing {}: the unlock dialog for collection {} was not approved.",
+                        operation, collection.getObjectPath());
+                return false;
+        }
+    }
+
+    private enum ProviderAnswer { GRANTED, REFUSED, UNAVAILABLE }
+
+    /**
+     * Makes the provider ask for the keyring password: locks the collection, then unlocks it, the
+     * cycle that {@code unlockWithUserPermission()} ran before 4.0 against silent access
+     * (CVE-2018-19358). Unavailable when the collection cannot be locked without a prompt, as on
+     * KeePassXC, because then no unlock dialog can follow.
+     */
+    private ProviderAnswer askProvider() {
+        if (!lock()) {
+            return ProviderAnswer.UNAVAILABLE;
         }
         unlock();
-        if (collection.isLocked()) {
-            log.error("The collection was not unlocked with user permission.");
-            return false;
+        return collection.isLocked() ? ProviderAnswer.REFUSED : ProviderAnswer.GRANTED;
+    }
+
+    private boolean isConsented(ConsentPolicy.Operation operation) {
+        Instant until = consentedUntil.get(operation);
+        return until != null && Instant.now().isBefore(until);
+    }
+
+    /**
+     * Remembers a granted provider dialog for every operation that requires one: it proves the
+     * same thing, the user's presence, for all of them.
+     */
+    private void remember(ConsentPolicy policy) {
+        Duration duration = policy.remembered();
+        if (duration.isZero()) return;
+        Instant until;
+        try {
+            until = duration.equals(ConsentPolicy.UNTIL_CLOSED) ? Instant.MAX : Instant.now().plus(duration);
+        } catch (DateTimeException | ArithmeticException e) {
+            until = Instant.MAX;
         }
-        return true;
+        for (ConsentPolicy.Operation operation : ConsentPolicy.Operation.values()) {
+            if (policy.requirement(operation) == ConsentPolicy.Requirement.PROVIDER_PROMPT) {
+                consentedUntil.put(operation, until);
+            }
+        }
     }
 
     @Override
@@ -1094,6 +1182,7 @@ public class Collection implements CollectionInterface {
     @Override
     public void close() throws Exception {
         if (!isClosed) {
+            consentedUntil.clear();
             clear();
             if (clearSessionAtClose) {
                 // Close the service (which cascades to registered sessions and the

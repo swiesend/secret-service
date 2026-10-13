@@ -38,6 +38,7 @@ import de.swiesend.secretservice.LogPolicy;
 import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.Session;
 import de.swiesend.secretservice.functional.Collection;
+import de.swiesend.secretservice.functional.ConsentPolicy;
 import de.swiesend.secretservice.functional.SearchMode;
 import de.swiesend.secretservice.functional.interfaces.*;
 import de.swiesend.secretservice.hardened.*;
