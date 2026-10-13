@@ -27,10 +27,13 @@ public class Example {
         } // clears automatically all session secrets in memory, but does not close the D-Bus connection.
     }
 
+    // The throwaway collection "test", as the other tests use, and never "My Collection": that is the
+    // label of the README's example, so a reader who followed it may own one, and these tests delete
+    // the collection they open. Run from an IDE, which ignores surefire's name patterns, they do.
     @Test
     @DisplayName("Create a password in a non-default collection (/org/freedesktop/secrets/collection/xxx).")
     public void createPasswordInNonDefaultCollection() throws IOException, SecurityException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
+        try (SimpleCollection collection = new SimpleCollection("test", "test")) {
             String item = collection.createItem("My Item", "secret");
 
             char[] actual = collection.getSecret(item);
@@ -45,7 +48,7 @@ public class Example {
     @Test
     @DisplayName("Create a password with additional attributes.")
     public void createPasswordWithAttributes() throws IOException, SecurityException, IllegalArgumentException {
-        try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
+        try (SimpleCollection collection = new SimpleCollection("test", "test")) {
             // define unique attributes
             Map<String, String> attributes = new HashMap<>();
             attributes.put("uuid", "42");

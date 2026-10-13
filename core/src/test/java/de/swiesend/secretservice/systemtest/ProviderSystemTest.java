@@ -41,8 +41,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * </ul>
  *
  * <p>The suite uses {@link Assumptions} to skip cleanly when no provider/collection is
- * present, so it is safe to run anywhere. It is excluded from the default build; run with:
+ * present, and it never falls back to another collection: on KeePassXC and KWallet those are the
+ * user's own databases and wallets, and the tests write and delete items in the collection they
+ * use. So it is safe to run anywhere. It is excluded from the default build; run with:
  * <pre>{@code mvn test -Psystem-test}</pre>
+ *
+ * <p>A CI container whose throwaway collection has another id names it with
+ * {@code -Dsecret-service.system-test.collection=<id>}.</p>
  */
 @Tag("system-test")
 public class ProviderSystemTest {
@@ -50,7 +55,7 @@ public class ProviderSystemTest {
     private static final Logger log = LoggerFactory.getLogger(ProviderSystemTest.class);
 
     /** Collection id/label used across all providers. */
-    static final String COLLECTION = "test";
+    static final String COLLECTION = java.lang.System.getProperty("secret-service.system-test.collection", "test");
     /** Password used when a provider lets us create/unlock the collection (gnome-keyring). */
     static final String COLLECTION_PASSWORD = "test";
 
@@ -99,9 +104,9 @@ public class ProviderSystemTest {
     /**
      * Resolves a usable collection for the detected provider. gnome-keyring collections are
      * created/opened by label+password. KeePassXC and KWallet expose pre-existing
-     * databases/wallets: we use the {@code test} collection when present, otherwise the first
-     * exposed collection (e.g. KWallet's {@code kdewallet}), and return {@code null} when none
-     * exists so the suite skips rather than failing on a non-existent object path.
+     * databases/wallets: we use the {@link #COLLECTION} collection when present, and return
+     * {@code null} when it does not exist so the suite skips rather than failing on a
+     * non-existent object path. Never another one: that is a user's own database or wallet.
      *
      * <p>{@code collectionById()} returns a wrapper even for a non-existent path, so existence
      * must be checked against the provider's real collection list.</p>
@@ -115,16 +120,13 @@ public class ProviderSystemTest {
         }
 
         List<String> existing = existingCollectionIds(session);
-        String target = existing.contains(COLLECTION)
-                ? COLLECTION
-                : (existing.isEmpty() ? null : existing.get(0));
-        if (target == null) {
-            log.info("Provider {} exposes no collection - skipping", provider);
+        if (!existing.contains(COLLECTION)) {
+            log.info("Provider {} exposes no collection '{}' - skipping", provider, COLLECTION);
             return null;
         }
-        log.info("Provider {} - using existing collection id '{}'", provider, target);
+        log.info("Provider {} - using existing collection id '{}'", provider, COLLECTION);
         ownsCollection = false; // pre-existing user database/wallet: never delete it
-        return session.collectionById(target).orElse(null);
+        return session.collectionById(COLLECTION).orElse(null);
     }
 
     /** Last path segments of the collections actually exposed by the provider. */
