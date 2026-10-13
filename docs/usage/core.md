@@ -148,24 +148,22 @@ not equality.
 
 ---
 
-## Legacy `SimpleCollection`
+## Migrating from `SimpleCollection`
 
-Backward-compatible adapter for projects that have not migrated to the functional API. Throws checked `IOException` / `IllegalArgumentException` instead of returning `Optional`.
+`SimpleCollection` was removed in 4.0. It threw checked exceptions; the functional API answers `Optional.empty()` or `false` instead and logs the reason. Its static connection, closed by a JVM shutdown hook, becomes an ordinary `try`-with-resources scope.
 
-```java
-import de.swiesend.secretservice.simple.SimpleCollection;
-import java.util.Map;
-
-try (SimpleCollection coll = new SimpleCollection()) {
-    String path = coll.createItem("github-token", "ghp_xxxxxxxxxxxxxxxx",
-                                  Map.of("application", "myapp"));
-    char[] secret = coll.getSecret(path);
-    try {
-        // use the secret
-    } finally {
-        java.util.Arrays.fill(secret, '\0');
-    }
-}
-```
-
-Internally `SimpleCollection` shares a static D-Bus connection (cleaned up by a JVM shutdown hook). Use the [functional API](#read-write-a-secret) for new code.
+| `SimpleCollection` (3.x) | Functional API (4.0) |
+|---|---|
+| `new SimpleCollection()` | `SecretService.create()`, then `service.openSession()` and `session.defaultCollection()` |
+| `new SimpleCollection(label, password)` | `session.collection(label, Optional.of(password))` |
+| `SimpleCollection.isAvailable()` | `SecretService.create().isPresent()` |
+| `SimpleCollection.isGnomeKeyringAvailable()` | `service.isGnomeKeyringAvailable()` |
+| `createItem(label, secret, attributes)` returning the path | `createItem(label, secret, attributes)` returning `Optional<String>` |
+| `getSecret(path)` returning `char[]` | `withSecret(path, callback)`, which zeroes the secret afterwards; or `getSecret(path)` returning `Optional<char[]>` |
+| `getSecrets()` | `withSecrets(callback)` |
+| `getItems(attributes)`, `null` for a collection without items | `getItems(attributes)` returning `Optional<List<String>>`: an empty list means no items, `Optional.empty()` a failed search |
+| `getLabel(path)`, `getAttributes(path)` | `getItemLabel(path)`, `getAttributes(path)`, both `Optional` |
+| `updateItem(...)`, `deleteItem(path)`, `deleteItems(paths)`, `delete()`, `lock()`, `isLocked()`, `clear()` | the same names, returning `boolean` where `SimpleCollection` threw |
+| `unlockWithUserPermission()` | `collection.unlockWithUserPermission()` |
+| `getTimeout()`, `setTimeout(timeout)` | `service.getTimeout()`, `service.setTimeout(timeout)` |
+| the static connection and its shutdown hook | `close()` the service; to share a connection that you manage, pass `System.wrap(connection)` to `SecretService.create` |

@@ -113,9 +113,7 @@ public interface CollectionInterface extends AutoCloseable {
      *
      * <p>A search <em>with</em> attributes is unchanged: it already returned
      * {@code Optional.of(List.of())} when nothing matched, because the filter it passed through
-     * tested the outer {@code Optional} rather than the list. The legacy
-     * {@code SimpleCollection.getItems} adapter therefore already returned an <em>empty list</em>
-     * for a no-match search and {@code null} only for the no-attributes case, and it still does.</p>
+     * tested the outer {@code Optional} rather than the list.</p>
      */
     Optional<List<String>> getItems(Map<String, String> attributes);
 

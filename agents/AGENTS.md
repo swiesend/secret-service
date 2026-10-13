@@ -29,13 +29,10 @@ core/pom.xml                                    # the library: de.swiesend:secre
 core/src/main/java/
   module-info.java                              # JPMS module: de.swiesend.secretservice
   de/swiesend/secretservice/
-    functional/                                 # NEW FUNCTIONAL API (recommended)
+    functional/                                 # THE FUNCTIONAL API
       SecretService.java, Session.java, Collection.java, System.java
       interfaces/
         ServiceInterface.java, SessionInterface.java, CollectionInterface.java, SystemInterface.java
-    simple/
-      SimpleCollection.java                     # LEGACY API (backward-compatible adapter)
-      interfaces/SimpleCollection.java
     interfaces/                                 # D-Bus interface definitions
       Service.java, Collection.java, Item.java, Session.java, Prompt.java
     handlers/
@@ -55,23 +52,21 @@ core/src/test/java/
       SecretServiceTest.java, CollectionTest.java, SystemTest.java
       integration/Example.java
     integration/                                # Low-level API integration tests
-      simple/SimpleCollectionTest.java
       ServiceTest.java, CollectionTest.java, ...
       test/Context.java                         # Shared test fixture helper
 ```
 
 ## Key Architecture Decisions
 
-### Two API Layers
+### The Functional API
 
-- **Functional API** (`de.swiesend.secretservice.functional`) — Recommended. Instance-scoped connections, `Optional` returns, `AutoCloseable` lifecycle. Entry point: `SecretService.create()`.
-- **SimpleCollection** (`de.swiesend.secretservice.simple`) — Legacy backward-compatible adapter. Static shared D-Bus connection with JVM shutdown hook. Delegates internally to the functional API.
+- **Functional API** (`de.swiesend.secretservice.functional`) — Instance-scoped connections, `Optional` returns, `AutoCloseable` lifecycle. Entry point: `SecretService.create()`.
+- The legacy `SimpleCollection` adapter (static shared connection, checked exceptions) was removed in 4.0; `docs/usage/core.md` maps its methods onto the functional API.
 
 ### Connection Ownership Model
 
 - `System.connect()` creates an **owned** connection — `close()` disconnects it.
-- `System.wrap(DBusConnection)` wraps an **existing** connection without ownership — `close()` is a no-op. Used by `SimpleCollection` to share its static connection with the functional layer.
-- `SimpleCollection` wraps its static connection via `System.wrap()` so both layers share one D-Bus connection. The static `disconnect()` / shutdown hook owns the lifecycle.
+- `System.wrap(DBusConnection)` wraps an **existing** connection without ownership — `close()` is a no-op. For an application that manages one connection itself and shares it.
 
 ### Secure Secret Cleanup
 
@@ -95,7 +90,6 @@ module de.swiesend.secretservice {
     requires org.slf4j;
     opens de.swiesend.secretservice to org.freedesktop.dbus;
     exports de.swiesend.secretservice;
-    exports de.swiesend.secretservice.simple;
     exports de.swiesend.secretservice.interfaces;
     exports de.swiesend.secretservice.functional;
     exports de.swiesend.secretservice.functional.interfaces;
@@ -123,7 +117,6 @@ All public API boundary methods validate parameters:
 ### Exception Strategy
 
 - **Functional API**: Returns `Optional.empty()` on failure, logs errors via SLF4J. No checked exceptions.
-- **SimpleCollection** (legacy): Throws `IOException`, `SecurityException`, `IllegalArgumentException` to match the 1.x contract.
 - `InterruptedException`: Always restore interrupt flag via `Thread.currentThread().interrupt()` before logging/returning.
 
 ## Code Conventions

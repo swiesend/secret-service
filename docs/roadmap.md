@@ -6,7 +6,7 @@ Design goals, current state, and direction of `secret-service`. The current line
 
 Everything the 2.x plan set out to do has shipped:
 
-- **Functional API** (`de.swiesend.secretservice.functional`) — instance-scoped connections, `Optional` returns, `AutoCloseable` lifecycle, and the callback-based `withSecret`/`withSecrets` access that guarantees plaintext zeroing (resolving the `Optional`-vs-`AutoCloseable` cleanup tension the 2.x design identified). `SimpleCollection` remains as a backward-compatible adapter delegating to the functional layer.
+- **Functional API** (`de.swiesend.secretservice.functional`) — instance-scoped connections, `Optional` returns, `AutoCloseable` lifecycle, and the callback-based `withSecret`/`withSecrets` access that guarantees plaintext zeroing (resolving the `Optional`-vs-`AutoCloseable` cleanup tension the 2.x design identified). The 1.x-style `SimpleCollection` adapter was removed in 4.0.
 - **dbus-java 5.2.0** — resolves classpath collisions with consumers that ship their own dbus-java ([#51](https://github.com/swiesend/secret-service/issues/51)); messages built via the public `MessageFactory` (no reflection, no `--add-opens`).
 - **JDK 25 baseline** — all modules target `--release 25`; post-quantum ML-KEM-768 comes natively from SunJCE (JEP 496), so no third-party crypto provider is needed for the KEM.
 - **Provider breadth** — gnome-keyring, KeePassXC, and KWallet (ksecretd) are exercised by a provider-agnostic system-test suite in CI; gnome-specific interfaces are deferred-loaded ([#34](https://github.com/swiesend/secret-service/issues/34)).

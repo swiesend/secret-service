@@ -84,7 +84,7 @@ Authorization:
 
 ## Usage
 
-The library provides two API layers, both using transport-encrypted secrets over the D-Bus.
+The library's API is the functional API below; secrets cross the D-Bus transport-encrypted.
 
 ### Coordinates (three independently published artifacts, same version)
 
@@ -169,7 +169,7 @@ The 2.x line continues to ship as a single artifact for consumers who don't want
 </dependency>
 ```
 
-### Functional API (Recommended)
+### Functional API
 
 The functional API uses instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle management.
 
@@ -259,39 +259,13 @@ try (CollectionInterface collection = Collection.open("My Collection")
 }
 ```
 
-### SimpleCollection API (Legacy)
+### Migrating from `SimpleCollection`
 
-The `SimpleCollection` API preserves the original 1.x interface for backward compatibility. It uses a static shared D-Bus connection with a JVM shutdown hook.
-
-New code should prefer the functional API above.
-
-```java
-try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-    // define unique attributes
-    Map<String, String> attributes = new HashMap<>();
-    attributes.put("uuid", "42");
-
-    // create and forget
-    collection.createItem("My Item", "secret", attributes);
-
-    // find by attributes
-    List<String> items = collection.getItems(attributes);
-    String item = items.get(0);
-
-    char[] actual = collection.getSecret(item);
-    assertEquals("secret", new String(actual));
-    Arrays.fill(actual, '\0'); // caller must clear manually
-
-    collection.deleteItem(item);
-    collection.delete();
-}
-// The D-Bus connection is closed at JVM shutdown, not by close().
-// Call SimpleCollection.disconnect() to close it manually.
-```
+The legacy `SimpleCollection` API was removed in 4.0. Its operations map onto the functional API above, as the [migration table](docs/usage/core.md#migrating-from-simplecollection) shows.
 
 __Transport Encryption:__
 
-Both APIs use transport encryption (DH key exchange + AES-128-CBC) automatically.
+The API uses transport encryption (DH key exchange + AES-128-CBC) automatically.
 For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
 [Transport Encryption Example](core/src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
 
