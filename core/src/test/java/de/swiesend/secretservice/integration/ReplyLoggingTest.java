@@ -27,7 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>A reply carries item labels, attributes and secret values, and setting an item's label sends
  * the new one. At DEBUG and TRACE the library logs the shape of the exchange -- method, parameter
  * count, signature -- and never the values: a label often describes the secret it guards, and a
- * log travels further than a keyring does.</p>
+ * log travels further than a keyring does. Its own messages name a collection by its object path,
+ * not by its label.</p>
  *
  * <p>Runs only in the {@code payload-logging} surefire execution, a JVM of its own in which the
  * library's loggers are at TRACE. The default run logs at INFO, where these statements are not
@@ -76,6 +77,8 @@ class ReplyLoggingTest {
 
         assertFalse(log.contains("fake-item"), "a label in a reply must not reach a log message");
         assertFalse(log.contains(NEW_LABEL), "a label being set must not reach a log message");
+        assertFalse(log.contains(FakeSecretService.COLLECTION_LABEL),
+                "nor a collection's label, which the library reads to open it");
         // The secret crosses the bus encrypted, so its plaintext could not appear here even when
         // replies were dumped; its ciphertext did, as the list of its bytes.
         byte[] ciphertext = harness.fake().lastCiphertext();
