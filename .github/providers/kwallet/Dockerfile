@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         dbus-x11 \
         xvfb \
         libkf5wallet-bin \
+        libqca-qt5-2-plugins \
         libsecret-tools \
         openjdk-17-jdk-headless \
         maven \
