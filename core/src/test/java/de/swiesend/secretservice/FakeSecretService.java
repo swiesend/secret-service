@@ -155,6 +155,17 @@ public final class FakeSecretService {
     public void setRequirePromptForItemOps(boolean require) { this.requirePromptForItemOps = require; }
     private volatile boolean requirePromptForItemOps;
 
+    /**
+     * Makes locking the collection require a prompt, as KeePassXC does: Lock answers with a prompt
+     * path and locks only when {@link #approvePendingPrompt()} answers it.
+     */
+    public void setRequirePromptForCollectionLock(boolean require) { this.requirePromptForCollectionLock = require; }
+    private volatile boolean requirePromptForCollectionLock;
+
+    public boolean isCollectionLocked() {
+        return collectionLocked;
+    }
+
     /** State change the outstanding Lock prompt would authorise; applied only on approval. */
     private volatile Runnable pendingApproval;
 
@@ -289,6 +300,12 @@ public final class FakeSecretService {
                 // to prompt leaves it unlocked, as a real provider does when Prompt() is never
                 // called.
                 pendingApproval = () -> itemLocked = true;
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+            }
+            boolean collectionRequested = objects.stream().anyMatch(p -> COLLECTION_PATH.equals(p.getPath()));
+            if (collectionRequested && requirePromptForCollectionLock && !collectionLocked) {
+                // As for the item above: locked only when a test answers the prompt.
+                pendingApproval = () -> collectionLocked = true;
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
             for (DBusPath p : objects) {

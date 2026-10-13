@@ -880,14 +880,24 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean lock() {
-        if (collection == null || collection.isLocked()) {
-            // Nothing to do: no collection, or it is already locked.
-            return collection != null && collection.isLocked();
-        }
+        return lock(true) == Locking.LOCKED;
+    }
+
+    private enum Locking { LOCKED, NEEDS_A_PROMPT, FAILED }
+
+    /**
+     * @param withPrompt whether to carry out a lock that the provider puts behind a prompt. When
+     *                   false, or when prompting is disabled, the prompt is dismissed instead and the
+     *                   collection stays unlocked.
+     */
+    private Locking lock(boolean withPrompt) {
+        if (collection == null) return Locking.FAILED;
+        // Nothing to do: it is already locked.
+        if (collection.isLocked()) return Locking.LOCKED;
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
             log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
-            return false;
+            return Locking.FAILED;
         }
         Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
 
@@ -902,19 +912,26 @@ public class Collection implements CollectionInterface {
             log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
             // Daemon acknowledged the lock; poll only so the "Locked" property has time to
             // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
-            return awaitUntil(collection::isLocked);
+            return awaitUntil(collection::isLocked) ? Locking.LOCKED : Locking.FAILED;
         }
         if (promptRequired) {
-            // Locking needs a prompt, which the functional layer does not drive here. Don't wait
-            // out the timeout for a state that won't change -- report the failure immediately.
-            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
-                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
-                    + "leaving it unlocked.");
-            return false;
+            // KeePassXC answers Lock with a prompt and locks only once the prompt is called. It
+            // shows no dialog for that.
+            if (!withPrompt || !isPrompting) {
+                dismissPrompt(result.b);
+                return Locking.NEEDS_A_PROMPT;
+            }
+            de.swiesend.secretservice.interfaces.Prompt.Completed completed =
+                    prompt.await(result.b, service.getTimeout());
+            if (completed != null && !completed.dismissed) {
+                awaitUntil(collection::isLocked);
+            }
+            // The provider's state, not the prompt result, is the authority.
+            return collection.isLocked() ? Locking.LOCKED : Locking.FAILED;
         }
         // Neither locked immediately nor prompted (e.g. a provider that does not support locking
         // this collection): reflect the daemon's current view without a long wait.
-        return collection.isLocked();
+        return collection.isLocked() ? Locking.LOCKED : Locking.FAILED;
     }
 
     private boolean unlock() {
@@ -949,9 +966,22 @@ public class Collection implements CollectionInterface {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
         if (!isUnlockedOnceWithUserPermission) {
-            if (!lock()) {
-                log.error("Failed to lock collection before prompting for user permission.");
-                return false;
+            switch (lock(false)) {
+                case LOCKED -> {
+                    // unlock() below brings up the provider's dialog.
+                }
+                case NEEDS_A_PROMPT -> {
+                    // The provider locks only through a prompt: KeePassXC. Carrying it out would lock
+                    // the user's database in KeePassXC's own window, only to bring up its unlock
+                    // dialog, and KeePassXC confirms access to its secrets itself. So the collection
+                    // is used as it is, as in 1.x.
+                    log.debug("The provider locks only through a prompt; using the collection as it is.");
+                    return !collection.isLocked();
+                }
+                case FAILED -> {
+                    log.error("Failed to lock collection before prompting for user permission.");
+                    return false;
+                }
             }
         }
         unlock();

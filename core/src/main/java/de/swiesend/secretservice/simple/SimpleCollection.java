@@ -319,12 +319,16 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Locks and unlocks the default collection explicitly.
+     * Locks and unlocks the collection explicitly, so the user confirms access through the
+     * provider's dialog. Since 3.0 this applies to every collection, not just the default one.
      * <p>
-     * The default collection gets only locked on the first call of a session.
+     * The collection gets only locked on the first call for this instance.
      * <p>
-     * Once the default collection is unlocked the user will not be prompted again
-     * as long as the default collection stays unlocked.
+     * Once the collection is unlocked the user will not be prompted again
+     * as long as the collection stays unlocked.
+     * <p>
+     * A provider that locks only through a prompt, as KeePassXC does, confirms access to its
+     * secrets itself: there the collection is used as it is.
      * <p>
      * This method is used to enforce user interaction for:
      * <p>
