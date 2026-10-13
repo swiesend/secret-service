@@ -519,7 +519,11 @@ public class Collection implements CollectionInterface {
         }
 
         unlockWithUserPermission();
+        return deleteItemAsked(objectPath);
+    }
 
+    /** Deletes the item after {@link #unlockWithUserPermission()} has been asked. */
+    private boolean deleteItemAsked(String objectPath) {
         // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
         // prompting is disabled. KWallet answers Delete on a closed wallet with "/" and deletes
         // nothing, which the check below would report as done.
@@ -557,12 +561,17 @@ public class Collection implements CollectionInterface {
             log.error("Cannot delete unspecified items.");
             return false;
         }
+        // Asked once for all of them: deleteItem() would ask again for every item.
         unlockWithUserPermission();
+        if (collection.isLocked()) {
+            log.info("The collection stayed locked, so no item is deleted.");
+            return false;
+        }
 
         boolean allDeleted = true;
 
         for (String item : objectPaths) {
-            boolean success = deleteItem(item);
+            boolean success = !Static.Utils.isNullOrEmpty(item) && deleteItemAsked(item);
             if (!success) {
                 allDeleted = false;
             }
@@ -632,12 +641,22 @@ public class Collection implements CollectionInterface {
 
     // ── Search helpers ─────────────────────────────────────────────
 
+    // Without unlock(): search() has asked once, through getItems(). The public getItemLabel() and
+    // getAttributes() unlock first, and after a refused unlock that is one more dialog per item.
+    private Optional<String> itemLabel(String path) {
+        return getItem(path).flatMap(item -> item.getLabel());
+    }
+
+    private Optional<Map<String, String>> itemAttributes(String path) {
+        return getItem(path).flatMap(item -> item.getAttributes());
+    }
+
     private boolean matchesSubstring(String path, String lq, SearchMode mode) {
         return switch (mode) {
-            case BY_NAME -> getItemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT).contains(lq);
-            case BY_ATTRIBUTE_KEY -> getAttributes(path).orElse(Map.of()).keySet()
+            case BY_NAME -> itemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT).contains(lq);
+            case BY_ATTRIBUTE_KEY -> itemAttributes(path).orElse(Map.of()).keySet()
                     .stream().anyMatch(k -> k.toLowerCase(java.util.Locale.ROOT).contains(lq));
-            case BY_ATTRIBUTE_VALUE -> getAttributes(path).orElse(Map.of()).values()
+            case BY_ATTRIBUTE_VALUE -> itemAttributes(path).orElse(Map.of()).values()
                     .stream().anyMatch(v -> v.toLowerCase(java.util.Locale.ROOT).contains(lq));
             case BY_OBJECT_ID -> {
                 String id = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
@@ -650,12 +669,12 @@ public class Collection implements CollectionInterface {
     private boolean matchesFuzzy(String path, String lq, SearchMode mode, int maxDistance) {
         return switch (mode) {
             case BY_NAME -> {
-                String candidate = getItemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT);
+                String candidate = itemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT);
                 yield Static.Utils.minSubstringDistance(candidate, lq) <= maxDistance;
             }
-            case BY_ATTRIBUTE_KEY -> getAttributes(path).orElse(Map.of()).keySet().stream()
+            case BY_ATTRIBUTE_KEY -> itemAttributes(path).orElse(Map.of()).keySet().stream()
                     .anyMatch(k -> Static.Utils.minSubstringDistance(k.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance);
-            case BY_ATTRIBUTE_VALUE -> getAttributes(path).orElse(Map.of()).values().stream()
+            case BY_ATTRIBUTE_VALUE -> itemAttributes(path).orElse(Map.of()).values().stream()
                     .anyMatch(v -> Static.Utils.minSubstringDistance(v.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance);
             case BY_OBJECT_ID -> {
                 String id = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
