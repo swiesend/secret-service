@@ -48,7 +48,8 @@ public class System implements SystemInterface {
      * the connection — the caller retains responsibility for the connection lifecycle.
      *
      * <p>This is intended for cases where a shared or static connection is managed
-     * externally (e.g., {@code SimpleCollection}'s static connection).</p>
+     * externally, for example by an application that uses one connection for several
+     * services.</p>
      *
      * @param connection an existing, connected DBusConnection
      * @return a SystemInterface backed by the given connection
