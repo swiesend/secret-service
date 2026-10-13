@@ -19,8 +19,8 @@ try (ServiceInterface service = SecretService.create().orElseThrow();
      CollectionInterface collection = session.collection("default", Optional.empty()).orElseThrow()) {
 
     // No explicit unlock: createItem, withSecret, getItems, search and friends unlock the
-    // collection themselves. Use unlockWithUserPermission() only when you deliberately want
-    // to force a prompt -- it locks first, so the user must re-authorise (CVE-2018-19358).
+    // collection themselves. To make the user re-authorise before a bulk read or a delete,
+    // set a consent policy -- see "Locking and prompts" below.
 
     // Write
     String path = collection
@@ -104,18 +104,24 @@ Most calls unlock implicitly, so you rarely need this. When you do:
 boolean locked = collection.isLocked();
 collection.lock();
 
-// Force the user to re-authorise: this locks first, so the daemon must prompt (CVE-2018-19358).
-boolean ok = collection.unlockWithUserPermission();
+// Make bulk reads and deletes wait for the provider's unlock dialog, as 3.x always did: the
+// collection is locked first, so the daemon must prompt (CVE-2018-19358).
+collection.setConsentPolicy(ConsentPolicy.legacy());
 ```
+
+By default (`ConsentPolicy.none()`) the library asks nobody before `getSecrets()`, `withSecrets()`,
+`deleteItem()` or `deleteItems()`; the provider still prompts on its own terms, for example to unlock a
+locked keyring. `ConsentPolicy.none().require(Operation.DELETE_MANY, Requirement.PROVIDER_PROMPT)`
+asks for one operation only. The provider's dialog names the keyring, not the operation, and while it
+is open the keyring is locked for every other application too.
 
 Two behaviours worth knowing before you rely on them:
 
 - **`isLocked()` returns `true` when there is no connection** — "locked" and "cannot tell" are the
   same value.
-- **`getSecrets()` / `withSecrets()` call `unlockWithUserPermission()` internally**, so they prompt
-  even on an already-unlocked collection, and they **silently skip items they cannot read** — a short
-  map is indistinguishable from a small collection. Prefer per-item `withSecret` when you need to know
-  what failed.
+- **`getSecrets()` / `withSecrets()` silently skip items they cannot read** — a short map is
+  indistinguishable from a small collection. Prefer per-item `withSecret` when you need to know what
+  failed.
 
 Prompts default to a 120-second timeout. `disablePrompt()` suppresses the *generic* prompt path, but
 not the per-item prompts raised by `createItem`, `lockItem` or `unlockItem`.
@@ -164,6 +170,6 @@ not equality.
 | `getItems(attributes)`, `null` for a collection without items | `getItems(attributes)` returning `Optional<List<String>>`: an empty list means no items, `Optional.empty()` a failed search |
 | `getLabel(path)`, `getAttributes(path)` | `getItemLabel(path)`, `getAttributes(path)`, both `Optional` |
 | `updateItem(...)`, `deleteItem(path)`, `deleteItems(paths)`, `delete()`, `lock()`, `isLocked()`, `clear()` | the same names, returning `boolean` where `SimpleCollection` threw |
-| `unlockWithUserPermission()` | `collection.unlockWithUserPermission()` |
+| `unlockWithUserPermission()`, which `getSecrets()` and the deletes also ran | `collection.setConsentPolicy(ConsentPolicy.legacy())`, which puts bulk reads and deletes behind the provider's dialog as 3.x did |
 | `getTimeout()`, `setTimeout(timeout)` | `service.getTimeout()`, `service.setTimeout(timeout)` |
 | the static connection and its shutdown hook | `close()` the service; to share a connection that you manage, pass `System.wrap(connection)` to `SecretService.create` |

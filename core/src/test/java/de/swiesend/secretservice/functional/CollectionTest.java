@@ -412,9 +412,13 @@ class CollectionTest {
     }
 
     @Test
-    void unlockWithUserPermission() {
+    void aConsentThroughTheProviderUnlocksTheCollection() {
+        // legacy() puts the bulk read behind the provider's dialog: the lock-then-unlock cycle that
+        // unlockWithUserPermission() ran before 4.0. This test collection has a master password,
+        // so gnome-keyring unlocks with it and shows no dialog.
         collection.lock();
-        assertTrue(collection.unlockWithUserPermission());
+        collection.setConsentPolicy(ConsentPolicy.legacy());
+        assertTrue(collection.getSecrets().isPresent());
         assertTrue(!collection.isLocked());
     }
 
@@ -442,8 +446,11 @@ class CollectionTest {
     void close() throws Exception {
         collection.close();
         assertTrue(collection.lock());
+        // close() cleared the master password, so only the dialog could unlock the collection, and
+        // with prompts disabled the consent that legacy() requires cannot be had.
+        collection.setConsentPolicy(ConsentPolicy.legacy());
         collection.disablePrompt();
-        assertTrue(!collection.unlockWithUserPermission());
+        assertTrue(collection.getSecrets().isEmpty());
         collection.enablePrompt();
     }
 

@@ -229,6 +229,7 @@ public final class FakeSecretService implements AutoCloseable {
     private volatile boolean dismissPrompts;
     private volatile boolean refuseCollectionUnlock;
     private volatile boolean requirePromptForCollectionUnlock;
+    private volatile boolean requirePromptForCollectionLock;
     private volatile boolean requirePromptForItemLock;
     private volatile boolean requirePromptForDelete;
     private volatile boolean stallItemProperties;
@@ -376,6 +377,11 @@ public final class FakeSecretService implements AutoCloseable {
     /** Makes a collection unlock ask the user first, as gnome-keyring does. Off: it unlocks at once. */
     public void setRequirePromptForCollectionUnlock(boolean require) {
         this.requirePromptForCollectionUnlock = require;
+    }
+
+    /** Makes a collection lock ask the user first, as KeePassXC does. Off: it locks at once. */
+    public void setRequirePromptForCollectionLock(boolean require) {
+        this.requirePromptForCollectionLock = require;
     }
 
     /**
@@ -548,8 +554,13 @@ public final class FakeSecretService implements AutoCloseable {
                     CollectionState c = collectionAt(p);
                     ItemState i = c == null ? itemAt(p) : null;
                     if (c != null) {
-                        c.locked = true;
-                        locked.add(object);
+                        if (requirePromptForCollectionLock && !c.locked) {
+                            afterPrompt.add(object);
+                            onApprove.add(() -> c.locked = true);
+                        } else {
+                            c.locked = true;
+                            locked.add(object);
+                        }
                     } else if (i != null) {
                         if (requirePromptForItemLock && !i.locked) {
                             afterPrompt.add(object);

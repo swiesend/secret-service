@@ -1,5 +1,6 @@
 package de.swiesend.secretservice.functional.interfaces;
 
+import de.swiesend.secretservice.functional.ConsentPolicy;
 import de.swiesend.secretservice.functional.SearchMode;
 import java.util.List;
 import java.util.Map;
@@ -193,7 +194,8 @@ public interface CollectionInterface extends AutoCloseable {
      * <p><b>Security note:</b> The caller is responsible for clearing each returned {@code char[]}
      * after use (e.g., {@code Arrays.fill(chars, '\0')}) to prevent sensitive material from
      * lingering in heap memory. Prefer {@link #withSecrets(Function)} which handles
-     * cleanup automatically. Requires user permission to unlock the collection.</p>
+     * cleanup automatically. Asks first when the {@linkplain #setConsentPolicy consent policy}
+     * requires it for {@link ConsentPolicy.Operation#READ_ALL}; by default it does not.</p>
      *
      * @return a map of item object paths to their decrypted secrets, or empty if unavailable
      */
@@ -205,7 +207,8 @@ public interface CollectionInterface extends AutoCloseable {
      *
      * <p>This is the recommended way to access multiple secrets. The library decrypts all
      * secrets, passes the map to the callback, and zeroes every {@code char[]} value in
-     * a {@code finally} block. Requires user permission to unlock the collection.</p>
+     * a {@code finally} block. Asks first when the {@linkplain #setConsentPolicy consent policy}
+     * requires it for {@link ConsentPolicy.Operation#READ_ALL}; by default it does not.</p>
      *
      * <p>Example usage:</p>
      * <pre>{@code
@@ -231,7 +234,15 @@ public interface CollectionInterface extends AutoCloseable {
 
     boolean lock();
 
-    boolean unlockWithUserPermission();
+    /**
+     * Sets what this collection asks before an operation that reveals or destroys many secrets.
+     * The default is {@link ConsentPolicy#none()}, which asks nobody. A new policy forgets the
+     * consents granted under the previous one.
+     */
+    void setConsentPolicy(ConsentPolicy policy);
+
+    /** The policy that {@link #setConsentPolicy} set; {@link ConsentPolicy#none()} by default. */
+    ConsentPolicy getConsentPolicy();
 
     boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes);
 
