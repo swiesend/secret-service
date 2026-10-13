@@ -11,7 +11,9 @@ import org.junit.jupiter.api.Assumptions;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +50,19 @@ final class FakeProviderFixture {
     FakeSecretService fake() {
         return fake;
     }
+
+    /**
+     * A connection of its own to the private bus, as another application or a second provider has
+     * one. Unshared: dbus-java hands every shared build for the same address the same connection.
+     * Closed by {@link #stop()}.
+     */
+    DBusConnection connectAnother() throws Exception {
+        DBusConnection other = DBusConnectionBuilder.forAddress("unix:path=" + socket).withShared(false).build();
+        otherConnections.add(other);
+        return other;
+    }
+
+    private final List<DBusConnection> otherConnections = new ArrayList<>();
 
     /** The library's connection to the private bus, for tests that drive the low-level API. */
     DBusConnection clientConnection() {
@@ -120,6 +135,10 @@ final class FakeProviderFixture {
         try { if (service != null) service.close(); } catch (Exception ignored) { }
         try { if (clientConnection != null) clientConnection.disconnect(); } catch (Exception ignored) { }
         try { if (providerConnection != null) providerConnection.disconnect(); } catch (Exception ignored) { }
+        for (DBusConnection other : otherConnections) {
+            try { other.disconnect(); } catch (Exception ignored) { }
+        }
+        otherConnections.clear();
         if (bus != null) {
             bus.destroy();
             try {

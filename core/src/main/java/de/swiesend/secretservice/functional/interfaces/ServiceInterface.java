@@ -90,5 +90,12 @@ public interface ServiceInterface extends AutoCloseable {
 
     de.swiesend.secretservice.Service getService();
 
+    /**
+     * Whether gnome-keyring serves {@code org.freedesktop.secrets}, so that its own interface, which
+     * creates and unlocks collections with a password, can be used.
+     *
+     * @return false when another provider serves the secrets, even if gnome-keyring is installed
+     *         or running next to it
+     */
     boolean isGnomeKeyringAvailable();
 }

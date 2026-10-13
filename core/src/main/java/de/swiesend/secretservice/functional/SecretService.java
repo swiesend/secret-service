@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.functional;
 
 import de.swiesend.secretservice.Pair;
+import de.swiesend.secretservice.ProviderDetector;
 import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.functional.interfaces.*;
 import org.slf4j.Logger;
@@ -29,7 +30,12 @@ public class SecretService implements ServiceInterface {
     private SecretService(SystemInterface system, AvailableServices available, Optional<SystemInterface> maybeSystem) {
         this.maybeSystem = maybeSystem;
         this.service = new Service(system.getConnection());
-        this.isGnomeKeyringAvailable = available.services.contains(Activatable.GNOME_KEYRING);
+        // The name is not enough: it is activatable wherever gnome-keyring is installed, also where
+        // KeePassXC or KWallet serves org.freedesktop.secrets, and gnome-keyring's own interface is
+        // reached through that provider. create() has opened a session before this runs, so the
+        // provider is up and its owner can be compared.
+        this.isGnomeKeyringAvailable = available.services.contains(Activatable.GNOME_KEYRING)
+                && ProviderDetector.detectProvider(system.getConnection()) == ProviderDetector.Provider.GNOME_KEYRING;
     }
 
     /**
