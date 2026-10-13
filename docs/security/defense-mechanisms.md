@@ -200,6 +200,16 @@ Plus, in application code: opt into memory locking with `HardenedCollection.buil
 
 **Limitations.** The portal exposes Secret Service-shaped operations only; advanced operations (custom collections, attribute search) are not supported. The hardened wrapper layer this library provides cannot run inside the portal-sandboxed mode because the portal hides the underlying daemon.
 
+## Consent policy (`ConsentPolicy`)
+
+**What it does.** Makes a collection ask before an operation that reveals, changes or destroys secrets: a single read, a bulk read, a change to an item, or a delete. `PROVIDER_PROMPT` asks through the provider's unlock dialog: the collection is locked first, so the daemon must ask for the keyring password. `CALLBACK` asks through the application's own dialog, which can name the operation and the items. The default, `ConsentPolicy.none()`, asks nobody.
+
+**Threat coverage.** None of the classes in the [threat catalogue](threat-catalogue.md): another process of the same user reads an unlocked keyring without going through this library. A consent protects the user against the application's own mistakes, such as a bulk read or delete it did not mean to make, and lets the user see what the application does.
+
+**How to apply.** `collection.setConsentPolicy(ConsentPolicy.legacy())` restores the 3.x behaviour: bulk reads and deletes wait for the provider's dialog. `ConsentPolicy.none().require(Operation.DELETE_MANY, Requirement.CALLBACK).handler(...)` asks the application before bulk deletes only. See [Locking and prompts](../usage/core.md#locking-and-prompts).
+
+**Limitations.** The provider's dialog names the keyring, not the operation, and while it is open the keyring is locked for every other application too. KeePassXC needs a prompt to lock a collection, so it can never show that dialog; the policy's `WhenUnavailable` decides what happens then. A collection opened with a master password unlocks with it, and no dialog appears. A `CALLBACK` is only as trustworthy as the application that answers it.
+
 ## Unseal-password delivery (TPM provider)
 
 **What it does.** With `Tpm2KeyMaterialProvider` the pepper is never stored — at rest there is only the TPM-wrapped blob, useless without the physical chip plus the unseal password (wrong guesses hardware-rate-limited by the DA lockout). The remaining design decision is how the *unseal password* reaches the process at startup; the choice determines how much of the TPM's class-C guarantee survives operational reality.

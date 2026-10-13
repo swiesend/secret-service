@@ -50,6 +50,7 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
   - [`easy`/`moderate`] Using disk encryption like [LUKS](https://gitlab.com/cryptsetup/cryptsetup) does not help against malicious applications, but at least against several scenarios with physical access. 
 - [`moderate`/`advanced`] Deliver your application in a secure sandbox.
 - [`moderate`/`advanced`] **Application-layer encryption** via the optional `secret-service-hardened` artifact (see below).
+- [`easy`] Asking before risky operations: `collection.setConsentPolicy(...)` makes the library ask the user before a bulk read or a delete, through the provider's unlock dialog or through your application's own. It does not stop another process, but it keeps your own application from reading or deleting in bulk without the user. See [Locking and prompts](docs/usage/core.md#locking-and-prompts).
 
 **Application-layer encryption (`secret-service-hardened`)**
 
