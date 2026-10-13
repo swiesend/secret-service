@@ -4,6 +4,7 @@ import de.swiesend.secretservice.Static;
 import de.swiesend.secretservice.functional.System;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,7 +52,9 @@ public class AvailableServices {
                 } else {
                     services.add(Activatable.GNOME_KEYRING);
                 }
-            } catch (DBusException | ExceptionInInitializerError e) {
+            } catch (DBusException | DBusExecutionException | ExceptionInInitializerError e) {
+                // DBusExecutionException from the ListNames calls: an error reply, no reply, or a
+                // connection that went away.
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
             }
         }

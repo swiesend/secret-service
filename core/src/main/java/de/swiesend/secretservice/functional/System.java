@@ -4,6 +4,7 @@ import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +36,10 @@ public class System implements SystemInterface {
         try {
             DBusConnection dbus = DBusConnectionBuilder.forSessionBus().build();
             return Optional.of(new System(dbus, true));
-        } catch (DBusException e) {
+        } catch (DBusException | DBusExecutionException | IllegalStateException | IllegalArgumentException e) {
+            // Unchecked ones too. Without a session bus address, as over ssh, from cron or in a
+            // container, the builder throws AddressResolvingException; for a malformed address,
+            // InvalidBusAddressException, an IllegalStateException.
             log.warn(String.format("Could not communicate properly with the D-Bus: [%s]: %s", e.getClass().getSimpleName(), e.getMessage()));
         }
         return Optional.empty();

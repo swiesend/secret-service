@@ -138,7 +138,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     private static DBusConnection getConnection() {
         try {
             return DBusConnectionBuilder.forSessionBus().withShared(false).build();
-        } catch (DBusException | DBusExecutionException e) {
+        } catch (DBusException | DBusExecutionException | IllegalStateException | IllegalArgumentException e) {
+            // IllegalStateException is InvalidBusAddressException, for a malformed address. This runs
+            // in the static initializer, where an escaping exception makes the class unusable for
+            // the life of the JVM.
             if (e == null) {
                 log.warn("Could not communicate properly with the D-Bus.");
             } else {
@@ -206,7 +209,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 try (TransportEncryption transport = new TransportEncryption(connection)) {
                     return transport.initialize().flatMap(init -> init.openSession()).isPresent();
                 }
-            } catch (DBusException | ExceptionInInitializerError e) {
+            } catch (DBusException | DBusExecutionException | ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
             }
@@ -240,7 +243,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                         de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
                     return false;
                 }
-            } catch (DBusException | ExceptionInInitializerError e) {
+            } catch (DBusException | DBusExecutionException | ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
             }
