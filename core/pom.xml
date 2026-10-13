@@ -16,8 +16,8 @@
 
     <name>secret-service</name>
     <description>
-        A Java library for storing secrets in the gnome-keyring over the DBus.
-        Simply set and get passwords in a gnome linux system.
+        A Java library for storing secrets in a keyring over D-Bus, through the freedesktop.org
+        Secret Service API: gnome-keyring, KeePassXC or KWallet.
     </description>
     <url>https://github.com/swiesend/secret-service</url>
 
@@ -38,9 +38,9 @@
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/swiesend/secret-service.git</connection>
-        <developerConnection>scm:git:ssh://github.com:swiesend/secret-service.git</developerConnection>
-        <url>https://github.com/swiesend/secret-service/tree/master</url>
+        <connection>scm:git:https://github.com/swiesend/secret-service.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/swiesend/secret-service.git</developerConnection>
+        <url>https://github.com/swiesend/secret-service/tree/main</url>
     </scm>
 
     <distributionManagement>
