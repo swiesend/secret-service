@@ -19,6 +19,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
     - Costs one extra `Locked` property read per `getSecret`/`withSecret`: the item's own. A second read, of the collection's, happens only when the item reports locked — so on a provider that does not lock items individually the check ends after the first. `getSecrets`/`withSecrets` are unaffected: they iterate the whole collection and never attempt a per-item unlock, because one prompt per item is not a reasonable thing to do to a user.
     - `unlockItem` now checks the prompt result. It previously ignored dismissal and could throw a `NullPointerException` out of a `boolean` method when the prompt timed out.
     - Covered by `PerItemUnlockTest`, which drives a fake Secret Service that locks one item — no provider in CI reproduces the condition otherwise.
+  - The javadoc of `ProviderDetector` builds without an error. Its first heading was `<h3>`, where a class comment needs `<h2>`; `failOnError=false` had hidden the error.
   - Tolerate gnome-keyring's asynchronously-injected `xdg:schema` attribute in the functional attribute tests: `createItemWithAttribute` compares by containment, and `getAttributes` compares only user-defined keys — the latter's strict assertion previously raced and flaked (~1 run in 10) [#68](https://github.com/swiesend/secret-service/pull/68).
 
 ## [3.0.0-alpha] - 2026-06-11
