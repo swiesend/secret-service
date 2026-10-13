@@ -25,6 +25,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
   - `deleteItem` reports a deletion that the provider carried out without a prompt as done, on every provider. The provider then answers `"/"`, and the library accepted that answer only from gnome-keyring: on any other provider that gives it, `deleteItem` and `deleteItems` returned `false` although the items were gone. Nothing is deleted from a collection that stayed locked, though: KWallet answers `"/"` there too, and deletes nothing.
   - `ServiceTest.openSessionWithTransportEncryption` no longer fails about one run in 256. It required the provider's DH public value to be exactly 128 bytes, but a value whose top byte is zero arrives as 127.
   - Tolerate gnome-keyring's asynchronously-injected `xdg:schema` attribute in the functional attribute tests: `createItemWithAttribute` compares by containment, and `getAttributes` compares only user-defined keys — the latter's strict assertion previously raced and flaked (~1 run in 10) [#68](https://github.com/swiesend/secret-service/pull/68).
+  - **`SimpleCollection.getItems` returns `null` again when no item matches**, as in 1.x and 2.x. Since 3.0.0-alpha it returned an empty list, and code that tests the result for `null` before it creates an item or reads `items.get(0)` failed with an `IndexOutOfBoundsException`. `deleteItems` with an empty list does nothing again; it threw a `SecurityException`.
 
 ## [3.0.0-alpha] - 2026-06-11
 

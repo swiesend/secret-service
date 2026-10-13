@@ -463,7 +463,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public List<String> getItems(Map<String, String> attributes) {
         if (attributes == null) return null;
-        return delegate.getItems(attributes).orElse(null);
+        // null, not an empty list, when nothing matches: the 1.x contract, which callers test with
+        // `if (items == null)` before they create the item or read items.get(0).
+        return delegate.getItems(attributes).filter(paths -> !paths.isEmpty()).orElse(null);
     }
 
     /**
@@ -522,9 +524,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public void deleteItems(List<String> objectPaths) throws SecurityException {
-        if (objectPaths == null || objectPaths.isEmpty()) {
+        if (objectPaths == null) {
             throw new SecurityException("Cannot delete unspecified items.");
         }
+        // Nothing to delete. 1.x looped over the empty list and returned; it was never an error.
+        if (objectPaths.isEmpty()) return;
 
         unlockWithUserPermission();
 
