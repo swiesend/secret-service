@@ -2,7 +2,7 @@
 
 A **Java client library for the [freedesktop.org Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/)** — store and retrieve secrets in a keyring over D-Bus, compatible with gnome-keyring, KeePassXC, and KWallet. The functional equivalent of the [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C client library, MIT-licensed.
 
-Since `3.0.0-alpha` the project ships **three artifacts, released in lockstep**:
+Since `4.0.0-alpha` the project ships **three artifacts, released in lockstep**:
 
 | Artifact | Adds |
 |---|---|

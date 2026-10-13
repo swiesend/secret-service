@@ -38,7 +38,7 @@ package de.swiesend.secretservice;
  * <p><b>What this switch never covers.</b> Secrets, peppers and key material are not logged at any
  * setting and have no flag to enable them. Only names are governed here.</p>
  *
- * @since 3.0.0
+ * @since 4.0.0
  */
 public final class LogPolicy {
 

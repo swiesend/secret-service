@@ -89,7 +89,7 @@ The library's API is the functional API below; secrets cross the D-Bus transport
 
 ### Coordinates (three independently published artifacts, same version)
 
-Since `3.0.0-alpha` the project is a Maven reactor with **three separately published jars**, all released in lockstep at the same version number. **Standard consumers add only `secret-service` and pay zero overhead from the optional layers.**
+Since `4.0.0-alpha` the project is a Maven reactor with **three separately published jars**, all released in lockstep at the same version number. **Standard consumers add only `secret-service` and pay zero overhead from the optional layers.**
 
 | Artifact | JDK floor | Adds | Pulls extra runtime deps? |
 |---|---|---|---|
@@ -103,7 +103,7 @@ Since `3.0.0-alpha` the project is a Maven reactor with **three separately publi
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 ```
 
@@ -115,7 +115,7 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-hardened</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 ```
 
@@ -125,7 +125,7 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-hardened-tpm2</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 <!-- TSS.Java is required at runtime to actually open the TPM (provided/optional in our pom): -->
 <dependency>
@@ -143,7 +143,7 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
     <dependency>
       <groupId>de.swiesend</groupId>
       <artifactId>secret-service-parent</artifactId>
-      <version>3.0.0-alpha</version>
+      <version>4.0.0-alpha</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -158,15 +158,15 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
 
 To swap out an incompatible `slf4j-api`, exclude it from `secret-service` (the only artifact that pulls it transitively).
 
-### Legacy (`2.x.x`) coordinates
+### Legacy single-artifact coordinates
 
-The 2.x line continues to ship as a single artifact for consumers who don't want the 3.x module split:
+Before 4.0 the library shipped as one artifact. The 3.x line, on JDK 17, stays available for consumers who don't want the module split or JDK 25:
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>2.0.1-alpha</version>
+    <version>3.0.0-alpha</version>
 </dependency>
 ```
 

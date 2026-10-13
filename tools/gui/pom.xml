@@ -19,7 +19,7 @@
 
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-gui</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
     <packaging>jar</packaging>
 
     <name>secret-service-gui</name>
@@ -32,7 +32,7 @@
              class files, but the jar then claims a Java floor it does not have. -->
         <maven.compiler.release>25</maven.compiler.release>
         <java.version>25</java.version>
-        <secret-service.version>3.0.0-alpha</secret-service.version>
+        <secret-service.version>4.0.0-alpha</secret-service.version>
         <slf4j.version>2.0.17</slf4j.version>
         <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
     </properties>

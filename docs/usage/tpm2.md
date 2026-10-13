@@ -10,7 +10,7 @@ One-shot operator command. Run once per host/installation. Requires `de.swiesend
 
 ```bash
 # Provisioner generates a fresh base64 random pepper internally; password prompted on tty
-java -cp "secret-service-hardened-tpm2-3.0.0-alpha.jar:TSS.Java-1.0.0.jar:slf4j-api-2.0.17.jar:slf4j-simple-2.0.17.jar" \
+java -cp "secret-service-hardened-tpm2-4.0.0-alpha.jar:TSS.Java-1.0.0.jar:slf4j-api-2.0.17.jar:slf4j-simple-2.0.17.jar" \
      de.swiesend.secretservice.hardened.tpm2.Tpm2Provisioner \
      --out ~/.config/myapp/pepper.tpm2blob \
      --password-prompt
