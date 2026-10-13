@@ -46,8 +46,11 @@ public final class FakeSecretService {
     public static final String BUS_NAME = "org.freedesktop.secrets";
     public static final String SERVICE_PATH = "/org/freedesktop/secrets";
     public static final String COLLECTION_PATH = "/org/freedesktop/secrets/collection/fake";
-    /** The client resolves a collection by label, so the Label property must match this. */
-    public static final String COLLECTION_LABEL = "fake";
+    /**
+     * The client resolves a collection by label, so the Label property must match this. It appears
+     * in no object path, so a test can tell from a log whether the label reached it.
+     */
+    public static final String COLLECTION_LABEL = "Fake Keyring";
     public static final String ITEM_PATH = COLLECTION_PATH + "/1";
     public static final String SESSION_PATH = "/org/freedesktop/secrets/session/fake";
     public static final String PROMPT_PATH = "/org/freedesktop/secrets/prompt/fake";
