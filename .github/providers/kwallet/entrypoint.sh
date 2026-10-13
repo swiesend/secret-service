@@ -43,9 +43,10 @@ if ! wait_for_secrets 45; then
 fi
 echo "KWallet Secret Service ready (provider: KWallet)"
 
-# Run the provided command, defaulting to the system-test profile.
+# Run the provided command, defaulting to the system-test profile on this container's own,
+# throwaway wallet. ProviderSystemTest uses only the collection it is told to.
 if [ $# -eq 0 ]; then
-    exec mvn -B test -Psystem-test
+    exec mvn -B test -Psystem-test -Dsecret-service.system-test.collection=kdewallet
 else
     exec "$@"
 fi
