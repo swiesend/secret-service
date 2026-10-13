@@ -511,6 +511,9 @@ public class Collection implements CollectionInterface {
             log.error("The default collection shall only be deleted with the low-level API.");
             return false;
         }
+        if (!consent(ConsentPolicy.Operation.DELETE_COLLECTION, List.of())) {
+            return false;
+        }
 
         return collection.delete()
                 .map(promptPath -> promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent())
@@ -750,6 +753,9 @@ public class Collection implements CollectionInterface {
             log.error("The label may not be null.");
             return false;
         }
+        if (!consent(ConsentPolicy.Operation.WRITE, List.of(objectPath))) {
+            return false;
+        }
         unlock();
         return getItem(objectPath)
                 .map(item -> item.setLabel(label))
@@ -892,12 +898,17 @@ public class Collection implements CollectionInterface {
     /**
      * @param allowItemUnlock whether a locked item may be unlocked first, which can raise a prompt.
      *                        False for the bulk readers: they iterate the whole collection, and one
-     *                        prompt per item is not a reasonable thing to do to a user.
+     *                        prompt per item is not a reasonable thing to do to a user. For the same
+     *                        reason only a single read asks for {@code READ_ONE}: a bulk read asked
+     *                        once, for {@code READ_ALL}.
      */
     private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         if (!ownsPath(objectPath)) {
             log.warn("Refusing to read the secret: {} is not an item of this collection.", objectPath);
+            return Optional.empty();
+        }
+        if (allowItemUnlock && !consent(ConsentPolicy.Operation.READ_ONE, List.of(objectPath))) {
             return Optional.empty();
         }
         unlock();
@@ -1178,6 +1189,9 @@ public class Collection implements CollectionInterface {
         }
         if (!ownsPath(objectPath)) {
             log.warn("Refusing to update: {} is not an item of this collection.", objectPath);
+            return false;
+        }
+        if (!consent(ConsentPolicy.Operation.WRITE, List.of(objectPath))) {
             return false;
         }
 

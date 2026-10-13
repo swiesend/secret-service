@@ -235,7 +235,7 @@ public interface CollectionInterface extends AutoCloseable {
     boolean lock();
 
     /**
-     * Sets what this collection asks before an operation that reveals or destroys many secrets.
+     * Sets what this collection asks before an operation that reveals, changes or destroys secrets.
      * The default is {@link ConsentPolicy#none()}, which asks nobody. A new policy forgets the
      * consents granted under the previous one.
      */
