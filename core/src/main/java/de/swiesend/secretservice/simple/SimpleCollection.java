@@ -29,27 +29,29 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
  *
  * <p><strong>Deprecated.</strong> This class preserves the original 1.x API surface
  * (static shared D-Bus connection, {@code null} returns, checked exceptions) for backward
- * compatibility only. It will be removed in version 3.0.</p>
+ * compatibility only. It will be removed in version 4.0.</p>
  *
  * <p><strong>Migration:</strong> Replace usages with the functional API.</p>
  *
- * <p>Simple example — let the collection manage its own session:</p>
+ * <p>Simple example — let the collection manage its own session, which {@code close()} ends:</p>
  * <pre>{@code
- * Collection.openDefault().ifPresentOrElse(collection -> {
+ * try (CollectionInterface collection = Collection.openDefault()
+ *         .orElseThrow(() -> new IOException("Could not open the default collection."))) {
  *     collection.createItem("My label", "s3cr3t", Map.of());
- * }, () -> log.error("Could not open the default collection."));
+ * }
  * }</pre>
  *
  * <p>Full example — manage the connection lifecycle explicitly:</p>
  * <pre>{@code
- * try (var system = de.swiesend.secretservice.functional.System.connect()) {
- *     SecretService.create(Optional.of(system)).ifPresentOrElse(service -> {
- *         service.openSession().ifPresentOrElse(session -> {
- *             Collection.openDefault(Optional.of(session)).ifPresentOrElse(collection -> {
- *                 collection.createItem("My label", "s3cr3t", Map.of());
- *             }, () -> log.error("Could not open the default collection."));
- *         }, () -> log.error("Could not open an encrypted session."));
- *     }, () -> log.error("Could not connect to the secret service."));
+ * try (SystemInterface system = de.swiesend.secretservice.functional.System.connect()
+ *              .orElseThrow(() -> new IOException("Could not connect to the D-Bus."));
+ *      ServiceInterface service = SecretService.create(Optional.of(system))
+ *              .orElseThrow(() -> new IOException("Could not connect to the secret service."));
+ *      SessionInterface session = service.openSession()
+ *              .orElseThrow(() -> new IOException("Could not open an encrypted session."));
+ *      CollectionInterface collection = Collection.openDefault(Optional.of(session))
+ *              .orElseThrow(() -> new IOException("Could not open the default collection."))) {
+ *     collection.createItem("My label", "s3cr3t", Map.of());
  * }
  * }</pre>
  *
@@ -369,7 +371,8 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Clears the private key of the transport encryption and the passphrase of the collection.
+     * Clears the passphrase of the collection. The transport encryption's keys are erased when
+     * {@link #close()} closes the session.
      */
     @Override
     public void clear() {
