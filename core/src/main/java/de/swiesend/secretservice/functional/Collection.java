@@ -528,7 +528,7 @@ public class Collection implements CollectionInterface {
             log.warn("Refusing to delete: {} is not an item of this collection.", objectPath);
             return false;
         }
-        if (!consent(ConsentPolicy.Operation.DELETE_ONE)) {
+        if (!consent(ConsentPolicy.Operation.DELETE_ONE, List.of(objectPath))) {
             return false;
         }
         unlock();
@@ -580,7 +580,8 @@ public class Collection implements CollectionInterface {
             }
         }
         // One consent for the whole call, not one for each item.
-        if (!consent(ConsentPolicy.Operation.DELETE_MANY)) {
+        List<String> named = objectPaths.stream().filter(p -> !Static.Utils.isNullOrEmpty(p)).toList();
+        if (!consent(ConsentPolicy.Operation.DELETE_MANY, named)) {
             return false;
         }
         unlock();
@@ -931,7 +932,7 @@ public class Collection implements CollectionInterface {
 
     @Override
     public Optional<Map<String, char[]>> getSecrets() {
-        if (!consent(ConsentPolicy.Operation.READ_ALL)) {
+        if (!consent(ConsentPolicy.Operation.READ_ALL, List.of())) {
             return Optional.empty();
         }
         unlock();
@@ -1070,32 +1071,54 @@ public class Collection implements CollectionInterface {
      *
      * @return whether the operation may run
      */
-    private boolean consent(ConsentPolicy.Operation operation) {
+    private boolean consent(ConsentPolicy.Operation operation, List<String> itemPaths) {
         ConsentPolicy policy = consentPolicy;
-        if (policy.requirement(operation) == ConsentPolicy.Requirement.NONE || isConsented(operation)) {
+        ConsentPolicy.Requirement requirement = policy.requirement(operation);
+        if (requirement == ConsentPolicy.Requirement.NONE || isConsented(operation)) {
             return true;
         }
-        switch (askProvider()) {
+        boolean byHandler = requirement == ConsentPolicy.Requirement.CALLBACK;
+        Answer answer = byHandler ? askHandler(policy, operation, itemPaths) : askProvider();
+        switch (answer) {
             case GRANTED:
-                remember(policy);
+                remember(policy, operation);
                 return true;
             case UNAVAILABLE:
+                String why = byHandler ? "no consent handler is set" : "the provider cannot show the unlock dialog";
                 if (policy.whenUnavailable(operation) == ConsentPolicy.WhenUnavailable.PROCEED) {
-                    log.debug("The provider cannot show the unlock dialog for collection {}; {} goes ahead, "
-                            + "as the consent policy allows.", collection.getObjectPath(), operation);
+                    log.debug("For collection {}, {}; {} goes ahead, as the consent policy allows.",
+                            collection.getObjectPath(), why, operation);
                     return true;
                 }
-                log.info("Refusing {}: the provider cannot show the unlock dialog for collection {}, "
-                        + "and the consent policy requires it.", operation, collection.getObjectPath());
+                log.info("Refusing {}: for collection {}, {}, and the consent policy requires it.",
+                        operation, collection.getObjectPath(), why);
                 return false;
             default:
-                log.info("Refusing {}: the unlock dialog for collection {} was not approved.",
-                        operation, collection.getObjectPath());
+                log.info("Refusing {}: {} for collection {} did not approve it.", operation,
+                        byHandler ? "the consent handler" : "the unlock dialog", collection.getObjectPath());
                 return false;
         }
     }
 
-    private enum ProviderAnswer { GRANTED, REFUSED, UNAVAILABLE }
+    private enum Answer { GRANTED, REFUSED, UNAVAILABLE }
+
+    /**
+     * Asks the application through the policy's handler. It runs on the calling thread, before
+     * anything is sent to the provider, and an exception counts as no.
+     */
+    private Answer askHandler(ConsentPolicy policy, ConsentPolicy.Operation operation, List<String> itemPaths) {
+        Optional<ConsentPolicy.Handler> handler = policy.handler();
+        if (handler.isEmpty()) {
+            return Answer.UNAVAILABLE;
+        }
+        try {
+            ConsentPolicy.Request request = new ConsentPolicy.Request(operation, collection.getObjectPath(), itemPaths);
+            return handler.get().approve(request) ? Answer.GRANTED : Answer.REFUSED;
+        } catch (RuntimeException e) {
+            log.warn("The consent handler failed for {}, which counts as a refusal: {}", operation, LogPolicy.cause(e));
+            return Answer.REFUSED;
+        }
+    }
 
     /**
      * Makes the provider ask for the keyring password: locks the collection, then unlocks it, the
@@ -1103,12 +1126,12 @@ public class Collection implements CollectionInterface {
      * (CVE-2018-19358). Unavailable when the collection cannot be locked without a prompt, as on
      * KeePassXC, because then no unlock dialog can follow.
      */
-    private ProviderAnswer askProvider() {
+    private Answer askProvider() {
         if (!lock()) {
-            return ProviderAnswer.UNAVAILABLE;
+            return Answer.UNAVAILABLE;
         }
         unlock();
-        return collection.isLocked() ? ProviderAnswer.REFUSED : ProviderAnswer.GRANTED;
+        return collection.isLocked() ? Answer.REFUSED : Answer.GRANTED;
     }
 
     private boolean isConsented(ConsentPolicy.Operation operation) {
@@ -1117,10 +1140,11 @@ public class Collection implements CollectionInterface {
     }
 
     /**
-     * Remembers a granted provider dialog for every operation that requires one: it proves the
-     * same thing, the user's presence, for all of them.
+     * Remembers a granted consent. A provider dialog counts for every operation that requires one:
+     * it proves the same thing, the user's presence, for all of them. A handler's answer counts
+     * only for the operation it was asked about.
      */
-    private void remember(ConsentPolicy policy) {
+    private void remember(ConsentPolicy policy, ConsentPolicy.Operation granted) {
         Duration duration = policy.remembered();
         if (duration.isZero()) return;
         Instant until;
@@ -1128,6 +1152,10 @@ public class Collection implements CollectionInterface {
             until = duration.equals(ConsentPolicy.UNTIL_CLOSED) ? Instant.MAX : Instant.now().plus(duration);
         } catch (DateTimeException | ArithmeticException e) {
             until = Instant.MAX;
+        }
+        if (policy.requirement(granted) == ConsentPolicy.Requirement.CALLBACK) {
+            consentedUntil.put(granted, until);
+            return;
         }
         for (ConsentPolicy.Operation operation : ConsentPolicy.Operation.values()) {
             if (policy.requirement(operation) == ConsentPolicy.Requirement.PROVIDER_PROMPT) {
