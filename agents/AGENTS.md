@@ -170,7 +170,7 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Transport encryption uses DH key exchange + AES-128-CBC (not optional for production use)
 - Secrets are wrapped in `AutoCloseable` types that clear sensitive data on close
 - Byte arrays holding secrets are zeroed after use
-- The library addresses CVE-2018-19358 (gnome-keyring prompt bypass)
+- CVE-2018-19358 (any same-user process can read an unlocked keyring) is outside what a client library can fix. `ConsentPolicy` lets an application ask before its own risky operations; the default asks nobody, and `ConsentPolicy.legacy()` restores the 3.x forced unlock dialog
 - `withSecret()` callback API guarantees zeroing even on exception paths
 
 ## Documentation Conventions
