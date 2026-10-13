@@ -3,8 +3,10 @@ package de.swiesend.secretservice.functional;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * What a collection asks before an operation that reveals or destroys many secrets.
@@ -17,8 +19,8 @@ import java.util.Objects;
  * own terms, for example to unlock a locked keyring. {@link #legacy()} is the behaviour of 3.x,
  * for a caller who wants it.</p>
  *
- * <p>A policy is immutable. {@link #require}, {@link #remember} and the factory methods return new
- * policies.</p>
+ * <p>A policy is immutable. {@link #require}, {@link #remember}, {@link #handler(Handler)} and the
+ * factory methods return new policies.</p>
  *
  * <p>No policy protects the keyring against another process of the same user: such a process can
  * read an unlocked keyring without this library (CVE-2018-19358). A consent protects the user
@@ -47,14 +49,35 @@ public final class ConsentPolicy {
          * opened with a master password unlocks with it, without a dialog: the password stands for
          * the consent.
          */
-        PROVIDER_PROMPT
+        PROVIDER_PROMPT,
+        /**
+         * The application's own question: the policy's {@link Handler} gets a {@link Request} that
+         * names the operation, the collection and the items, and its answer decides. It runs on the
+         * calling thread, before anything is sent to the provider. An exception counts as no.
+         */
+        CALLBACK
+    }
+
+    /** What the application is asked to approve. */
+    public record Request(Operation operation, String collectionPath, List<String> itemPaths) {
+        public Request {
+            Objects.requireNonNull(operation, "operation");
+            itemPaths = List.copyOf(itemPaths);
+        }
+    }
+
+    /** Answers a {@link Request} for {@link Requirement#CALLBACK}: true lets the operation run. */
+    @FunctionalInterface
+    public interface Handler {
+        boolean approve(Request request);
     }
 
     /** What to do when a requirement cannot be met at all, as distinct from a refusal. */
     public enum WhenUnavailable {
         /**
          * Run the operation anyway. A provider that needs a prompt to lock, such as KeePassXC, can
-         * never show the unlock dialog that {@link Requirement#PROVIDER_PROMPT} relies on.
+         * never show the unlock dialog that {@link Requirement#PROVIDER_PROMPT} relies on, and
+         * {@link Requirement#CALLBACK} cannot ask without a {@link Handler}.
          */
         PROCEED,
         /** Refuse the operation, as if the user had said no. */
@@ -71,15 +94,17 @@ public final class ConsentPolicy {
 
     private final Map<Operation, Rule> rules;
     private final Duration remember;
+    private final Handler handler;
 
-    private ConsentPolicy(Map<Operation, Rule> rules, Duration remember) {
+    private ConsentPolicy(Map<Operation, Rule> rules, Duration remember, Handler handler) {
         this.rules = rules;
         this.remember = remember;
+        this.handler = handler;
     }
 
     /** Asks nobody before any operation. The default of every collection. */
     public static ConsentPolicy none() {
-        return new ConsentPolicy(new EnumMap<>(Operation.class), Duration.ZERO);
+        return new ConsentPolicy(new EnumMap<>(Operation.class), Duration.ZERO, null);
     }
 
     /**
@@ -113,19 +138,31 @@ public final class ConsentPolicy {
         } else {
             next.put(operation, new Rule(requirement, whenUnavailable));
         }
-        return new ConsentPolicy(next, remember);
+        return new ConsentPolicy(next, remember, handler);
     }
 
     /**
      * How long a granted consent covers later operations of the same kind on the same collection
      * object: {@link Duration#ZERO}, the default, asks every time; {@link #UNTIL_CLOSED} asks once.
-     * A provider's dialog covers every operation that requires one, because it proves the same
-     * thing for all of them.
+     * A consent covers the operation, not the items it named: within that time, a later call of
+     * the same operation runs without asking, whatever items it names. A provider's dialog covers
+     * every operation that requires one, because it proves the same thing for all of them; a
+     * {@link Handler}'s answer covers only the operation it was asked about.
      */
     public ConsentPolicy remember(Duration duration) {
         Objects.requireNonNull(duration, "duration");
         if (duration.isNegative()) throw new IllegalArgumentException("duration must not be negative");
-        return new ConsentPolicy(rules, duration);
+        return new ConsentPolicy(rules, duration, handler);
+    }
+
+    /** Sets the handler that answers for {@link Requirement#CALLBACK}. */
+    public ConsentPolicy handler(Handler handler) {
+        return new ConsentPolicy(rules, remember, Objects.requireNonNull(handler, "handler"));
+    }
+
+    /** The handler for {@link Requirement#CALLBACK}, if one is set. */
+    public Optional<Handler> handler() {
+        return Optional.ofNullable(handler);
     }
 
     /** What {@code operation} requires. */
@@ -145,12 +182,13 @@ public final class ConsentPolicy {
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof ConsentPolicy that && rules.equals(that.rules) && remember.equals(that.remember);
+        return other instanceof ConsentPolicy that && rules.equals(that.rules) && remember.equals(that.remember)
+                && Objects.equals(handler, that.handler);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(rules, remember);
+        return Objects.hash(rules, remember, handler);
     }
 
     @Override

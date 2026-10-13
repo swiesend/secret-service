@@ -4,7 +4,11 @@ import de.swiesend.secretservice.functional.ConsentPolicy.Operation;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
+import static de.swiesend.secretservice.functional.ConsentPolicy.Requirement.CALLBACK;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Requirement.NONE;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Requirement.PROVIDER_PROMPT;
 import static de.swiesend.secretservice.functional.ConsentPolicy.WhenUnavailable.PROCEED;
@@ -51,6 +55,27 @@ class ConsentPolicyTest {
     void rememberRejectsANegativeDuration() {
         assertThrows(IllegalArgumentException.class, () -> ConsentPolicy.none().remember(Duration.ofSeconds(-1)));
         assertEquals(Duration.ofMinutes(5), ConsentPolicy.none().remember(Duration.ofMinutes(5)).remembered());
+    }
+
+    @Test
+    void theHandlerStaysWhenThePolicyChangesOtherwise() {
+        ConsentPolicy.Handler handler = request -> true;
+        ConsentPolicy policy = ConsentPolicy.none()
+                .handler(handler)
+                .require(Operation.READ_ALL, CALLBACK)
+                .remember(Duration.ofMinutes(1));
+
+        assertEquals(Optional.of(handler), policy.handler());
+        assertEquals(Optional.empty(), ConsentPolicy.none().handler(), "none() has no handler");
+    }
+
+    @Test
+    void aRequestKeepsItsOwnCopyOfTheItemPaths() {
+        List<String> paths = new ArrayList<>(List.of("/a"));
+        ConsentPolicy.Request request = new ConsentPolicy.Request(Operation.DELETE_MANY, "/c", paths);
+        paths.add("/b");
+
+        assertEquals(List.of("/a"), request.itemPaths());
     }
 
     @Test

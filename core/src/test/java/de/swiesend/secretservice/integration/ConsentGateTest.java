@@ -9,13 +9,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.DELETE_MANY;
+import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.DELETE_ONE;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Operation.READ_ALL;
+import static de.swiesend.secretservice.functional.ConsentPolicy.Requirement.CALLBACK;
 import static de.swiesend.secretservice.functional.ConsentPolicy.Requirement.PROVIDER_PROMPT;
+import static de.swiesend.secretservice.functional.ConsentPolicy.WhenUnavailable.PROCEED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -149,6 +153,70 @@ class ConsentGateTest {
         collection.withSecrets(Map::size);
 
         assertEquals(2, fake.promptCalls().size());
+    }
+
+    @Test
+    void aHandlerSeesTheOperationTheCollectionAndTheItems() {
+        String second = fake.addItem(FakeSecretService.COLLECTION_PATH, "second", "second-secret", Map.of());
+        List<ConsentPolicy.Request> asked = new ArrayList<>();
+        collection.setConsentPolicy(ConsentPolicy.none()
+                .require(DELETE_MANY, CALLBACK)
+                .handler(asked::add));
+
+        collection.deleteItems(List.of(second, FakeSecretService.ITEM_PATH));
+
+        assertEquals(List.of(new ConsentPolicy.Request(DELETE_MANY, FakeSecretService.COLLECTION_PATH,
+                List.of(second, FakeSecretService.ITEM_PATH))), asked, "asked once, naming everything");
+        assertFalse(fake.hasItem(second));
+        assertFalse(fake.hasItem(FakeSecretService.ITEM_PATH));
+        assertTrue(fake.promptCalls().isEmpty(), "the application asked, not the provider");
+    }
+
+    @Test
+    void aHandlerThatSaysNoStopsTheCallBeforeAnythingIsSent() {
+        collection.setConsentPolicy(ConsentPolicy.none().require(DELETE_ONE, CALLBACK).handler(request -> false));
+        List<String> before = fake.calls();
+
+        assertFalse(collection.deleteItem(FakeSecretService.ITEM_PATH));
+
+        assertEquals(before, fake.calls(), "nothing reached the provider");
+        assertTrue(fake.hasItem(FakeSecretService.ITEM_PATH));
+    }
+
+    @Test
+    void aHandlerThatThrowsCountsAsNo() {
+        collection.setConsentPolicy(ConsentPolicy.none().require(READ_ALL, CALLBACK).handler(request -> {
+            throw new IllegalStateException("the dialog could not be shown");
+        }));
+
+        assertEquals(Optional.empty(), collection.withSecrets(Map::size));
+        assertTrue(calls("Item.GetSecret").isEmpty(), "no secret was read");
+    }
+
+    @Test
+    void withoutAHandlerACallbackCannotBeAnswered() {
+        collection.setConsentPolicy(ConsentPolicy.none().require(READ_ALL, CALLBACK));
+        assertEquals(Optional.empty(), collection.withSecrets(Map::size), "refused, by default");
+
+        collection.setConsentPolicy(ConsentPolicy.none().require(READ_ALL, CALLBACK, PROCEED));
+        assertTrue(collection.withSecrets(Map::size).isPresent(), "or let through, when the policy says so");
+    }
+
+    @Test
+    void aHandlersAnswerCoversOnlyTheOperationItWasAskedAbout() {
+        List<ConsentPolicy.Operation> asked = new ArrayList<>();
+        collection.setConsentPolicy(ConsentPolicy.none()
+                .require(READ_ALL, CALLBACK)
+                .require(DELETE_ONE, CALLBACK)
+                .handler(request -> asked.add(request.operation()))
+                .remember(Duration.ofMinutes(1)));
+
+        collection.withSecrets(Map::size);
+        collection.withSecrets(Map::size);
+        collection.deleteItem(FakeSecretService.ITEM_PATH);
+
+        assertEquals(List.of(READ_ALL, DELETE_ONE), asked,
+                "the read is remembered, and the delete is asked about anew");
     }
 
     private List<String> calls(String call) {

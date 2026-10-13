@@ -107,13 +107,20 @@ collection.lock();
 // Make bulk reads and deletes wait for the provider's unlock dialog, as 3.x always did: the
 // collection is locked first, so the daemon must prompt (CVE-2018-19358).
 collection.setConsentPolicy(ConsentPolicy.legacy());
+
+// Or ask in the application's own dialog, which can say exactly what will happen. The handler
+// gets the operation, the collection and the item paths, and runs before anything is sent.
+collection.setConsentPolicy(ConsentPolicy.none()
+        .require(ConsentPolicy.Operation.DELETE_MANY, ConsentPolicy.Requirement.CALLBACK)
+        .handler(request -> askTheUser(request)));
 ```
 
 By default (`ConsentPolicy.none()`) the library asks nobody before `getSecrets()`, `withSecrets()`,
 `deleteItem()` or `deleteItems()`; the provider still prompts on its own terms, for example to unlock a
 locked keyring. `ConsentPolicy.none().require(Operation.DELETE_MANY, Requirement.PROVIDER_PROMPT)`
 asks for one operation only. The provider's dialog names the keyring, not the operation, and while it
-is open the keyring is locked for every other application too.
+is open the keyring is locked for every other application too. A `CALLBACK` handler locks nothing; if
+it throws, that counts as no, and without a handler the policy's `WhenUnavailable` decides.
 
 Two behaviours worth knowing before you rely on them:
 
