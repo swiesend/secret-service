@@ -50,6 +50,7 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
   - [`easy`/`moderate`] Using disk encryption like [LUKS](https://gitlab.com/cryptsetup/cryptsetup) does not help against malicious applications, but at least against several scenarios with physical access. 
 - [`moderate`/`advanced`] Deliver your application in a secure sandbox.
 - [`moderate`/`advanced`] **Application-layer encryption** via the optional `secret-service-hardened` artifact (see below).
+- [`easy`] Asking before risky operations: `collection.setConsentPolicy(...)` makes the library ask the user before a bulk read or a delete, through the provider's unlock dialog or through your application's own. It does not stop another process, but it keeps your own application from reading or deleting in bulk without the user. See [Locking and prompts](docs/usage/core.md#locking-and-prompts).
 
 **Application-layer encryption (`secret-service-hardened`)**
 
@@ -84,11 +85,11 @@ Authorization:
 
 ## Usage
 
-The library provides two API layers, both using transport-encrypted secrets over the D-Bus.
+The library's API is the functional API below; secrets cross the D-Bus transport-encrypted.
 
 ### Coordinates (three independently published artifacts, same version)
 
-Since `3.0.0-alpha` the project is a Maven reactor with **three separately published jars**, all released in lockstep at the same version number. **Standard consumers add only `secret-service` and pay zero overhead from the optional layers.**
+Since `4.0.0-alpha` the project is a Maven reactor with **three separately published jars**, all released in lockstep at the same version number. **Standard consumers add only `secret-service` and pay zero overhead from the optional layers.**
 
 | Artifact | JDK floor | Adds | Pulls extra runtime deps? |
 |---|---|---|---|
@@ -102,7 +103,7 @@ Since `3.0.0-alpha` the project is a Maven reactor with **three separately publi
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 ```
 
@@ -114,7 +115,7 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-hardened</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 ```
 
@@ -124,7 +125,7 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-hardened-tpm2</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 <!-- TSS.Java is required at runtime to actually open the TPM (provided/optional in our pom): -->
 <dependency>
@@ -142,7 +143,7 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
     <dependency>
       <groupId>de.swiesend</groupId>
       <artifactId>secret-service-parent</artifactId>
-      <version>3.0.0-alpha</version>
+      <version>4.0.0-alpha</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -157,19 +158,19 @@ A `mvn dependency:tree` for that single declaration shows only the dbus-java and
 
 To swap out an incompatible `slf4j-api`, exclude it from `secret-service` (the only artifact that pulls it transitively).
 
-### Legacy (`2.x.x`) coordinates
+### Legacy single-artifact coordinates
 
-The 2.x line continues to ship as a single artifact for consumers who don't want the 3.x module split:
+Before 4.0 the library shipped as one artifact. The 3.x line, on JDK 17, stays available for consumers who don't want the module split or JDK 25:
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>2.0.1-alpha</version>
+    <version>3.0.0-alpha</version>
 </dependency>
 ```
 
-### Functional API (Recommended)
+### Functional API
 
 The functional API uses instance-scoped connections, `Optional` returns, and `AutoCloseable` lifecycle management.
 
@@ -259,39 +260,13 @@ try (CollectionInterface collection = Collection.open("My Collection")
 }
 ```
 
-### SimpleCollection API (Legacy)
+### Migrating from `SimpleCollection`
 
-The `SimpleCollection` API preserves the original 1.x interface for backward compatibility. It uses a static shared D-Bus connection with a JVM shutdown hook.
-
-New code should prefer the functional API above.
-
-```java
-try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
-    // define unique attributes
-    Map<String, String> attributes = new HashMap<>();
-    attributes.put("uuid", "42");
-
-    // create and forget
-    collection.createItem("My Item", "secret", attributes);
-
-    // find by attributes
-    List<String> items = collection.getItems(attributes);
-    String item = items.get(0);
-
-    char[] actual = collection.getSecret(item);
-    assertEquals("secret", new String(actual));
-    Arrays.fill(actual, '\0'); // caller must clear manually
-
-    collection.deleteItem(item);
-    collection.delete();
-}
-// The D-Bus connection is closed at JVM shutdown, not by close().
-// Call SimpleCollection.disconnect() to close it manually.
-```
+The legacy `SimpleCollection` API was removed in 4.0. Its operations map onto the functional API above, as the [migration table](docs/usage/core.md#migrating-from-simplecollection) shows.
 
 __Transport Encryption:__
 
-Both APIs use transport encryption (DH key exchange + AES-128-CBC) automatically.
+The API uses transport encryption (DH key exchange + AES-128-CBC) automatically.
 For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
 [Transport Encryption Example](core/src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
 

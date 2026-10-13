@@ -100,7 +100,7 @@ public class SecretServiceTest {
     @Test
     @DisplayName("Closing SecretService with wrapped (non-owning) System does not disconnect D-Bus")
     void closeServiceDoesNotDisconnectWrappedConnection() throws Exception {
-        // Simulate SimpleCollection's pattern: wrap an externally managed connection
+        // Wrap an externally managed connection, as an application does that shares one
         SystemInterface ownedSystem = System.connect().get();
         DBusConnection connection = ownedSystem.getConnection();
 

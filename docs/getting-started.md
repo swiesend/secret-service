@@ -22,7 +22,7 @@ Three separately published jars, all released in lockstep at the same version. *
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 ```
 
@@ -32,7 +32,7 @@ Three separately published jars, all released in lockstep at the same version. *
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-hardened</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 ```
 
@@ -42,7 +42,7 @@ Three separately published jars, all released in lockstep at the same version. *
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-hardened-tpm2</artifactId>
-    <version>3.0.0-alpha</version>
+    <version>4.0.0-alpha</version>
 </dependency>
 <!-- TSS.Java is required at runtime to actually open the TPM (provided/optional in our pom): -->
 <dependency>
@@ -60,7 +60,7 @@ Three separately published jars, all released in lockstep at the same version. *
     <dependency>
       <groupId>de.swiesend</groupId>
       <artifactId>secret-service-parent</artifactId>
-      <version>3.0.0-alpha</version>
+      <version>4.0.0-alpha</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -68,7 +68,7 @@ Three separately published jars, all released in lockstep at the same version. *
 </dependencyManagement>
 ```
 
-The 2.x line continues as a single artifact (`de.swiesend:secret-service:2.0.1-alpha`) for consumers who don't want the 3.x module split.
+Before 4.0 the library shipped as one artifact. The 3.x line (`de.swiesend:secret-service:3.0.0-alpha`, JDK 17) stays available for consumers who don't want the module split or JDK 25.
 
 ## First secret
 

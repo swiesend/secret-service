@@ -1,5 +1,6 @@
 package de.swiesend.secretservice.functional.interfaces;
 
+import de.swiesend.secretservice.functional.ConsentPolicy;
 import de.swiesend.secretservice.functional.SearchMode;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +10,7 @@ import java.util.function.Function;
 /**
  * A collection of secret items.
  *
- * <p><b>Item paths are scoped to this collection (changed in 3.0.0).</b> Every method that takes
+ * <p><b>Item paths are scoped to this collection (changed in 4.0.0).</b> Every method that takes
  * an item object path -- {@code getSecret}, {@code withSecret}, {@code getAttributes},
  * {@code getItemLabel}, {@code setItemLabel}, {@code updateItem}, {@code deleteItem},
  * {@code lockItem}, {@code unlockItem}, {@code itemExists} -- refuses a path that does not belong
@@ -88,7 +89,7 @@ public interface CollectionInterface extends AutoCloseable {
      * <p>The default implementation answers {@code Optional.empty()} for every path, which is the
      * safe reading for an implementation that cannot tell.</p>
      *
-     * @since 3.0.0
+     * @since 4.0.0
      */
     default Optional<Boolean> itemExists(String objectPath) {
         return Optional.empty();
@@ -106,16 +107,14 @@ public interface CollectionInterface extends AutoCloseable {
      *       {@code attributes} was null). Nothing may be inferred about the collection's contents.</li>
      * </ul>
      *
-     * <p><b>Changed in 3.0.0, for the no-attributes case only.</b> Passing an empty map used to
+     * <p><b>Changed in 4.0.0, for the no-attributes case only.</b> Passing an empty map used to
      * collapse "no items" to {@code Optional.empty()}; it now returns {@code Optional.of(List.of())}.
      * Code of the form {@code if (getItems(Map.of()).isPresent()) …} previously implied "there are
      * items" and no longer does — such a caller now enters that branch with an empty list.</p>
      *
      * <p>A search <em>with</em> attributes is unchanged: it already returned
      * {@code Optional.of(List.of())} when nothing matched, because the filter it passed through
-     * tested the outer {@code Optional} rather than the list. The legacy
-     * {@code SimpleCollection.getItems} adapter therefore already returned an <em>empty list</em>
-     * for a no-match search and {@code null} only for the no-attributes case, and it still does.</p>
+     * tested the outer {@code Optional} rather than the list.</p>
      */
     Optional<List<String>> getItems(Map<String, String> attributes);
 
@@ -195,7 +194,8 @@ public interface CollectionInterface extends AutoCloseable {
      * <p><b>Security note:</b> The caller is responsible for clearing each returned {@code char[]}
      * after use (e.g., {@code Arrays.fill(chars, '\0')}) to prevent sensitive material from
      * lingering in heap memory. Prefer {@link #withSecrets(Function)} which handles
-     * cleanup automatically. Requires user permission to unlock the collection.</p>
+     * cleanup automatically. Asks first when the {@linkplain #setConsentPolicy consent policy}
+     * requires it for {@link ConsentPolicy.Operation#READ_ALL}; by default it does not.</p>
      *
      * @return a map of item object paths to their decrypted secrets, or empty if unavailable
      */
@@ -207,7 +207,8 @@ public interface CollectionInterface extends AutoCloseable {
      *
      * <p>This is the recommended way to access multiple secrets. The library decrypts all
      * secrets, passes the map to the callback, and zeroes every {@code char[]} value in
-     * a {@code finally} block. Requires user permission to unlock the collection.</p>
+     * a {@code finally} block. Asks first when the {@linkplain #setConsentPolicy consent policy}
+     * requires it for {@link ConsentPolicy.Operation#READ_ALL}; by default it does not.</p>
      *
      * <p>Example usage:</p>
      * <pre>{@code
@@ -233,7 +234,15 @@ public interface CollectionInterface extends AutoCloseable {
 
     boolean lock();
 
-    boolean unlockWithUserPermission();
+    /**
+     * Sets what this collection asks before an operation that reveals, changes or destroys secrets.
+     * The default is {@link ConsentPolicy#none()}, which asks nobody. A new policy forgets the
+     * consents granted under the previous one.
+     */
+    void setConsentPolicy(ConsentPolicy policy);
+
+    /** The policy that {@link #setConsentPolicy} set; {@link ConsentPolicy#none()} by default. */
+    ConsentPolicy getConsentPolicy();
 
     boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes);
 

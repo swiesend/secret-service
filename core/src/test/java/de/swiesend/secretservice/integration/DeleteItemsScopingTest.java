@@ -16,9 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code deleteItems} checks every path before it acts. One path under another collection refuses
- * the whole call, and the refusal comes before {@code unlockWithUserPermission}, so a refused call
- * raises no unlock prompt and deletes nothing -- not even the items that do belong to the
- * collection.
+ * the whole call, and the refusal comes before the consent policy is asked, so a refused call
+ * raises no prompt and deletes nothing -- not even the items that do belong to the collection.
  *
  * <p>Against {@link FakeSecretService}, because the proof is what the provider did <em>not</em>
  * receive, and only the fake records every call.</p>

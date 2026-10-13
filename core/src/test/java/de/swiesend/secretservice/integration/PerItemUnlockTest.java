@@ -2,11 +2,13 @@ package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import org.freedesktop.dbus.DBusPath;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,7 +70,9 @@ class PerItemUnlockTest {
         // the read fell through to GetSecret on a locked item and failed.
         CollectionInterface collection = start(true);
 
-        assertTrue(collection.unlockWithUserPermission(), "the collection unlocks as before");
+        assertTrue(collection.lock(), "the collection locks");
+        List<DBusPath> collectionOnly = List.of(new DBusPath(FakeSecretService.COLLECTION_PATH));
+        assertTrue(harness.rawService().unlock(collectionOnly).isPresent(), "and unlocks again, as a collection");
         assertTrue(fake.isItemLocked(),
                 "precondition: a collection-level unlock must leave the item locked");
 

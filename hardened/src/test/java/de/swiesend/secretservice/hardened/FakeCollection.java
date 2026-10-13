@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.hardened;
 
 import de.swiesend.secretservice.ProviderDetector;
+import de.swiesend.secretservice.functional.ConsentPolicy;
 import de.swiesend.secretservice.functional.SearchMode;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 
@@ -314,7 +315,11 @@ final class FakeCollection implements CollectionInterface {
 
     @Override public boolean isLocked() { return false; }
     @Override public boolean lock() { return true; }
-    @Override public boolean unlockWithUserPermission() { return true; }
+
+    // Kept, not acted on: the in-memory store has no provider that could ask anyone.
+    private ConsentPolicy consentPolicy = ConsentPolicy.none();
+    @Override public void setConsentPolicy(ConsentPolicy policy) { this.consentPolicy = policy; }
+    @Override public ConsentPolicy getConsentPolicy() { return consentPolicy; }
 
     @Override
     public boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) {
