@@ -38,8 +38,9 @@ import javax.crypto.spec.DHPublicKeySpec;
  * item locked; only {@code Unlock} on the <em>item</em> path clears it. A client that unlocks just
  * the collection therefore cannot read the secret, exactly as on a real KeePassXC.</p>
  *
- * <p>Only the members the read path touches are implemented, and {@code Item.Delete}. This is a
- * test fixture, not a provider: it does no access control and keeps its secret in a field.</p>
+ * <p>Only the members the read path touches are implemented, and {@code Item.Delete} and
+ * {@code CreateCollection}. This is a test fixture, not a provider: it does no access control and
+ * keeps its secret in a field.</p>
  */
 public final class FakeSecretService {
 
@@ -68,6 +69,7 @@ public final class FakeSecretService {
         Pair<List<DBusPath>, DBusPath> Unlock(List<DBusPath> objects);
         Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects);
         Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes);
+        Pair<DBusPath, DBusPath> CreateCollection(Map<String, Variant<?>> properties, String alias);
     }
 
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
@@ -111,6 +113,21 @@ public final class FakeSecretService {
     /** Paths that {@code Unlock} was called with, in order. */
     public List<String> unlockCalls() {
         return List.copyOf(unlockCalls);
+    }
+
+    /** Labels that {@code CreateCollection} was called with, in order. */
+    public List<String> createCollectionCalls() {
+        return List.copyOf(createCollectionCalls);
+    }
+
+    private final List<String> createCollectionCalls = Collections.synchronizedList(new ArrayList<>());
+
+    /**
+     * Claims another bus name on the fake's connection, as gnome-keyring owns {@code org.gnome.keyring}
+     * on the connection that serves {@code org.freedesktop.secrets}.
+     */
+    public void requestBusName(String name) throws Exception {
+        connection.requestBusName(name);
     }
 
     /** Makes the prompt come back dismissed, as if the user had refused it. */
@@ -292,6 +309,17 @@ public final class FakeSecretService {
             return (itemLocked || collectionLocked)
                     ? new Pair<>(new ArrayList<DBusPath>(), item)
                     : new Pair<>(item, new ArrayList<DBusPath>());
+        }
+
+        @Override
+        public Pair<DBusPath, DBusPath> CreateCollection(Map<String, Variant<?>> properties, String alias) {
+            Variant<?> label = properties.get(Collection.LABEL);
+            createCollectionCalls.add(label == null ? "" : String.valueOf(label.getValue()));
+            // Through a prompt, as a provider without gnome-keyring's password interface creates a
+            // collection: the user sets the password there. The user cancels it here, so nothing is
+            // created; the tests need to see that the request was made, not a new collection.
+            emitCompletedLater(true);
+            return new Pair<>(new DBusPath("/"), new DBusPath(PROMPT_PATH));
         }
 
         @Override

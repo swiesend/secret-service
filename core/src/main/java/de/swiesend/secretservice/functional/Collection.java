@@ -217,48 +217,31 @@ public class Collection implements CollectionInterface {
     }
 
     private Optional<DBusPath> createNewCollection(String label) {
-        DBusPath path = null;
         Map<String, Variant> properties = de.swiesend.secretservice.Collection.createProperties(label);
 
-        if (encryptedCollectionPassword.isEmpty()) {
-            Optional<DBusPath> maybePath = createCollectionWithPrompt(properties);
-            if (maybePath.isPresent()) {
-                path = maybePath.get();
-            } else {
-                return Optional.empty();
+        // Only gnome-keyring's own interface takes a password. Every other provider creates a
+        // collection through its prompt, where the user sets the password.
+        if (encryptedCollectionPassword.isEmpty() || !service.isGnomeKeyringAvailable()) {
+            if (encryptedCollectionPassword.isPresent()) {
+                log.info("The provider is not gnome-keyring and cannot take the collection password; "
+                        + "creating the collection through the provider's prompt.");
             }
-        } else if (service.isGnomeKeyringAvailable()) {
-            Optional<DBusPath> maybePath = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
-            if (maybePath.isPresent()) {
-                path = maybePath.get();
-            }
+            return createCollectionWithPrompt(properties);
         }
 
-        if (path == null) {
-            // Poll for the CollectionCreated signal instead of sleeping a fixed interval and hoping
-            // it arrived: under load the signal can take longer than one DEFAULT_DELAY_MILLIS tick,
-            // which would spuriously report the collection as "not created".
-            awaitUntil(() -> service.getService().getSignalHandler()
-                    .getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS) != null);
-            Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
-            if (signal == null) {
-                log.warn("Collection \"" + label + "\" was not created.");
-                return Optional.empty();
-            }
-
-            DBusPath signalPath = signal.collection;
-            if (signalPath == null || signalPath.getPath() == null) {
-                log.error(String.format("Received bad signal `CollectionCreated` without proper collection path: %s", signal));
-                return Optional.empty();
-            }
-            path = Static.Convert.toObjectPath(signalPath.getPath());
+        Optional<DBusPath> created = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
+        if (created.isPresent()) {
+            return created;
         }
-
-        if (path == null) {
-            log.error("Could not acquire a path for the prompt.");
+        // No reply is not proof of no collection: the reply can time out after gnome-keyring has
+        // created it. Look it up by its label, never by the newest CollectionCreated signal: that
+        // can be any collection that this connection saw created, by this client or another one,
+        // and binding to it would write this collection's items into it and delete it on delete().
+        if (awaitUntil(() -> getCollectionPath(label).isPresent())) {
+            return getCollectionPath(label);
         }
-
-        return Optional.ofNullable(path);
+        log.warn("The collection was not created.");
+        return Optional.empty();
     }
 
     /**
@@ -936,7 +919,9 @@ public class Collection implements CollectionInterface {
 
     private boolean unlock() {
         if (collection != null && collection.isLocked()) {
-            if (encryptedCollectionPassword.isEmpty() || isDefault()) {
+            // The stored password works only through gnome-keyring's own interface. On any other
+            // provider the prompt is the only way to unlock, password or not.
+            if (encryptedCollectionPassword.isEmpty() || isDefault() || !service.isGnomeKeyringAvailable()) {
                 Optional<Pair<List<DBusPath>, DBusPath>> maybeResponse = service.getService().unlock(lockable());
                 if (maybeResponse.isPresent()) {
                     DBusPath promptPath = maybeResponse.get().b;
