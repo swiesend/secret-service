@@ -10,7 +10,7 @@ import java.util.function.Function;
 /**
  * A collection of secret items.
  *
- * <p><b>Item paths are scoped to this collection (changed in 3.0.0).</b> Every method that takes
+ * <p><b>Item paths are scoped to this collection (changed in 4.0.0).</b> Every method that takes
  * an item object path -- {@code getSecret}, {@code withSecret}, {@code getAttributes},
  * {@code getItemLabel}, {@code setItemLabel}, {@code updateItem}, {@code deleteItem},
  * {@code lockItem}, {@code unlockItem}, {@code itemExists} -- refuses a path that does not belong
@@ -89,7 +89,7 @@ public interface CollectionInterface extends AutoCloseable {
      * <p>The default implementation answers {@code Optional.empty()} for every path, which is the
      * safe reading for an implementation that cannot tell.</p>
      *
-     * @since 3.0.0
+     * @since 4.0.0
      */
     default Optional<Boolean> itemExists(String objectPath) {
         return Optional.empty();
@@ -107,7 +107,7 @@ public interface CollectionInterface extends AutoCloseable {
      *       {@code attributes} was null). Nothing may be inferred about the collection's contents.</li>
      * </ul>
      *
-     * <p><b>Changed in 3.0.0, for the no-attributes case only.</b> Passing an empty map used to
+     * <p><b>Changed in 4.0.0, for the no-attributes case only.</b> Passing an empty map used to
      * collapse "no items" to {@code Optional.empty()}; it now returns {@code Optional.of(List.of())}.
      * Code of the form {@code if (getItems(Map.of()).isPresent()) …} previously implied "there are
      * items" and no longer does — such a caller now enters that branch with an empty list.</p>
