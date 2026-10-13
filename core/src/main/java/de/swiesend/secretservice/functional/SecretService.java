@@ -46,6 +46,13 @@ public class SecretService implements ServiceInterface {
         return create(system);
     }
 
+    /**
+     * Create a Secret-Service instance on the given system.
+     *
+     * <p>The service takes the system over: closing the service closes the system, and so does a
+     * {@code create} that finds the service unavailable. To keep a connection open beyond the
+     * service, pass {@link System#wrap}.</p>
+     */
     public static Optional<ServiceInterface> create(Optional<SystemInterface> maybeSystem) {
         if (maybeSystem == null || maybeSystem.isEmpty()) {
             return Optional.empty();

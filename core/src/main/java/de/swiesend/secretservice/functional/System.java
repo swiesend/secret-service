@@ -20,6 +20,7 @@ public class System implements SystemInterface {
 
     private final DBusConnection connection;
     private final boolean ownsConnection;
+    private boolean disconnected = false;
 
     private System(DBusConnection connection, boolean ownsConnection) {
         this.connection = connection;
@@ -27,8 +28,9 @@ public class System implements SystemInterface {
     }
 
     /**
-     * Create a new D-Bus connection owned by this System instance.
-     * The connection will be closed when {@link #close()} is called.
+     * Connect to the session bus. dbus-java shares one connection between every {@code connect()}
+     * in the JVM; {@link #close()} gives up this System's share, once, and the last share closes
+     * the connection.
      *
      * @return a new SystemInterface or {@code Optional.empty()}
      */
@@ -75,6 +77,12 @@ public class System implements SystemInterface {
 
     synchronized public boolean disconnect() {
         if (ownsConnection) {
+            // Once. connect() takes dbus-java's shared connection, which every System.connect() in
+            // the JVM gets and which counts its holders: each close() gives up one share, and the
+            // last share disconnects them all. A second close() here would give up another
+            // holder's share.
+            if (disconnected) return true;
+            disconnected = true;
             try {
                 connection.close();
             } catch (IOException e) {
