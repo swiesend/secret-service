@@ -56,6 +56,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
   - **Reading a secret that throws reports no secret.** An unexpected exception while one secret was read, an `IllegalArgumentException` from a content type as the one above, escaped `getSecret` and `withSecret`, where the functional API reports a failure as an empty result. From `getSecrets` and `withSecrets` it also dropped the secrets decrypted until then, unerased; the item is left out now, as one that cannot be read.
   - **No code in the JVM can change the transport encryption's Diffie-Hellman group.** The key exchange read it from `Static.RFC_2409.SecondOakleyGroup.PRIME` and `GENERATOR`, public arrays that any code could change, weakening every session opened afterwards. It uses a private copy now; the public arrays remain, as copies whose change has no effect.
   - `Static.Utils.isNullOrEmpty(byte[])` is true for an empty array. It tested the array's `toString()`, `[B@...`, which is never empty. `TransportEncryption`'s guard that called it checks for `null` now, so an empty secret is still encrypted, as in every release.
+  - **A closed session or collection is let go.** `SecretService` kept every session it had opened until it closed itself, and a `Session` every collection opened through it, also after their owner had closed them. A long-lived service that opens a session per operation grew without bound. Each now removes itself when it closes.
 
 ## [3.0.0-alpha] - 2026-06-11
 
