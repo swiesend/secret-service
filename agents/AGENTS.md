@@ -101,8 +101,13 @@ module de.swiesend.secretservice {
     exports de.swiesend.secretservice.functional;
     exports de.swiesend.secretservice.functional.interfaces;
     exports de.swiesend.secretservice.gnome.keyring.interfaces;
+    exports de.swiesend.secretservice.handlers;
+    exports de.swiesend.secretservice.simple.interfaces;
 }
 ```
+
+An exported class may extend, implement or return only exported types; `ModuleExportsTest` checks
+it, as `javac -Xlint:exports` would.
 
 ### Key Dependencies
 
