@@ -24,6 +24,9 @@ jobs:
       fail-fast: false
       # collection: the id of the container's throwaway collection. ProviderSystemTest uses
       # that one and no other, so on a developer's desktop it cannot reach a real wallet.
+      # lockable: whether that collection unlocks again without a dialog, so that the tests may
+      # lock it. The KWallet containers' wallet does; KeePassXC's database would need the user.
+      # gnome-keyring's needs no flag: the tests create it, with a password.
       matrix:
         include:
           - provider: gnome-keyring
@@ -32,9 +35,11 @@ jobs:
           - provider: kwallet
             experimental: true
             collection: kdewallet
+            lockable: true
           - provider: kwallet6
             experimental: true
             collection: kdewallet
+            lockable: true
           - provider: keepassxc
             experimental: true
             collection: test
@@ -65,7 +70,8 @@ jobs:
             -v "${{ github.workspace }}":/workspace \
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-${{ matrix.provider }} \
-            mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }}
+            mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }} \
+              -Dsecret-service.system-test.lockable=${{ matrix.lockable || false }}
 
       # The container runs --rm, so anything it left in /tmp is gone by the time the job
       # is read. Surefire reports are collected for every provider; the daemon logs for
