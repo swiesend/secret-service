@@ -46,8 +46,11 @@ public final class FakeSecretService {
     public static final String BUS_NAME = "org.freedesktop.secrets";
     public static final String SERVICE_PATH = "/org/freedesktop/secrets";
     public static final String COLLECTION_PATH = "/org/freedesktop/secrets/collection/fake";
-    /** The client resolves a collection by label, so the Label property must match this. */
-    public static final String COLLECTION_LABEL = "fake";
+    /**
+     * The client resolves a collection by label, so the Label property must match this. It appears
+     * in no object path, so a test can tell from a log whether the label reached it.
+     */
+    public static final String COLLECTION_LABEL = "Fake Keyring";
     public static final String ITEM_PATH = COLLECTION_PATH + "/1";
     public static final String SESSION_PATH = "/org/freedesktop/secrets/session/fake";
     public static final String PROMPT_PATH = "/org/freedesktop/secrets/prompt/fake";
@@ -170,6 +173,14 @@ public final class FakeSecretService {
     private static void log(String message) {
         java.lang.System.err.println(message);
     }
+
+    /** The secret's value as the last {@code GetSecret} sent it: encrypted, as it crossed the bus. */
+    public byte[] lastCiphertext() {
+        byte[] ct = lastCiphertext;
+        return ct == null ? null : ct.clone();
+    }
+
+    private volatile byte[] lastCiphertext;
 
     public boolean isItemLocked() {
         return itemLocked;
@@ -338,6 +349,7 @@ public final class FakeSecretService {
                 Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
                 byte[] ct = c.doFinal(SECRET_VALUE.getBytes(StandardCharsets.UTF_8));
+                lastCiphertext = ct.clone();
                 return new Secret(new DBusPath(SESSION_PATH), iv, ct, "text/plain; charset=utf8");
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);

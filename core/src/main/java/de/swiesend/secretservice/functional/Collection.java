@@ -130,7 +130,7 @@ public class Collection implements CollectionInterface {
 
         Optional<de.swiesend.secretservice.Collection> maybeCollection = c.getOrCreateCollection(label);
         if (maybeCollection.isEmpty()) {
-            log.warn("Could not acquire collection with name {}", label);
+            log.warn("Could not acquire the collection.");
             return Optional.empty();
         }
         c.collection = maybeCollection.get();
@@ -242,7 +242,7 @@ public class Collection implements CollectionInterface {
                     .getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS) != null);
             Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
             if (signal == null) {
-                log.warn("Collection \"" + label + "\" was not created.");
+                log.warn("The collection was not created.");
                 return Optional.empty();
             }
 
@@ -320,7 +320,7 @@ public class Collection implements CollectionInterface {
 
     private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(DBusPath path, String label) {
         if (path == null) {
-            log.error(String.format("Could not acquire collection with label: \"%s\"", label));
+            log.error("Could not acquire the collection: it has no object path.");
             return Optional.empty();
         }
 
@@ -414,7 +414,7 @@ public class Collection implements CollectionInterface {
 
         Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
         if (encrypted == null) {
-            log.error("Could not encrypt secret for item \"{}\".", label);
+            log.error("Could not encrypt the secret for a new item in collection {}.", collection.getObjectPath());
             return Optional.empty();
         }
 
@@ -422,7 +422,7 @@ public class Collection implements CollectionInterface {
             Map<String, Variant> properties = Item.createProperties(label, attributes);
             Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
             if (pair == null || pair.a == null) {
-                log.error("createItem D-Bus call returned no result for label \"{}\".", label);
+                log.error("createItem D-Bus call returned no result in collection {}.", collection.getObjectPath());
                 return Optional.empty();
             }
 
@@ -434,7 +434,7 @@ public class Collection implements CollectionInterface {
             // Prompt required (e.g. KeePassXC per-item unlock)
             de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
             if (completed == null || completed.dismissed) {
-                log.warn("Prompt was dismissed or timed out for item \"{}\".", label);
+                log.warn("Prompt was dismissed or timed out for a new item in collection {}.", collection.getObjectPath());
                 return Optional.empty();
             }
 
@@ -895,7 +895,7 @@ public class Collection implements CollectionInterface {
         }
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
-            log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
+            log.error("D-Bus lock call failed for collection {}", collection.getObjectPath());
             return false;
         }
         Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
@@ -908,7 +908,7 @@ public class Collection implements CollectionInterface {
         boolean promptRequired = requiresPrompt(result.b);
 
         if (lockedImmediately) {
-            log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+            log.info("Locked collection {}", collection.getObjectPath());
             // Daemon acknowledged the lock; poll only so the "Locked" property has time to
             // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
             return awaitUntil(collection::isLocked);
@@ -916,9 +916,8 @@ public class Collection implements CollectionInterface {
         if (promptRequired) {
             // Locking needs a prompt, which the functional layer does not drive here. Don't wait
             // out the timeout for a state that won't change -- report the failure immediately.
-            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
-                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
-                    + "leaving it unlocked.");
+            log.warn("Locking collection {} requires a prompt, which is not performed here; leaving it unlocked.",
+                    collection.getObjectPath());
             return false;
         }
         // Neither locked immediately nor prompted (e.g. a provider that does not support locking
@@ -935,19 +934,20 @@ public class Collection implements CollectionInterface {
                     boolean unlockAccepted = promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent();
                     if (unlockAccepted && !collection.isLocked()) {
                         isUnlockedOnceWithUserPermission = true;
-                        log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                        log.debug("Unlocked collection {}", collection.getObjectPath());
                         return true;
                     }
                 }
             } else if (encryptedCollectionPassword.isPresent() && service.isGnomeKeyringAvailable()) {
                 boolean result = withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());
                 if (result == true) {
-                    log.debug("Unlocked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
+                    log.debug("Unlocked collection {}", collection.getObjectPath());
                 }
                 return result;
             }
+            // Inside the branch: a collection that was not locked was not refused.
+            log.debug("Could not unlock collection {}", collection.getObjectPath());
         }
-        log.debug("Could not unlock collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
         return false;
     }
 
