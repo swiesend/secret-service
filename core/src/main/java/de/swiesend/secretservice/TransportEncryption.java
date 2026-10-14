@@ -63,6 +63,24 @@ public class TransportEncryption implements AutoCloseable {
         return new BigInteger(1, bytes);
     }
 
+    /**
+     * {@code value} as {@link BigInteger#toByteArray()} gives it, signed and most significant byte
+     * first, with zero bytes in front up to {@code length} bytes. Read as unsigned, as the
+     * specification reads a public key, the bytes are the same number. KWallet reads them as
+     * signed, so a value whose top bit is set keeps its sign byte: without it, KWallet takes a
+     * key whose top 9 bits are set, one in 512, for another.
+     */
+    static byte[] toKeyBytes(BigInteger value, int length) {
+        if (value.signum() < 0) {
+            throw new IllegalArgumentException("A public key is not negative.");
+        }
+        byte[] signed = value.toByteArray();
+        if (signed.length >= length) return signed;
+        byte[] padded = new byte[length];
+        System.arraycopy(signed, 0, padded, length - signed.length, signed.length);
+        return padded;
+    }
+
     static private int toBytes(int bits) {
         return bits / 8;
     }
@@ -180,11 +198,14 @@ public class TransportEncryption implements AutoCloseable {
             // The public keys are transferred as an array of bytes representing an unsigned integer of arbitrary size,
             // most-significant byte first (e.g., the integer 32768 is represented as the 2-byte string 0x80 0x00)
             BigInteger ya = ((DHPublicKey) publicKey).getY();
+            // At least the prime's 128 bytes: KWallet refuses a shorter key, and toByteArray()
+            // gives one for a key whose top 9 bits are clear, one in 512.
+            int length = (dhParameters.getP().bitLength() + 7) / 8;
 
             // open session with "Client DH pub key as an array of bytes" without prime or generator
             return service.openSession(
                     Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7,
-                    new Variant<>(ya.toByteArray())
+                    new Variant<>(toKeyBytes(ya, length))
             ).flatMap(pair -> {
                 // transform peer's raw Y to a public key
                 yb = Static.Utils.toByteArray(pair.a.getValue());
