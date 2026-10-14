@@ -4,13 +4,13 @@ set -euo pipefail
 # Bring up the session bus (exports DBUS_SESSION_BUS_ADDRESS, defines wait_for_secrets).
 source /providers/dbus-up.sh
 
-# A virtual display — kwalletd is a desktop-session daemon.
-export DISPLAY=":99"
-Xvfb "$DISPLAY" -screen 0 1024x768x16 >/tmp/xvfb.log 2>&1 &
-sleep 2
+# No X server: nothing here answers a dialog, and with the wallet opened as at a login, kwalletd
+# shows none.
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
+export XDG_RUNTIME_DIR=/tmp/xdg-runtime
+mkdir -p -m 700 "$XDG_RUNTIME_DIR"
 
-# Pre-seed kwalletrc so the default wallet ("kdewallet") is usable without an
-# interactive dialog: blank-password, unencrypted wallet, Secret Service enabled.
+# The default wallet ("kdewallet"), kept open, with the Secret Service API enabled.
 mkdir -p "$HOME/.config"
 cat > "$HOME/.config/kwalletrc" << 'KWALLETRC'
 [Wallet]
@@ -20,37 +20,31 @@ Use One Wallet=true
 Default Wallet=kdewallet
 Prompt on Open=false
 Close When Idle=false
+Close on Screensaver=false
 Leave Open=true
 
 [org.freedesktop.secrets]
 apiEnabled=true
 KWALLETRC
 
-# Start kwalletd5; it registers org.freedesktop.secrets when Secret Service is enabled.
-kwalletd5 >/tmp/kwalletd5.log 2>&1 &
+# kwalletd starts as pam_kwallet starts it at a Plasma login: it creates kdewallet with the login
+# password, an empty one here, and opens it. Opening kdewallet over D-Bus instead brings up the
+# "new wallet" dialog, which nobody answers. It registers org.freedesktop.secrets itself.
+KWALLETD="${KWALLETD:-kwalletd5}"
+KWALLETD_LOG=/tmp/kwalletd.log
+pid="$(python3 /providers/kwallet/kwallet-up.py "$KWALLETD" "$KWALLETD_LOG")"
 
-# Best-effort: create/open the default wallet so a collection is exposed.
-# int open(QString wallet, qlonglong wId, QString appid)
-( dbus-send --session --dest=org.kde.kwalletd5 --type=method_call --print-reply \
-    /modules/kwalletd5 org.kde.KWallet.open \
-    string:kdewallet int64:0 string:secret-service-it \
-    >/dev/null 2>&1 || true ) &
-
-if ! wait_for_secrets 45; then
+if ! wait_for_secrets 45 "$pid"; then
     echo "WARNING: KWallet did not register org.freedesktop.secrets — dumping logs:"
-    cat /tmp/kwalletd5.log || true
+    cat "$KWALLETD_LOG" || true
     exit 1
 fi
 echo "KWallet Secret Service ready (provider: KWallet)"
 
-# Wait for a collection, as the keepassxc entrypoint does, and for the same reason: without one
-# every test in ProviderSystemTest skips through its Assumptions, and the leg passed while it
-# asserted nothing about KWallet. It is continue-on-error in system-tests.yml, so the truth colours
-# one non-blocking job red instead of claiming coverage that does not exist.
-#
-# Headless, kwalletd5 creates no wallet: opening kdewallet above brings up its "new wallet"
-# dialog, which nobody answers under Xvfb. KWALLET_REQUIRE_COLLECTION=false keeps the container
-# usable for debugging.
+# Wait for the collection, as the keepassxc entrypoint does, and for the same reason: without one
+# every test in ProviderSystemTest skips through its Assumptions, and the leg would pass while it
+# asserted nothing about KWallet. KWALLET_REQUIRE_COLLECTION=false keeps the container usable for
+# debugging.
 REQUIRE_COLLECTION="${KWALLET_REQUIRE_COLLECTION:-true}"
 collections=""
 for _ in $(seq 1 15); do
@@ -65,8 +59,8 @@ if [ -n "$collections" ]; then
     echo "Exposed collections:"
     echo "$collections"
 else
-    echo "KWallet exposes no collection, so every test would skip. kwalletd5.log:"
-    cat /tmp/kwalletd5.log || true
+    echo "KWallet exposes no collection, so every test would skip. ${KWALLETD} log:"
+    cat "$KWALLETD_LOG" || true
     if [ "$REQUIRE_COLLECTION" != "false" ]; then
         echo "Refusing to report a pass for a run that asserts nothing."
         echo "Set KWALLET_REQUIRE_COLLECTION=false to continue anyway (debugging)."
