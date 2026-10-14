@@ -54,6 +54,32 @@ class UpdateItemTest {
     }
 
     @Test
+    void aNewSecretIsNotSentToALockedItem() throws Exception {
+        // The fake accepts a secret for a locked item and keeps nothing of it, as KWallet does.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.lockCollection();
+        fake.setRefuseCollectionUnlock(true);
+
+        assertFalse(collection.updateItem(FakeSecretService.ITEM_PATH, null, "new-secret", null),
+                "a secret for a locked item is not reported as set");
+        assertEquals(0, fake.setSecretCalls(), "nor is it sent");
+    }
+
+    @Test
+    void theLabelOfALockedItemIsStillSent() throws Exception {
+        // The counterpart of the test above: only the secret is held back. KWallet keeps a label
+        // that it gets for a locked item, as through setItemLabel.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.lockCollection();
+        fake.setRefuseCollectionUnlock(true);
+
+        assertTrue(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", null, null));
+        assertEquals(List.of("Label"), fake.itemPropertySets());
+    }
+
+    @Test
     void anEmptySecretIsRefused() throws Exception {
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();

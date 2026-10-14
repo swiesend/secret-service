@@ -210,7 +210,8 @@ public interface CollectionInterface extends AutoCloseable {
      * @param objectPath the item's object path
      * @param label      the new label, or {@code null}
      * @param password   the new secret, or {@code null}; an empty one is refused, as by
-     *                   {@link #createItem(String, CharSequence, Map)}
+     *                   {@link #createItem(String, CharSequence, Map)}, and none is set for a
+     *                   locked item
      * @param attributes the attributes that replace the item's, or {@code null}
      * @return whether every part that was given has been changed
      */
