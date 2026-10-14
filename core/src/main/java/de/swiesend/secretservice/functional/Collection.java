@@ -853,19 +853,27 @@ public class Collection implements CollectionInterface {
      */
     private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
-        unlock();
-        if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
+        try {
+            unlock();
+            if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
 
-        return getItem(objectPath)
-                .flatMap(item -> {
-                    DBusPath sessionPath = session.getSession().getPath();
-                    return item.getSecret(sessionPath);
-                })
-                .flatMap(secret -> {
-                    try (secret) {
-                        return session.getEncryptedSession().decrypt(secret);
-                    }
-                });
+            return getItem(objectPath)
+                    .flatMap(item -> {
+                        DBusPath sessionPath = session.getSession().getPath();
+                        return item.getSecret(sessionPath);
+                    })
+                    .flatMap(secret -> {
+                        try (secret) {
+                            return session.getEncryptedSession().decrypt(secret);
+                        }
+                    });
+        } catch (RuntimeException e) {
+            // A reply that the code above does not expect. An empty result, as for any secret that
+            // cannot be read: getSecrets() then skips this item, and does not drop the secrets it
+            // has decrypted already, which nothing would erase.
+            log.error("Could not read the secret of item {}", objectPath, e);
+            return Optional.empty();
+        }
     }
 
     @Override
