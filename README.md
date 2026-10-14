@@ -69,20 +69,25 @@ The library provides two API layers, both using transport-encrypted secrets over
 
 ### Dependency
 
-Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version. The current version requires at least _JDK 17_.
+Add the `secret-service` as dependency to your project. The current version requires at least _JDK 17_.
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
     <version>3.0.0-beta</version>
-    <exclusions>
-        <exclusion>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </exclusion>
-    </exclusions>
 </dependency>
+```
+
+The library logs through `slf4j-api`, which it brings along. Exclude it only when your project depends on `slf4j-api` itself, in a version that conflicts; without one, the library fails with `NoClassDefFoundError`, and on the module path its `requires org.slf4j` does not resolve:
+
+```xml
+<exclusions>
+    <exclusion>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+    </exclusion>
+</exclusions>
 ```
 
 ### Functional API (Recommended)
