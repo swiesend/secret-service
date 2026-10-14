@@ -344,7 +344,8 @@ public class Collection implements CollectionInterface {
         return Optional.ofNullable(path);
     }
 
-    private boolean isDefault() {
+    @Override
+    public boolean isDefault() {
         if (connection != null && connection.isConnected()) {
             // gnome-keyring's login and session collections, and the alias path itself.
             List<String> defaults = Arrays.asList(null, "login", "session", "default");

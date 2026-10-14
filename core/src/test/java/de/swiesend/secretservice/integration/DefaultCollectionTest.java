@@ -42,6 +42,7 @@ class DefaultCollectionTest {
         CollectionInterface collection = harness.start(false);
         harness.fake().setDefaultAlias(FakeSecretService.COLLECTION_PATH);
 
+        assertTrue(collection.isDefault());
         assertFalse(collection.delete(), "the provider's default collection is not deleted");
         assertEquals(0, harness.fake().collectionDeleteCalls(), "nor is its deletion requested");
     }
@@ -51,6 +52,7 @@ class DefaultCollectionTest {
         // The counterpart of the test above: the refusal there is the default check's.
         CollectionInterface collection = harness.start(false);
 
+        assertFalse(collection.isDefault());
         assertTrue(collection.delete());
         assertEquals(1, harness.fake().collectionDeleteCalls());
     }

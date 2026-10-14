@@ -406,11 +406,16 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
     /**
      * Delete this collection.
+     *
+     * @throws SecurityException if it is a default collection, or the user or the provider refused.
      */
     @Override
     public void delete() throws SecurityException {
-        if (!delegate.delete()) {
+        if (delegate.isDefault()) {
             throw new SecurityException("Default collections may not be deleted with the simple API.");
+        }
+        if (!delegate.delete()) {
+            throw new SecurityException("The collection was not deleted. The user may have dismissed the prompt, or the provider refused.");
         }
     }
 
