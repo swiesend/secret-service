@@ -75,7 +75,11 @@ public class Collection implements CollectionInterface {
         if (!c.init(maybeSession)) {
             return Optional.empty();
         }
-        c.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
+        // The collection the alias points to, not the alias: getId() names it then, and the
+        // signals the provider emits from the collection's own path reach it. The alias itself
+        // where the provider names no default collection.
+        c.path = c.defaultCollectionPath()
+                .orElseGet(() -> Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION));
         c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
         c.label = c.collection.getLabel();
         c.id = c.collection.getId();
@@ -342,12 +346,24 @@ public class Collection implements CollectionInterface {
 
     private boolean isDefault() {
         if (connection != null && connection.isConnected()) {
+            // gnome-keyring's login and session collections, and the alias path itself.
             List<String> defaults = Arrays.asList(null, "login", "session", "default");
-            return defaults.contains(collection.getId());
+            if (defaults.contains(collection.getId())) return true;
+            // On every provider, the collection the default alias points to, which is how KWallet
+            // and KeePassXC name their default.
+            return defaultCollectionPath()
+                    .map(path -> path.getPath().equals(collection.getObjectPath()))
+                    .orElse(false);
         } else {
             log.error("No D-Bus connection: Cannot check if the collection is the default collection.");
             return false;
         }
+    }
+
+    /** The collection that the "default" alias points to, unless the provider names none. */
+    private Optional<DBusPath> defaultCollectionPath() {
+        return service.getService().readAlias("default")
+                .filter(path -> path.getPath() != null && !"/".equals(path.getPath()));
     }
 
     private Optional<DBusPath> performPrompt(DBusPath path) {

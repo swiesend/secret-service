@@ -69,6 +69,11 @@ final class FakeProviderFixture {
         return clientConnection;
     }
 
+    /** The service that {@link #start} opened, for a test that opens another session through it. */
+    ServiceInterface service() {
+        return service;
+    }
+
     /**
      * Starts the bus and the fake provider, and opens the fake collection through the library.
      *

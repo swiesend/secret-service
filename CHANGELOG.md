@@ -46,6 +46,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
   - `search()` returns an unmodifiable list for an empty query too, as its javadoc promises. The empty query matches every item, and that list could be changed by the caller.
   - `updateItem` reports a refused label or attribute change. It returned whether the secret was set and ignored the other two, so a caller could not tell that the provider had kept the old label.
   - **`updateItem` without a new secret changes the label and the attributes again**, as in 1.x and 2.x: a `null` password keeps the secret, as a `null` label or attributes map keeps those. Since 3.0.0-alpha it refused the whole call, and `SimpleCollection.updateItem`, which reports nothing, silently left the item unchanged. An empty password is still refused.
+  - **The default collection is recognised on every provider.** It is the collection that the provider's `default` alias points to; the library knew only gnome-keyring's ids for it, `login` and `session`. So `delete()` deleted KWallet's default wallet, or the database KeePassXC names as its default, where it refuses to delete gnome-keyring's. `openDefault()` opens the collection the alias points to rather than the alias, so `getId()` names that collection instead of answering `default`.
 
 ## [3.0.0-alpha] - 2026-06-11
 

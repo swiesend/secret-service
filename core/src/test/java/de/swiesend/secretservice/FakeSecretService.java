@@ -39,9 +39,9 @@ import javax.crypto.spec.DHPublicKeySpec;
  * the collection therefore cannot read the secret, exactly as on a real KeePassXC.</p>
  *
  * <p>Only the members the read path touches are implemented, and {@code Item.Delete},
- * {@code Item.SetSecret}, setting the item's properties, {@code CreateCollection} and
- * {@code CreateItem}. This is a test fixture, not a provider: it does no access control and keeps
- * its secret in a field.</p>
+ * {@code Item.SetSecret}, setting the item's properties, {@code Collection.Delete},
+ * {@code ReadAlias}, {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a
+ * provider: it does no access control and keeps its secret in a field.</p>
  */
 public final class FakeSecretService {
 
@@ -71,12 +71,14 @@ public final class FakeSecretService {
         Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects);
         Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes);
         Pair<DBusPath, DBusPath> CreateCollection(Map<String, Variant<?>> properties, String alias);
+        DBusPath ReadAlias(String name);
     }
 
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
         Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace);
+        DBusPath Delete();
     }
 
     @DBusInterfaceName(Static.Interfaces.ITEM)
@@ -257,6 +259,20 @@ public final class FakeSecretService {
         return setSecretCalls.get();
     }
 
+    /**
+     * Points the {@code default} alias at {@code path}, as a provider names its default collection.
+     * Without it, {@code ReadAlias} answers "/", for no such collection.
+     */
+    public void setDefaultAlias(String path) { this.defaultAlias = path; }
+    private volatile String defaultAlias;
+
+    /** How often {@code Delete} was called on the collection. */
+    public int collectionDeleteCalls() {
+        return collectionDeleteCalls.get();
+    }
+
+    private final java.util.concurrent.atomic.AtomicInteger collectionDeleteCalls = new java.util.concurrent.atomic.AtomicInteger();
+
     private final java.util.concurrent.atomic.AtomicInteger setSecretCalls = new java.util.concurrent.atomic.AtomicInteger();
 
     public void export() throws Exception {
@@ -400,6 +416,12 @@ public final class FakeSecretService {
         }
 
         @Override
+        public DBusPath ReadAlias(String name) {
+            String target = "default".equals(name) ? defaultAlias : null;
+            return new DBusPath(target == null ? "/" : target);
+        }
+
+        @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             if ("Collections".equals(property)) {
@@ -429,6 +451,13 @@ public final class FakeSecretService {
             pendingApproval = () -> { };
             pendingResult = new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o");
             return new Pair<>(new DBusPath("/"), new DBusPath(PROMPT_PATH));
+        }
+
+        @Override
+        public DBusPath Delete() {
+            // Counted, not carried out: the collection and its item stay for the rest of the test.
+            collectionDeleteCalls.incrementAndGet();
+            return new DBusPath("/");
         }
 
         @Override
