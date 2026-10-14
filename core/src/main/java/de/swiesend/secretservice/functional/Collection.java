@@ -626,7 +626,7 @@ public class Collection implements CollectionInterface {
         Optional<List<String>> maybeAll = getItems(Map.of());
         if (maybeAll.isEmpty()) return List.of();
         List<String> all = maybeAll.get();
-        if (query.isEmpty()) return all;
+        if (query.isEmpty()) return java.util.Collections.unmodifiableList(all);
         String lq = query.toLowerCase(java.util.Locale.ROOT);
         List<String> matched = new ArrayList<>();
         for (String path : all) {
@@ -644,7 +644,7 @@ public class Collection implements CollectionInterface {
         Optional<List<String>> maybeAll = getItems(Map.of());
         if (maybeAll.isEmpty()) return List.of();
         List<String> all = maybeAll.get();
-        if (query.isEmpty()) return all;
+        if (query.isEmpty()) return java.util.Collections.unmodifiableList(all);
         String lq = query.toLowerCase(java.util.Locale.ROOT);
         List<String> matched = new ArrayList<>();
         for (String path : all) {
