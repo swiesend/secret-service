@@ -26,6 +26,12 @@ public class TransportEncryption implements AutoCloseable {
 
     public static final int PRIVATE_VALUE_BITS = 1024;
     public static final int AES_BITS = 128;
+    /**
+     * The most sessions, the first included, that a key exchange takes to get a shared secret whose
+     * top byte is not zero; see {@link OpenedSession#generateSessionKey()}. The last one is kept
+     * either way: four such secrets in a row come once in 2^32.
+     */
+    private static final int SESSION_ATTEMPTS = 4;
     private static final Logger log = LoggerFactory.getLogger(TransportEncryption.class);
     private de.swiesend.secretservice.Service service;
     private DHParameterSpec dhParameters = null;
@@ -226,14 +232,19 @@ public class TransportEncryption implements AutoCloseable {
             byte[] pseudoRandomKey = null;
             byte[] keyingMaterial = null;
             try {
-                DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(fromBinary(yb), dhParameters.getP(), dhParameters.getG());
-                KeyFactory keyFactory = KeyFactory.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
-                DHPublicKey peerPublicKey = (DHPublicKey) keyFactory.generatePublic(dhPublicKeySpec);
-
-                KeyAgreement keyAgreement = KeyAgreement.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
-                keyAgreement.init(privateKey);
-                keyAgreement.doPhase(peerPublicKey, true);
-                rawSessionKey = keyAgreement.generateSecret();
+                rawSessionKey = agree();
+                // Providers hash a shared secret whose top byte is zero in two ways: gnome-keyring
+                // and KeePassXC hash all of its 128 bytes, as libsecret does, and KWallet hashes it
+                // without the zero (OpenSSL's DH_compute_key). So in such a session, about one in
+                // 256, KWallet's key would be another than this one. No provider tells how it
+                // hashes, so another session replaces such a session on every provider.
+                for (int attempt = 1; rawSessionKey[0] == 0 && attempt < SESSION_ATTEMPTS; attempt++) {
+                    log.debug("Replacing session {}: providers derive different keys from its shared secret.", session.getPath());
+                    Secret.clear(rawSessionKey);
+                    rawSessionKey = null;
+                    if (!reopen()) return Optional.empty();
+                    rawSessionKey = agree();
+                }
 
                 // HKDF digest into a 128-bit key by extract and expand with "NULL salt and empty info"
                 // see: https://standards.freedesktop.org/secret-service/0.2/ch07s03.html
@@ -256,6 +267,25 @@ public class TransportEncryption implements AutoCloseable {
             }
         }
 
+        /** The session's Diffie-Hellman shared secret, in the prime's 128 bytes. */
+        private byte[] agree() throws NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
+            DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(fromBinary(yb), dhParameters.getP(), dhParameters.getG());
+            KeyFactory keyFactory = KeyFactory.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
+            DHPublicKey peerPublicKey = (DHPublicKey) keyFactory.generatePublic(dhPublicKeySpec);
+
+            KeyAgreement keyAgreement = KeyAgreement.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
+            keyAgreement.init(privateKey);
+            keyAgreement.doPhase(peerPublicKey, true);
+            return keyAgreement.generateSecret();
+        }
+    }
+
+    /** Closes the session, and opens another with a key pair of its own. */
+    private boolean reopen() {
+        session.close();
+        session = null;
+        yb = null;
+        return initialize().flatMap(InitializedSession::openSession).isPresent();
     }
 
     public class EncryptedSession {

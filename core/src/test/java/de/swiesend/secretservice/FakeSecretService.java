@@ -333,6 +333,35 @@ public final class FakeSecretService {
 
     private final java.util.concurrent.atomic.AtomicInteger lockedItemReads = new java.util.concurrent.atomic.AtomicInteger();
 
+    /**
+     * Hashes a session's shared secret without its leading zero bytes, as KWallet does (OpenSSL's
+     * {@code DH_compute_key}). gnome-keyring and KeePassXC hash all of its 128 bytes.
+     */
+    public void setHashSecretsWithoutLeadingZeros(boolean withoutZeros) { this.hashWithoutLeadingZeros = withoutZeros; }
+    private volatile boolean hashWithoutLeadingZeros;
+
+    /**
+     * Gives the next {@code count} sessions a shared secret whose top byte is zero, and every other
+     * session one whose top byte is not, so that a test knows how many sessions the library opens:
+     * it replaces a session of the first kind.
+     */
+    public void setZeroTopByteSecrets(int count) { this.zeroTopByteSecrets = count; }
+    private volatile int zeroTopByteSecrets;
+
+    /** How often {@code OpenSession} was called. */
+    public int openSessionCalls() {
+        return openSessionCalls.get();
+    }
+
+    private final java.util.concurrent.atomic.AtomicInteger openSessionCalls = new java.util.concurrent.atomic.AtomicInteger();
+
+    /** How often {@code Close} was called on a session. */
+    public int closeSessionCalls() {
+        return closeSessionCalls.get();
+    }
+
+    private final java.util.concurrent.atomic.AtomicInteger closeSessionCalls = new java.util.concurrent.atomic.AtomicInteger();
+
     /** How often {@code Delete} was called on the collection. */
     public int collectionDeleteCalls() {
         return collectionDeleteCalls.get();
@@ -360,21 +389,31 @@ public final class FakeSecretService {
             // with a null salt and empty info, AES-128. The client cannot negotiate a plain session,
             // so the fake has to do the real exchange.
             try {
+                openSessionCalls.incrementAndGet();
                 byte[] clientY = Static.Utils.toByteArray(input.getValue());
                 DHParameterSpec params = new DHParameterSpec(SECOND_OAKLEY_GROUP_PRIME, BigInteger.valueOf(2), 1024);
 
                 KeyPairGenerator gen = KeyPairGenerator.getInstance("DiffieHellman");
                 gen.initialize(params);
-                KeyPair ours = gen.generateKeyPair();
 
                 DHPublicKey theirs = (DHPublicKey) KeyFactory.getInstance("DiffieHellman")
                         .generatePublic(new DHPublicKeySpec(
                                 new BigInteger(1, clientY), params.getP(), params.getG()));
 
-                KeyAgreement ka = KeyAgreement.getInstance("DiffieHellman");
-                ka.init(ours.getPrivate());
-                ka.doPhase(theirs, true);
-                sessionKey = hkdfSha256To128(ka.generateSecret());
+                // Drawn again until the shared secret's top byte is zero or not, as the session
+                // should have it.
+                boolean zeroTopByte = zeroTopByteSecrets > 0;
+                if (zeroTopByte) zeroTopByteSecrets--;
+                KeyPair ours;
+                byte[] shared;
+                do {
+                    ours = gen.generateKeyPair();
+                    KeyAgreement ka = KeyAgreement.getInstance("DiffieHellman");
+                    ka.init(ours.getPrivate());
+                    ka.doPhase(theirs, true);
+                    shared = ka.generateSecret();
+                } while ((shared[0] == 0) != zeroTopByte);
+                sessionKey = hkdfSha256To128(hashWithoutLeadingZeros ? withoutLeadingZeros(shared) : shared);
 
                 BigInteger ourY = ((DHPublicKey) ours.getPublic()).getY();
                 return new Pair<>(new Variant<>(ourY.toByteArray()), new DBusPath(SESSION_PATH));
@@ -605,7 +644,7 @@ public final class FakeSecretService {
     }
 
     private final class SessionImpl implements WireSession {
-        @Override public void Close() { }
+        @Override public void Close() { closeSessionCalls.incrementAndGet(); }
         @Override public String getObjectPath() { return SESSION_PATH; }
         @Override public boolean isRemote() { return false; }
     }
@@ -645,6 +684,13 @@ public final class FakeSecretService {
         t.setDaemon(true);
         promptThread = t;
         t.start();
+    }
+
+    /** {@code bytes} without their leading zero bytes. */
+    private static byte[] withoutLeadingZeros(byte[] bytes) {
+        int start = 0;
+        while (start < bytes.length - 1 && bytes[start] == 0) start++;
+        return java.util.Arrays.copyOfRange(bytes, start, bytes.length);
     }
 
     /** HKDF-SHA256 extract(null salt) + expand(empty info) to 128 bits, as the spec requires. */
