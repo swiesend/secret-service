@@ -135,6 +135,30 @@ public class SimpleCollectionTest {
     }
 
     @Test
+    public void getItemsReturnsNullWhenNothingMatches() throws IOException {
+        // Callers written against 1.x branch on null: `if (items == null) createItem(...)`, else
+        // read items.get(0). An empty list sends them to get(0).
+        SimpleCollection collection = new SimpleCollection("test", "test");
+        try {
+            assertNull(collection.getItems(Map.of("uuid", UUID.randomUUID().toString())),
+                    "no item matches, which the 1.x contract reports as null");
+        } finally {
+            collection.delete();
+        }
+    }
+
+    @Test
+    public void deleteItemsWithAnEmptyListDoesNothing() throws IOException {
+        SimpleCollection collection = new SimpleCollection("test", "test");
+        try {
+            assertDoesNotThrow(() -> collection.deleteItems(List.of()),
+                    "an empty list has nothing to delete, which 1.x did not report as an error");
+        } finally {
+            collection.delete();
+        }
+    }
+
+    @Test
     @Disabled
     public void getPasswordFromDefaultCollection() throws IOException {
         // before

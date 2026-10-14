@@ -135,14 +135,13 @@ try (ServiceInterface service = SecretService.create()
     // Hash a secret without exposing it — only the hash escapes the callback.
     MessageDigest md = MessageDigest.getInstance("SHA-256");
     Optional<byte[]> hash = collection.withSecret(item, secret -> {
-        ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(secret));
-        byte[] bytes = new byte[encoded.remaining()];
-        encoded.get(bytes);
+        // Secret.toBytes leaves no copy behind. StandardCharsets.UTF_8.encode can: for a secret
+        // that is not plain ASCII it outgrows its first buffer and drops it without erasing it.
+        byte[] bytes = Secret.toBytes(secret);
         try {
             return md.digest(bytes);
         } finally {
             Arrays.fill(bytes, (byte) 0);
-            if (encoded.hasArray()) Arrays.fill(encoded.array(), (byte) 0);
         }
     });
 

@@ -40,6 +40,23 @@ public class StaticTest {
         assertTrue(Utils.isNullOrEmpty(blankCharSeq));
         CharSequence nonEmptyCharSeq = "not empty";
         assertFalse(Utils.isNullOrEmpty(nonEmptyCharSeq));
+        assertTrue(Utils.isNullOrEmpty((CharSequence) "\t\n \u0000"), "blank, as trim() sees it");
+        assertFalse(Utils.isNullOrEmpty((CharSequence) " x "));
+    }
+
+    @Test
+    public void isNullOrEmptyCharSeqMakesNoStringOfIt() {
+        // A secret that is no String, as a caller can pass one that it erases afterwards. A String
+        // made from it would be a copy that nothing can erase.
+        CharSequence secret = new CharSequence() {
+            private final char[] chars = "s3cr3t".toCharArray();
+
+            @Override public int length() { return chars.length; }
+            @Override public char charAt(int index) { return chars[index]; }
+            @Override public CharSequence subSequence(int start, int end) { throw new AssertionError("copied"); }
+            @Override public String toString() { throw new AssertionError("copied into a String"); }
+        };
+        assertFalse(Utils.isNullOrEmpty(secret));
     }
 
     @Test

@@ -37,7 +37,7 @@ public class Collection implements CollectionInterface {
     private Optional<String> label = Optional.empty();
     private String id = null;
     private Optional<Secret> encryptedCollectionPassword = Optional.empty();
-    private Prompt prompt = null;
+    Prompt prompt = null;
     private InternalUnsupportedGuiltRiddenInterface withoutPrompt = null;
 
     private DBusPath path = null;
@@ -131,6 +131,7 @@ public class Collection implements CollectionInterface {
         Optional<de.swiesend.secretservice.Collection> maybeCollection = c.getOrCreateCollection(label);
         if (maybeCollection.isEmpty()) {
             log.warn("Could not acquire collection with name {}", label);
+            c.closeAfterFailedOpen();
             return Optional.empty();
         }
         c.collection = maybeCollection.get();
@@ -167,7 +168,20 @@ public class Collection implements CollectionInterface {
             return Optional.of(c);
         } catch (Exception e) {
             log.error("Could not open collection by id {}: {}", id, e.getMessage());
+            c.closeAfterFailedOpen();
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Releases what {@link #init} and the failed open acquired: the signal handlers, the encrypted
+     * password, and the service when init() created it.
+     */
+    private void closeAfterFailedOpen() {
+        try {
+            close();
+        } catch (Exception e) {
+            log.warn("Could not release the collection after a failed open.", e);
         }
     }
 
@@ -217,48 +231,31 @@ public class Collection implements CollectionInterface {
     }
 
     private Optional<DBusPath> createNewCollection(String label) {
-        DBusPath path = null;
         Map<String, Variant> properties = de.swiesend.secretservice.Collection.createProperties(label);
 
-        if (encryptedCollectionPassword.isEmpty()) {
-            Optional<DBusPath> maybePath = createCollectionWithPrompt(properties);
-            if (maybePath.isPresent()) {
-                path = maybePath.get();
-            } else {
-                return Optional.empty();
+        // Only gnome-keyring's own interface takes a password. Every other provider creates a
+        // collection through its prompt, where the user sets the password.
+        if (encryptedCollectionPassword.isEmpty() || !service.isGnomeKeyringAvailable()) {
+            if (encryptedCollectionPassword.isPresent()) {
+                log.info("The provider is not gnome-keyring and cannot take the collection password; "
+                        + "creating the collection through the provider's prompt.");
             }
-        } else if (service.isGnomeKeyringAvailable()) {
-            Optional<DBusPath> maybePath = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
-            if (maybePath.isPresent()) {
-                path = maybePath.get();
-            }
+            return createCollectionWithPrompt(properties);
         }
 
-        if (path == null) {
-            // Poll for the CollectionCreated signal instead of sleeping a fixed interval and hoping
-            // it arrived: under load the signal can take longer than one DEFAULT_DELAY_MILLIS tick,
-            // which would spuriously report the collection as "not created".
-            awaitUntil(() -> service.getService().getSignalHandler()
-                    .getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS) != null);
-            Service.CollectionCreated signal = service.getService().getSignalHandler().getLastHandledSignal(Service.CollectionCreated.class, Static.ObjectPaths.SECRETS);
-            if (signal == null) {
-                log.warn("Collection \"" + label + "\" was not created.");
-                return Optional.empty();
-            }
-
-            DBusPath signalPath = signal.collection;
-            if (signalPath == null || signalPath.getPath() == null) {
-                log.error(String.format("Received bad signal `CollectionCreated` without proper collection path: %s", signal));
-                return Optional.empty();
-            }
-            path = Static.Convert.toObjectPath(signalPath.getPath());
+        Optional<DBusPath> created = withoutPrompt.createWithMasterPassword(properties, encryptedCollectionPassword.get());
+        if (created.isPresent()) {
+            return created;
         }
-
-        if (path == null) {
-            log.error("Could not acquire a path for the prompt.");
+        // No reply is not proof of no collection: the reply can time out after gnome-keyring has
+        // created it. Look it up by its label, never by the newest CollectionCreated signal: that
+        // can be any collection that this connection saw created, by this client or another one,
+        // and binding to it would write this collection's items into it and delete it on delete().
+        if (awaitUntil(() -> getCollectionPath(label).isPresent())) {
+            return getCollectionPath(label);
         }
-
-        return Optional.ofNullable(path);
+        log.warn("The collection was not created.");
+        return Optional.empty();
     }
 
     /**
@@ -411,6 +408,12 @@ public class Collection implements CollectionInterface {
         }
 
         unlock();
+        // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
+        // prompting is disabled. CreateItem on it would bring up the same dialog a second time.
+        if (collection.isLocked()) {
+            log.info("The collection stayed locked, so the item is not created.");
+            return Optional.empty();
+        }
 
         Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
         if (encrypted == null) {
@@ -432,7 +435,19 @@ public class Collection implements CollectionInterface {
             }
 
             // Prompt required (e.g. KeePassXC per-item unlock)
-            de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
+            if (!requiresPrompt(pair.b)) {
+                // Neither an item nor a prompt, which the specification does not allow. Awaiting "/"
+                // would hand back the result of whichever prompt completed last.
+                log.error("createItem returned neither an item nor a prompt.");
+                return Optional.empty();
+            }
+            if (!isPrompting) {
+                log.debug("Creating the item needs a prompt, and prompting is disabled; dismissing it.");
+                dismissPrompt(pair.b);
+                return Optional.empty();
+            }
+            de.swiesend.secretservice.interfaces.Prompt.Completed completed =
+                    prompt.await(pair.b, service.getTimeout());
             if (completed == null || completed.dismissed) {
                 log.warn("Prompt was dismissed or timed out for item \"{}\".", label);
                 return Optional.empty();
@@ -518,7 +533,11 @@ public class Collection implements CollectionInterface {
         }
 
         unlockWithUserPermission();
+        return deleteItemAsked(objectPath);
+    }
 
+    /** Deletes the item after {@link #unlockWithUserPermission()} has been asked. */
+    private boolean deleteItemAsked(String objectPath) {
         // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
         // prompting is disabled. KWallet answers Delete on a closed wallet with "/" and deletes
         // nothing, which the check below would report as done.
@@ -556,12 +575,17 @@ public class Collection implements CollectionInterface {
             log.error("Cannot delete unspecified items.");
             return false;
         }
+        // Asked once for all of them: deleteItem() would ask again for every item.
         unlockWithUserPermission();
+        if (collection.isLocked()) {
+            log.info("The collection stayed locked, so no item is deleted.");
+            return false;
+        }
 
         boolean allDeleted = true;
 
         for (String item : objectPaths) {
-            boolean success = deleteItem(item);
+            boolean success = !Static.Utils.isNullOrEmpty(item) && deleteItemAsked(item);
             if (!success) {
                 allDeleted = false;
             }
@@ -631,12 +655,22 @@ public class Collection implements CollectionInterface {
 
     // ── Search helpers ─────────────────────────────────────────────
 
+    // Without unlock(): search() has asked once, through getItems(). The public getItemLabel() and
+    // getAttributes() unlock first, and after a refused unlock that is one more dialog per item.
+    private Optional<String> itemLabel(String path) {
+        return getItem(path).flatMap(item -> item.getLabel());
+    }
+
+    private Optional<Map<String, String>> itemAttributes(String path) {
+        return getItem(path).flatMap(item -> item.getAttributes());
+    }
+
     private boolean matchesSubstring(String path, String lq, SearchMode mode) {
         return switch (mode) {
-            case BY_NAME -> getItemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT).contains(lq);
-            case BY_ATTRIBUTE_KEY -> getAttributes(path).orElse(Map.of()).keySet()
+            case BY_NAME -> itemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT).contains(lq);
+            case BY_ATTRIBUTE_KEY -> itemAttributes(path).orElse(Map.of()).keySet()
                     .stream().anyMatch(k -> k.toLowerCase(java.util.Locale.ROOT).contains(lq));
-            case BY_ATTRIBUTE_VALUE -> getAttributes(path).orElse(Map.of()).values()
+            case BY_ATTRIBUTE_VALUE -> itemAttributes(path).orElse(Map.of()).values()
                     .stream().anyMatch(v -> v.toLowerCase(java.util.Locale.ROOT).contains(lq));
             case BY_OBJECT_ID -> {
                 String id = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
@@ -649,12 +683,12 @@ public class Collection implements CollectionInterface {
     private boolean matchesFuzzy(String path, String lq, SearchMode mode, int maxDistance) {
         return switch (mode) {
             case BY_NAME -> {
-                String candidate = getItemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT);
+                String candidate = itemLabel(path).orElse("").toLowerCase(java.util.Locale.ROOT);
                 yield Static.Utils.minSubstringDistance(candidate, lq) <= maxDistance;
             }
-            case BY_ATTRIBUTE_KEY -> getAttributes(path).orElse(Map.of()).keySet().stream()
+            case BY_ATTRIBUTE_KEY -> itemAttributes(path).orElse(Map.of()).keySet().stream()
                     .anyMatch(k -> Static.Utils.minSubstringDistance(k.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance);
-            case BY_ATTRIBUTE_VALUE -> getAttributes(path).orElse(Map.of()).values().stream()
+            case BY_ATTRIBUTE_VALUE -> itemAttributes(path).orElse(Map.of()).values().stream()
                     .anyMatch(v -> Static.Utils.minSubstringDistance(v.toLowerCase(java.util.Locale.ROOT), lq) <= maxDistance);
             case BY_OBJECT_ID -> {
                 String id = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
@@ -897,14 +931,24 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean lock() {
-        if (collection == null || collection.isLocked()) {
-            // Nothing to do: no collection, or it is already locked.
-            return collection != null && collection.isLocked();
-        }
+        return lock(true) == Locking.LOCKED;
+    }
+
+    private enum Locking { LOCKED, NEEDS_A_PROMPT, FAILED }
+
+    /**
+     * @param withPrompt whether to carry out a lock that the provider puts behind a prompt. When
+     *                   false, or when prompting is disabled, the prompt is dismissed instead and the
+     *                   collection stays unlocked.
+     */
+    private Locking lock(boolean withPrompt) {
+        if (collection == null) return Locking.FAILED;
+        // Nothing to do: it is already locked.
+        if (collection.isLocked()) return Locking.LOCKED;
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
             log.error("D-Bus lock call failed for collection: \"" + collection.getLabel().orElse("?") + "\"");
-            return false;
+            return Locking.FAILED;
         }
         Pair<List<DBusPath>, DBusPath> result = maybeResult.get();
 
@@ -919,24 +963,33 @@ public class Collection implements CollectionInterface {
             log.info("Locked collection: \"" + collection.getLabel().orElse("?") + "\" (" + collection.getObjectPath() + ")");
             // Daemon acknowledged the lock; poll only so the "Locked" property has time to
             // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
-            return awaitUntil(collection::isLocked);
+            return awaitUntil(collection::isLocked) ? Locking.LOCKED : Locking.FAILED;
         }
         if (promptRequired) {
-            // Locking needs a prompt, which the functional layer does not drive here. Don't wait
-            // out the timeout for a state that won't change -- report the failure immediately.
-            log.warn("Locking collection \"" + collection.getLabel().orElse("?") + "\" ("
-                    + collection.getObjectPath() + ") requires a prompt, which is not performed here; "
-                    + "leaving it unlocked.");
-            return false;
+            // KeePassXC answers Lock with a prompt and locks only once the prompt is called. It
+            // shows no dialog for that.
+            if (!withPrompt || !isPrompting) {
+                dismissPrompt(result.b);
+                return Locking.NEEDS_A_PROMPT;
+            }
+            de.swiesend.secretservice.interfaces.Prompt.Completed completed =
+                    prompt.await(result.b, service.getTimeout());
+            if (completed != null && !completed.dismissed) {
+                awaitUntil(collection::isLocked);
+            }
+            // The provider's state, not the prompt result, is the authority.
+            return collection.isLocked() ? Locking.LOCKED : Locking.FAILED;
         }
         // Neither locked immediately nor prompted (e.g. a provider that does not support locking
         // this collection): reflect the daemon's current view without a long wait.
-        return collection.isLocked();
+        return collection.isLocked() ? Locking.LOCKED : Locking.FAILED;
     }
 
     private boolean unlock() {
         if (collection != null && collection.isLocked()) {
-            if (encryptedCollectionPassword.isEmpty() || isDefault()) {
+            // The stored password works only through gnome-keyring's own interface. On any other
+            // provider the prompt is the only way to unlock, password or not.
+            if (encryptedCollectionPassword.isEmpty() || isDefault() || !service.isGnomeKeyringAvailable()) {
                 Optional<Pair<List<DBusPath>, DBusPath>> maybeResponse = service.getService().unlock(lockable());
                 if (maybeResponse.isPresent()) {
                     DBusPath promptPath = maybeResponse.get().b;
@@ -959,14 +1012,40 @@ public class Collection implements CollectionInterface {
         return false;
     }
 
+    /** Whether {@link #unlock()} takes the stored-password branch, which shows no dialog. */
+    private boolean canUnlockWithoutPrompt() {
+        return encryptedCollectionPassword.isPresent() && !isDefault() && service.isGnomeKeyringAvailable();
+    }
+
     @Override
     public boolean unlockWithUserPermission() {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
         if (!isUnlockedOnceWithUserPermission) {
-            if (!lock()) {
-                log.error("Failed to lock collection before prompting for user permission.");
+            // With prompting disabled, only gnome-keyring's stored-password unlock can undo the
+            // lock below. Without it the collection would stay locked for every application on
+            // the desktop -- for the login keyring, all of them would start to prompt -- and the
+            // caller would still be refused.
+            if (!isPrompting && !canUnlockWithoutPrompt()) {
+                log.debug("Prompting is disabled, and nothing could unlock the collection again; not locking it.");
                 return false;
+            }
+            switch (lock(false)) {
+                case LOCKED -> {
+                    // unlock() below brings up the provider's dialog.
+                }
+                case NEEDS_A_PROMPT -> {
+                    // The provider locks only through a prompt: KeePassXC. Carrying it out would lock
+                    // the user's database in KeePassXC's own window, only to bring up its unlock
+                    // dialog, and KeePassXC confirms access to its secrets itself. So the collection
+                    // is used as it is, as in 1.x.
+                    log.debug("The provider locks only through a prompt; using the collection as it is.");
+                    return !collection.isLocked();
+                }
+                case FAILED -> {
+                    log.error("Failed to lock collection before prompting for user permission.");
+                    return false;
+                }
             }
         }
         unlock();
@@ -1020,6 +1099,11 @@ public class Collection implements CollectionInterface {
     public void close() throws Exception {
         if (!isClosed) {
             clear();
+            // This collection's own signal handlers. The connection usually outlives the
+            // collection -- SimpleCollection's, or a session's that opens several -- and keeps
+            // them registered otherwise.
+            if (prompt != null) prompt.getSignalHandler().disconnect();
+            if (collection != null) collection.getSignalHandler().disconnect();
             if (clearSessionAtClose) {
                 // Close the service (which cascades to registered sessions and the
                 // underlying SystemInterface/D-Bus connection). Closing only the session

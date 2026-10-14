@@ -62,6 +62,11 @@ public class SignalHandler implements DBusSigHandler {
         }
     }
 
+    /** Whether this handler is registered on a connection: from {@link #connect} to {@link #disconnect()}. */
+    public boolean isConnected() {
+        return connection != null;
+    }
+
     /**
      * Unregister all signal handlers and release resources.
      */

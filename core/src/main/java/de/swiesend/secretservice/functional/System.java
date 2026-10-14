@@ -4,6 +4,7 @@ import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +20,7 @@ public class System implements SystemInterface {
 
     private final DBusConnection connection;
     private final boolean ownsConnection;
+    private boolean disconnected = false;
 
     private System(DBusConnection connection, boolean ownsConnection) {
         this.connection = connection;
@@ -26,8 +28,9 @@ public class System implements SystemInterface {
     }
 
     /**
-     * Create a new D-Bus connection owned by this System instance.
-     * The connection will be closed when {@link #close()} is called.
+     * Connect to the session bus. dbus-java shares one connection between every {@code connect()}
+     * in the JVM; {@link #close()} gives up this System's share, once, and the last share closes
+     * the connection.
      *
      * @return a new SystemInterface or {@code Optional.empty()}
      */
@@ -35,7 +38,10 @@ public class System implements SystemInterface {
         try {
             DBusConnection dbus = DBusConnectionBuilder.forSessionBus().build();
             return Optional.of(new System(dbus, true));
-        } catch (DBusException e) {
+        } catch (DBusException | DBusExecutionException | IllegalStateException | IllegalArgumentException e) {
+            // Unchecked ones too. Without a session bus address, as over ssh, from cron or in a
+            // container, the builder throws AddressResolvingException; for a malformed address,
+            // InvalidBusAddressException, an IllegalStateException.
             log.warn(String.format("Could not communicate properly with the D-Bus: [%s]: %s", e.getClass().getSimpleName(), e.getMessage()));
         }
         return Optional.empty();
@@ -71,6 +77,12 @@ public class System implements SystemInterface {
 
     synchronized public boolean disconnect() {
         if (ownsConnection) {
+            // Once. connect() takes dbus-java's shared connection, which every System.connect() in
+            // the JVM gets and which counts its holders: each close() gives up one share, and the
+            // last share disconnects them all. A second close() here would give up another
+            // holder's share.
+            if (disconnected) return true;
+            disconnected = true;
             try {
                 connection.close();
             } catch (IOException e) {

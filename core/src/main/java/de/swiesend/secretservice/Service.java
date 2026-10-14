@@ -27,7 +27,7 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     public Optional<Pair<Variant<byte[]>, DBusPath>> openSession(String algorithm, Variant input) {
         return send("OpenSession", "sv", algorithm, input)
                 .filter(response -> !Static.Utils.isNullOrEmpty(response) && response.length == 2)
-                .flatMap(response -> Optional.of(new Pair<>((Variant<byte[]>) response[0], (DBusPath) response[1])))
+                .flatMap(response -> Optional.of(new Pair<>(asBytes((Variant<?>) response[0]), (DBusPath) response[1])))
                 .map(pair -> {
                     log.debug("Got session: " + pair.b.getPath());
                     return pair;
@@ -77,6 +77,19 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
         return send("LockService", "").isPresent();
     }
 
+    /**
+     * The output as declared: dbus-java can hand a byte array over as {@code List<Byte>}, which a
+     * caller reading {@code byte[]} from it got as a ClassCastException. A plain session's output
+     * is the empty string, and stays as it is.
+     */
+    @SuppressWarnings("unchecked")
+    private static Variant<byte[]> asBytes(Variant<?> output) {
+        if ("ay".equals(output.getSig()) && !(output.getValue() instanceof byte[])) {
+            return new Variant<>(Static.Utils.toByteArray(output.getValue()), "ay");
+        }
+        return (Variant<byte[]>) output;
+    }
+
     @Override
     public Optional<DBusPath> changeLock(DBusPath collection) {
         return send("ChangeLock", "o", collection).flatMap(response ->
@@ -85,8 +98,23 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
 
     @Override
     public Optional<Map<DBusPath, Secret>> getSecrets(List<DBusPath> items, DBusPath session) {
-        return send("GetSecrets", "aoo", items, session).flatMap(response ->
-                Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((Map<DBusPath, Secret>) response[0]));
+        return send("GetSecrets", "aoo", items, session).flatMap(response -> {
+            if (Static.Utils.isNullOrEmpty(response)) return Optional.empty();
+            // Decoded without type information, each (oayays) arrives as an Object[]. A cast of the
+            // map let that through, and the first read of a value threw ClassCastException.
+            try {
+                Map<DBusPath, Secret> secrets = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : ((Map<?, ?>) response[0]).entrySet()) {
+                    Object value = entry.getValue();
+                    secrets.put((DBusPath) entry.getKey(),
+                            value instanceof Secret secret ? secret : Item.toSecret((Object[]) value));
+                }
+                return Optional.of(secrets);
+            } catch (ClassCastException | IndexOutOfBoundsException | IllegalStateException e) {
+                log.error("GetSecrets returned a reply of an unexpected shape.");
+                return Optional.empty();
+            }
+        });
     }
 
     @Override
