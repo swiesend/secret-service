@@ -20,7 +20,7 @@ import static java.util.Objects.requireNonNull;
 public final class Secret extends Struct implements AutoCloseable {
 
     // NOTE: the specification defines the default content_type differently with "text/plain; charset=utf8"
-    //  see: https://standards.freedesktop.org/secret-service/0.2/ch14.html
+    //  see: https://specifications.freedesktop.org/secret-service/0.2/types.html
     public static final String TEXT_PLAIN_CHARSET_UTF_8 = "text/plain; charset=utf-8";
     public static final String TEXT_PLAIN = "text/plain";
     private static final String CHARSET = "charset=";

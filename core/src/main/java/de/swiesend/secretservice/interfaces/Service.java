@@ -220,12 +220,13 @@ public interface Service extends DBusInterface {
     boolean lockService();
 
     /**
-     * Toggle the lock for a collection with a prompt.
+     * Change the password of a collection through the provider's dialog. A gnome-keyring extension,
+     * not part of the Secret Service API; it neither locks nor unlocks the collection.
      *
      * @param collection    Path of the collection.
      *
-     * @return Path of the collection
-     * 
+     * @return Path of the prompt that shows the dialog when it is called.
+     *
      * <br>
      * See Also:<br>
      * {@link InternalUnsupportedGuiltRiddenInterface#changeWithPrompt(DBusPath collection)}<br>

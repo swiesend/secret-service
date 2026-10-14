@@ -169,10 +169,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Checks if all services are provided by the system:<br>
+     * Checks if the system provides the services this class needs:<br>
      * <code>org.freedesktop.DBus</code><br>
-     * <code>org.freedesktop.secrets</code><br>
-     * <code>org.gnome.keyring</code>
+     * <code>org.freedesktop.secrets</code>, running or startable by D-Bus, which this check then
+     * starts, and able to open an encrypted session.
+     * <p>
+     * <code>org.gnome.keyring</code> is optional: without it, a collection opened with a password
+     * is created and unlocked through the provider's dialog.
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
      * @deprecated see class-level deprecation notice.

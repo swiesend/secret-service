@@ -41,6 +41,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
   - **A D-Bus call that gets no reply in time is logged.** `MessageHandler` waits two seconds for a reply. When none came, the call returned empty without a word, so a slow provider looked like a refusing one, although it can still carry the call out after the wait. It now logs a warning that names the call.
   - The javadoc of `SimpleCollection` shows migration examples that compile and close what they open. The full example put the `Optional` from `System.connect()` into a try-with-resources, and the simple one never closed its collection, which leaks the connection the collection opened. It also says that the class goes in 4.0, not 3.0, and that `clear()` clears the collection's passphrase; the transport keys are erased on `close()`.
   - `SimpleCollection.disconnect()` keeps the thread's interrupt flag when it is interrupted while it waits for the connection to close. It dropped the flag, so the caller, often a shutdown in progress, did not learn of the interruption.
+  - Javadoc that contradicted the code. `Service.changeLock` and `InternalUnsupportedGuiltRiddenInterface.changeWithPrompt` "toggled the lock" and returned the collection's path; both open gnome-keyring's change-password dialog, and return the prompt that shows it. `SimpleCollection.isAvailable()` listed `org.gnome.keyring` as required, which it does not check for. `Secret` linked a page of the specification that no longer exists.
 
 ## [3.0.0-alpha] - 2026-06-11
 
