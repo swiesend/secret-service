@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Starts kwalletd as pam_kwallet starts it at a Plasma login, so that it creates the default
-wallet, kdewallet, and opens it without a dialog.
+"""Starts kwalletd, or KF6's ksecretd, as pam_kwallet starts it at a Plasma login, so that it
+creates the default wallet, kdewallet, and opens it without a dialog.
 
 pam_kwallet runs the daemon with PAM_KWALLET5_LOGIN set and `--pam-login <pipe> <socket>`. Into
 the pipe it writes the PBKDF2-SHA512 hash of the login password: 56 bytes, 50000 iterations,

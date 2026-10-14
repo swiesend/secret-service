@@ -32,6 +32,9 @@ jobs:
           - provider: kwallet
             experimental: true
             collection: kdewallet
+          - provider: kwallet6
+            experimental: true
+            collection: kdewallet
           - provider: keepassxc
             experimental: true
             collection: test
