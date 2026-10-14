@@ -12,7 +12,10 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -84,6 +87,71 @@ class PromptResultTest {
         } finally {
             prompt.getSignalHandler().disconnect();
         }
+    }
+
+    @Test
+    void anInterruptedAwaitDismissesItsPrompt() throws Exception {
+        harness.start(false);
+        List<String> dismissed = Collections.synchronizedList(new ArrayList<>());
+        Prompt prompt = recording(dismissed);
+        try {
+            Thread.currentThread().interrupt();
+            Prompt.Completed completed = prompt.await(new DBusPath(FakeSecretService.PROMPT_PATH), Duration.ofSeconds(5));
+
+            assertTrue(Thread.interrupted(), "the interrupt is kept for the caller");
+            assertNull(completed, "nobody answered");
+            assertEquals(List.of(FakeSecretService.PROMPT_PATH), dismissed,
+                    "the prompt that nobody waits for any more is dismissed");
+        } finally {
+            Thread.interrupted();
+            prompt.getSignalHandler().disconnect();
+        }
+    }
+
+    @Test
+    void eachAwaitDismissesItsOwnPrompt() throws Exception {
+        harness.start(false);
+        List<String> dismissed = Collections.synchronizedList(new ArrayList<>());
+        Prompt prompt = recording(dismissed);
+        String first = FakeSecretService.PROMPT_PATH + "1";
+        String second = FakeSecretService.PROMPT_PATH + "2";
+        try {
+            // A second thread prompts through the same object while the first still waits, and
+            // waits longer. Nobody answers either prompt.
+            Thread other = new Thread(() -> {
+                try {
+                    Thread.sleep(300);
+                    prompt.await(new DBusPath(second), Duration.ofSeconds(2));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "second-await");
+            other.start();
+
+            assertNull(prompt.await(new DBusPath(first), Duration.ofSeconds(1)), "nobody answered the first");
+            other.join(10_000);
+
+            assertEquals(List.of(first, second), dismissed, "each await dismissed its own prompt, in order");
+        } finally {
+            prompt.getSignalHandler().disconnect();
+        }
+    }
+
+    /** A Prompt that records the paths it dismisses, before it dismisses them. */
+    private Prompt recording(List<String> dismissed) {
+        return new Prompt(harness.service().getService()) {
+            @Override
+            public boolean dismiss() {
+                dismissed.add(getObjectPath());
+                return super.dismiss();
+            }
+
+            @Override
+            public boolean dismiss(DBusPath path) {
+                dismissed.add(path.getPath());
+                return super.dismiss(path);
+            }
+        };
     }
 
     /** Sends a {@code Completed} signal for the prompt at {@code path}, as a provider does. */

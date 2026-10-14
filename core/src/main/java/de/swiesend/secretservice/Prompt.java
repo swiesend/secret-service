@@ -34,15 +34,18 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
 
     @Override
     public boolean prompt(DBusPath prompt) {
-        objectPath = prompt.getPath();
+        // Read and addressed through a local: another thread's prompt() can change the objectPath
+        // field, which stays set for getObjectPath() and dismiss().
+        final String path = prompt.getPath();
+        objectPath = path;
 
         String windowID = "";
 
-        if (objectPath.startsWith(PROMPT + "/")) {
+        if (path.startsWith(PROMPT + "/")) {
             try {
                 // NOTE: If the windowID starts with the prefix 'p' or 'u' followed by numerics only,
                 //       then it comes from the gnome-keyring. KeePassXC generates random alphanumeric ids.
-                windowID = objectPath.substring(objectPath.lastIndexOf("/") + 1);
+                windowID = path.substring(path.lastIndexOf("/") + 1);
             } catch (IndexOutOfBoundsException | NullPointerException e) {
                 log.warn(String.format("No proper window ID. Continuing with window ID: \"%s\"", windowID));
             }
@@ -50,7 +53,7 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
             log.warn(String.format("No proper prompt path. Continuing with window ID: \"%s\"", windowID));
         }
 
-        return send("Prompt", "s", windowID).isPresent();
+        return msg.send(serviceName, path, interfaceName, "Prompt", "s", windowID).isPresent();
     }
 
     /**
@@ -75,10 +78,57 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
                     path.getPath(),
                     () -> {
                         prompt(path);
-                        return this;
+                        // What the handler dismisses when nobody answers in time: this prompt.
+                        return new Bound(path);
                     },
                     timeout
             );
+        }
+    }
+
+    /**
+     * Dismiss the prompt at {@code prompt}. Unlike {@link #dismiss()}, it does not depend on which
+     * prompt this object was last asked to show.
+     */
+    public boolean dismiss(DBusPath prompt) {
+        return msg.send(serviceName, prompt.getPath(), interfaceName, "Dismiss", "").isPresent();
+    }
+
+    /**
+     * This object, fixed to one prompt path, so that each await dismisses its own prompt: two
+     * threads can await prompts through the same object.
+     */
+    private final class Bound implements de.swiesend.secretservice.interfaces.Prompt {
+
+        private final DBusPath path;
+
+        Bound(DBusPath path) {
+            this.path = path;
+        }
+
+        @Override
+        public boolean prompt(String window_id) {
+            return Prompt.this.prompt(window_id);
+        }
+
+        @Override
+        public boolean prompt(DBusPath prompt) {
+            return Prompt.this.prompt(prompt);
+        }
+
+        @Override
+        public boolean dismiss() {
+            return Prompt.this.dismiss(path);
+        }
+
+        @Override
+        public boolean isRemote() {
+            return false;
+        }
+
+        @Override
+        public String getObjectPath() {
+            return path.getPath();
         }
     }
 
