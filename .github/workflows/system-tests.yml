@@ -65,11 +65,9 @@ jobs:
             mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }}
 
       # The container runs --rm, so anything it left in /tmp is gone by the time the job
-      # is read. Surefire reports are collected for every provider; the daemon logs only
-      # for keepassxc, which is the one migrated to write under the mounted workspace.
-      # kwallet still logs to /tmp, so a kwallet bring-up failure that exits before
-      # Maven runs still produces no artifact — worth migrating next, and called out
-      # here so the step is not mistaken for covering it.
+      # is read. Surefire reports are collected for every provider; the daemon logs for
+      # keepassxc and kwallet, which write them under the mounted workspace. gnome-keyring's
+      # daemon writes to the job's output.
       - name: Collect provider diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

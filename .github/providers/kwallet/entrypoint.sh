@@ -4,6 +4,17 @@ set -euo pipefail
 # Bring up the session bus (exports DBUS_SESSION_BUS_ADDRESS, defines wait_for_secrets).
 source /providers/dbus-up.sh
 
+# kwalletd's log goes under the mounted workspace, as keepassxc's does: the container runs --rm,
+# and a log in /tmp died with it, so a leg that failed before Maven ran left no explanation.
+LOG_DIR="${PROVIDER_LOG_DIR:-/workspace/target/provider-logs}"
+# Probe writability, not just mkdir: a read-only /workspace mount fails at write time.
+if ! ( mkdir -p "$LOG_DIR" && touch "$LOG_DIR/.probe" ) 2>/dev/null; then
+    echo "WARNING: ${LOG_DIR} is not writable; logs go to /tmp and will NOT survive the"
+    echo "         container, so the CI diagnostics artifact will be empty."
+    LOG_DIR=/tmp
+fi
+rm -f "$LOG_DIR/.probe" 2>/dev/null || true
+
 # No X server: nothing here answers a dialog, and with the wallet opened as at a login, kwalletd
 # shows none.
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
@@ -31,7 +42,7 @@ KWALLETRC
 # password, an empty one here, and opens it. Opening kdewallet over D-Bus instead brings up the
 # "new wallet" dialog, which nobody answers. It registers org.freedesktop.secrets itself.
 KWALLETD="${KWALLETD:-kwalletd5}"
-KWALLETD_LOG=/tmp/kwalletd.log
+KWALLETD_LOG="$LOG_DIR/kwalletd.log"
 pid="$(python3 /providers/kwallet/kwallet-up.py "$KWALLETD" "$KWALLETD_LOG")"
 
 if ! wait_for_secrets 45 "$pid"; then
