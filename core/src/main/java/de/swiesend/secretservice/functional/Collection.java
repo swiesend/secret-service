@@ -1064,8 +1064,10 @@ public class Collection implements CollectionInterface {
             return false;
         }
 
-        if (Static.Utils.isNullOrEmpty(password)) {
-            log.error("The password may not be null or empty.");
+        // null keeps the secret, as a null label or attributes map keeps those, which is how 1.x
+        // updated only an item's label. An empty secret is refused, as createItem refuses it.
+        if (password != null && Static.Utils.isNullOrEmpty(password)) {
+            log.error("The password may not be empty.");
             return false;
         }
 
@@ -1090,17 +1092,20 @@ public class Collection implements CollectionInterface {
             updated = false;
         }
 
-        boolean secretSet = session.getEncryptedSession().encrypt(password)
-                .map(secret -> {
-                    try (secret) { // auto-close
-                        return item.setSecret(secret); // side-effect
-                    }
-                })
-                .orElse(false);
-        if (!secretSet) {
-            log.error("Could not set the secret of item {}", objectPath);
+        if (password != null) {
+            boolean secretSet = session.getEncryptedSession().encrypt(password)
+                    .map(secret -> {
+                        try (secret) { // auto-close
+                            return item.setSecret(secret); // side-effect
+                        }
+                    })
+                    .orElse(false);
+            if (!secretSet) {
+                log.error("Could not set the secret of item {}", objectPath);
+                updated = false;
+            }
         }
-        return updated && secretSet;
+        return updated;
     }
 
     @Override

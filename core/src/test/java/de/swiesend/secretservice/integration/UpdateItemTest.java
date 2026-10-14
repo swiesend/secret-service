@@ -43,6 +43,27 @@ class UpdateItemTest {
     }
 
     @Test
+    void withoutANewSecretTheLabelAndAttributesAreChanged() throws Exception {
+        // How 1.x callers rename an item: updateItem(path, label, null, attributes).
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+
+        assertTrue(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", null, Map.of("k", "v")));
+        assertEquals(List.of("Label", "Attributes"), fake.itemPropertySets(), "the label and the attributes were set");
+        assertEquals(0, fake.setSecretCalls(), "and the secret was left as it is");
+    }
+
+    @Test
+    void anEmptySecretIsRefused() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+
+        assertFalse(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", "", null));
+        assertEquals(List.of(), fake.itemPropertySets(), "nothing was changed");
+        assertEquals(0, fake.setSecretCalls());
+    }
+
+    @Test
     void aRefusedLabelOrAttributeChangeFailsTheUpdate() throws Exception {
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();

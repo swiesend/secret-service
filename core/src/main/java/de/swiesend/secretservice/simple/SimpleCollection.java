@@ -448,13 +448,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Updates an item with the provided properties.
+     * Updates an item with the provided properties. A property that is {@code null} stays as it is.
      *
      * @param objectPath The DBus object path of the item
-     * @param label      The displayable label of the new item
-     * @param password   The password of the new item
-     * @param attributes The attributes of the new item
-     * @throws IllegalArgumentException The object path, label and password are non-nullable.
+     * @param label      The displayable label of the new item, or null
+     * @param password   The password of the new item, or null
+     * @param attributes The attributes of the new item, or null
+     * @throws IllegalArgumentException The object path is null or empty.
      */
     @Override
     public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {
