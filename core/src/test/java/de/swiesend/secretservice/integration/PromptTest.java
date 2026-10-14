@@ -39,7 +39,7 @@ public class PromptTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Locks the user's default collection and waits for its password dialog")
     public void prompt() {
         DBusPath defaultCollection = Static.Convert.toObjectPath(DEFAULT_COLLECTION);
         ArrayList<DBusPath> cs = new ArrayList<>();

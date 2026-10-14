@@ -75,7 +75,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Asserts nothing: the call only creates the change-password prompt, and showing it needs a user")
     public void changeWithPrompt() throws InterruptedException {
         assertDoesNotThrow(() -> iugri.changeWithPrompt(collection.getPath()));
         Thread.sleep(1000L);

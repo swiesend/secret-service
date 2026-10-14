@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class Example {
 
     @Test
-    @Disabled
+    @Disabled("Writes into the user's default collection")
     @DisplayName("Create a password in the user's default collection (/org/freedesktop/secrets/aliases/default).")
     public void createPasswordInDefaultCollection() throws IOException, SecurityException, IllegalArgumentException {
         try (SimpleCollection collection = new SimpleCollection()) {

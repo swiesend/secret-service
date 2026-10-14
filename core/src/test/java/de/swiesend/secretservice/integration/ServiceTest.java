@@ -88,7 +88,7 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Creates a collection without a password, which gnome-keyring does only through its dialog")
     public void createCollection() {
         context.ensureCollection();
 
@@ -139,7 +139,7 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Unlocks through gnome-keyring's password dialog, which needs a user")
     public void unlockCollections() {
 
         Pair<List<DBusPath>, DBusPath> response;
@@ -175,7 +175,7 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Unlocks through gnome-keyring's password dialog, which needs a user")
     public void unlockItems() {
         context.ensureItem();
 
@@ -206,7 +206,7 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Locks the user's login keyring, which only its password dialog unlocks again")
     public void lockCommonCollections() throws InterruptedException, NoSuchObject {
         context.ensureSession();
 
@@ -241,7 +241,7 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Locks every collection, the user's login keyring included, which only its password dialog unlocks again")
     public void lockService() {
         context.ensureSession();
         context.service.lockService();
@@ -310,7 +310,7 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Points the user's default alias at the test collection; a failure before the repair leaves it there")
     public void setAlias() {
         context.ensureCollection();
 

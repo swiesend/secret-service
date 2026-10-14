@@ -176,7 +176,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Writes into the user's default collection")
     public void getPasswordFromDefaultCollection() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection();
@@ -227,7 +227,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Locks the user's default collection and reads all its secrets after the password dialog")
     public void getPasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection();
         assertDoesNotThrow(() -> {
@@ -272,7 +272,7 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Writes into the user's default collection and lets its dialogs time out")
     public void setTimeout() throws IOException {
         SimpleCollection collection = new SimpleCollection();
         String item = collection.createItem("item", "secret");
