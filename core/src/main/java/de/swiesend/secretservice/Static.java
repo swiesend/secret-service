@@ -2,6 +2,7 @@ package de.swiesend.secretservice;
 
 import org.freedesktop.dbus.DBusPath;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -286,7 +287,9 @@ public class Static {
          */
         public static class SecondOakleyGroup {
 
-            public static final byte[] PRIME = new byte[]{
+            // The group that the key exchange uses. Private: an array cannot be made read-only, and
+            // through a public one any code in the JVM could change the group of every session.
+            private static final byte[] P = new byte[]{
                     (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF,
                     (byte) 0xC9, (byte) 0x0F, (byte) 0xDA, (byte) 0xA2, (byte) 0x21, (byte) 0x68, (byte) 0xC2, (byte) 0x34,
                     (byte) 0xC4, (byte) 0xC6, (byte) 0x62, (byte) 0x8B, (byte) 0x80, (byte) 0xDC, (byte) 0x1C, (byte) 0xD1,
@@ -305,7 +308,21 @@ public class Static {
                     (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF,
             };
 
+            /** A copy of the group's prime: changing it changes no key exchange. */
+            public static final byte[] PRIME = P.clone();
+
+            /** A copy of the group's generator, 2: changing it changes no key exchange. */
             public static final byte[] GENERATOR = new byte[]{(byte) 0x02};
+
+            /** The prime that the key exchange uses. */
+            static BigInteger prime() {
+                return new BigInteger(1, P);
+            }
+
+            /** The generator that the key exchange uses. */
+            static BigInteger generator() {
+                return BigInteger.TWO;
+            }
 
         }
 

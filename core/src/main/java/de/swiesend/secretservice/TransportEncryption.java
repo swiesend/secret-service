@@ -71,8 +71,8 @@ public class TransportEncryption implements AutoCloseable {
 
         try {
             // create dh parameter specification with prime, generator and bits
-            BigInteger prime = fromBinary(Static.RFC_2409.SecondOakleyGroup.PRIME);
-            BigInteger generator = fromBinary(Static.RFC_2409.SecondOakleyGroup.GENERATOR);
+            BigInteger prime = Static.RFC_2409.SecondOakleyGroup.prime();
+            BigInteger generator = Static.RFC_2409.SecondOakleyGroup.generator();
             dhParameters = new DHParameterSpec(prime, generator, PRIVATE_VALUE_BITS);
 
             // generate DH keys from specification
