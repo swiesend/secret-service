@@ -825,9 +825,8 @@ public class Collection implements CollectionInterface {
                 // same as a success until the re-read below happened to contradict it.
                 de.swiesend.secretservice.interfaces.Prompt.Completed completed =
                         prompt.await(unlock.b, service.getTimeout());
-                // Logged, not returned on. await() answers null for a timeout, and it can hand back
-                // a stale Completed from an earlier prompt on the same path. Neither is reliable
-                // enough to overrule the provider, so the re-read below stays the authority.
+                // Logged, not returned on. await() answers null when the prompt timed out, which
+                // does not tell whether the provider unlocked the item; the re-read below does.
                 if (completed == null) {
                     log.warn("No prompt result for item {}; asking the provider directly.", itemPath);
                 } else if (completed.dismissed) {

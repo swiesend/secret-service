@@ -153,18 +153,38 @@ public class SignalHandler implements DBusSigHandler {
         return Arrays.stream(handled)
                 .filter(signal -> signal != null)
                 .filter(signal -> signal.getClass().equals(s))
-                .filter(signal -> {
-                    String sigPath = signal.getPath();
-                    if (path == null || "/".equals(path)) return true;
-                    if (sigPath == null) return false;
-                    if (sigPath.equals(path)) return true;
-                    // Item signals may be emitted with the item's object path
-                    // (e.g. /org/freedesktop/secrets/collection/<id>/<item>). Accept
-                    // signals that start with the requested collection path + '/'.
-                    return sigPath.startsWith(path + "/");
-                })
+                .filter(signal -> isOnPath(signal, path))
                 .map(signal -> (S) signal)
                 .collect(Collectors.toList());
+    }
+
+    private static boolean isOnPath(DBusSignal signal, String path) {
+        String sigPath = signal.getPath();
+        if (path == null || "/".equals(path)) return true;
+        if (sigPath == null) return false;
+        if (sigPath.equals(path)) return true;
+        // Item signals may be emitted with the item's object path
+        // (e.g. /org/freedesktop/secrets/collection/<id>/<item>). Accept
+        // signals that start with the requested collection path + '/'.
+        return sigPath.startsWith(path + "/");
+    }
+
+    /**
+     * The newest signal of class {@code s} on {@code path} among those handled after the first
+     * {@code since}, or null. The buffer holds the newest signal first.
+     */
+    @SuppressWarnings("unchecked")
+    private <S extends DBusSignal> S newestSince(int since, Class<S> s, String path) {
+        synchronized (handled) {
+            int fresh = Math.min(count - since, bufferSize);
+            for (int i = 0; i < fresh; i++) {
+                DBusSignal signal = handled[i];
+                if (signal != null && signal.getClass().equals(s) && isOnPath(signal, path)) {
+                    return (S) signal;
+                }
+            }
+            return null;
+        }
     }
 
     public int getCount() {
@@ -222,15 +242,16 @@ public class SignalHandler implements DBusSigHandler {
         final Future<S> handler = executor.submit((Callable) () -> {
             int current = init;
             int last = init;
-            List<S> signals = null;
             while (true) {
                 if (Thread.currentThread().isInterrupted()) return null;
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
                 current = getCount();
                 if (current != last) {
-                    signals = getHandledSignals(signal, path);
-                    if (signals != null && !signals.isEmpty()) {
-                        return signals.get(0);
+                    // Only what arrived since the await began: an older signal on the same path
+                    // answered an earlier operation, perhaps one the user refused.
+                    S received = newestSince(init, signal, path);
+                    if (received != null) {
+                        return received;
                     }
                     last = current;
                 }
