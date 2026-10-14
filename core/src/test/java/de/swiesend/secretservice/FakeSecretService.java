@@ -57,6 +57,16 @@ public final class FakeSecretService {
     /** What the fake item holds. */
     public static final String SECRET_VALUE = "the-locked-secret";
 
+    /**
+     * RFC 2409, section 6.2: the prime of the group that the specification prescribes. The fake's
+     * own copy, as a provider has one, independent of the library's.
+     */
+    private static final BigInteger SECOND_OAKLEY_GROUP_PRIME = new BigInteger(
+            "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22"
+                    + "514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6"
+                    + "F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381"
+                    + "FFFFFFFFFFFFFFFF", 16);
+
     // ---- wire interfaces -------------------------------------------------------------------
     // The library's own de.swiesend.secretservice.interfaces.* declare Optional<...> returns, which
     // are not valid D-Bus types; they exist to be used as client proxies, with the marshalling done
@@ -337,8 +347,7 @@ public final class FakeSecretService {
             // so the fake has to do the real exchange.
             try {
                 byte[] clientY = Static.Utils.toByteArray(input.getValue());
-                BigInteger prime = new BigInteger(1, Static.RFC_2409.SecondOakleyGroup.PRIME);
-                DHParameterSpec params = new DHParameterSpec(prime, BigInteger.valueOf(2), 1024);
+                DHParameterSpec params = new DHParameterSpec(SECOND_OAKLEY_GROUP_PRIME, BigInteger.valueOf(2), 1024);
 
                 KeyPairGenerator gen = KeyPairGenerator.getInstance("DiffieHellman");
                 gen.initialize(params);
