@@ -7,13 +7,13 @@ A _Java_ library for storing secrets in a keyring over the _DBus_.
 The library is conform to the freedesktop.org
 [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with Gnome linux systems.
 
-The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon).
+The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon). [KeePassXC](https://keepassxc.org/) implements it as well, and so does KWallet, since [KDE Frameworks 5.97.0](https://kde.org/announcements/frameworks/5/5.97.0/) (August 2022).
 
 This library can be seen as the functional equivalent to the [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C client library.
 
 ## Related
 
-For KDE systems there is the [`kdewallet`](https://github.com/purejava/kdewallet) client library, kindly provided by [@purejava](https://github.com/purejava).
+[`secret-service`](https://github.com/purejava/secret-service) by [@purejava](https://github.com/purejava) is a lean client library for the same API that stays close to the specification. It succeeds his archived [`kdewallet`](https://github.com/purejava/kdewallet) library, a client for KWallet's own D-Bus interface.
 
 ## Security Issues
 

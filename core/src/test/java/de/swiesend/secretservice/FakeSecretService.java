@@ -319,6 +319,20 @@ public final class FakeSecretService {
     private volatile String secretValue = SECRET_VALUE;
     private volatile java.nio.charset.Charset secretEncoding = StandardCharsets.UTF_8;
 
+    /**
+     * Makes {@code GetSecret} answer for a locked item with an empty secret instead of an error, as
+     * KWallet does (KDE bug 524650).
+     */
+    public void setReadLockedItemsAsEmpty(boolean empty) { this.readLockedItemsAsEmpty = empty; }
+    private volatile boolean readLockedItemsAsEmpty;
+
+    /** How often {@code GetSecret} was called for a locked item. */
+    public int lockedItemReads() {
+        return lockedItemReads.get();
+    }
+
+    private final java.util.concurrent.atomic.AtomicInteger lockedItemReads = new java.util.concurrent.atomic.AtomicInteger();
+
     /** How often {@code Delete} was called on the collection. */
     public int collectionDeleteCalls() {
         return collectionDeleteCalls.get();
@@ -541,17 +555,19 @@ public final class FakeSecretService {
 
         @Override
         public WireSecret GetSecret(DBusPath session) {
-            if (itemLocked || collectionLocked) {
+            boolean locked = itemLocked || collectionLocked;
+            if (locked) {
+                lockedItemReads.incrementAndGet();
                 // What a provider does for a locked item -- including one locked only because its
-                // collection is. The client must not get here.
-                throw new IllegalStateException("fake: item is locked");
+                // collection is. The client must not get here. KWallet answers with an empty secret.
+                if (!readLockedItemsAsEmpty) throw new IllegalStateException("fake: item is locked");
             }
             try {
                 byte[] iv = new byte[16];
                 new SecureRandom().nextBytes(iv);
                 Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
-                byte[] ct = c.doFinal(secretValue.getBytes(secretEncoding));
+                byte[] ct = c.doFinal(locked ? new byte[0] : secretValue.getBytes(secretEncoding));
                 return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
