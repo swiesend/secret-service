@@ -205,7 +205,7 @@ try (SimpleCollection collection = new SimpleCollection("My Collection", "super 
 __Transport Encryption:__
 
 Both APIs use transport encryption (DH key exchange + AES-128-CBC) automatically.
-For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
+For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/0.2/transfer-secrets.html),
 [Transport Encryption Example](core/src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
 
 ### Low-Level API
