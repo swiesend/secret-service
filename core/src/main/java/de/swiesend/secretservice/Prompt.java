@@ -60,12 +60,15 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
      *
      * @param path    Objectpath of the prompt.
      * @param timeout Duration until the prompt times out.
-     * @return Completed or null if user input exceeds the default timeout.
+     * @return Completed, or null if user input exceeds the timeout, or if {@code path} is "/", the
+     *         Secret Service's answer when no prompt is needed: there is no prompt to wait for.
      * @see Completed
      */
     public Completed await(DBusPath path, Duration timeout) {
         if ("/".equals(path.getPath())) {
-            return sh.getLastHandledSignal(Completed.class);
+            // No prompt, so no result of one. The newest Completed signal this handler has seen
+            // came from another prompt, perhaps another application's.
+            return null;
         } else {
             return sh.await(
                     Completed.class,
@@ -85,7 +88,8 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
      * A prompt can either be dismissed or be completed successfully.
      *
      * @param path Objectpath of the prompt.
-     * @return Completed or null if user input exceeds the default timeout.
+     * @return Completed, or null if user input exceeds the default timeout, or if {@code path} is
+     *         "/", for no prompt.
      * @see Completed
      */
     public Completed await(DBusPath path) {
