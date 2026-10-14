@@ -39,8 +39,9 @@ import javax.crypto.spec.DHPublicKeySpec;
  * the collection therefore cannot read the secret, exactly as on a real KeePassXC.</p>
  *
  * <p>Only the members the read path touches are implemented, and {@code Item.Delete},
- * {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a provider: it does
- * no access control and keeps its secret in a field.</p>
+ * {@code Item.SetSecret}, setting the item's properties, {@code CreateCollection} and
+ * {@code CreateItem}. This is a test fixture, not a provider: it does no access control and keeps
+ * its secret in a field.</p>
  */
 public final class FakeSecretService {
 
@@ -82,6 +83,7 @@ public final class FakeSecretService {
     public interface WireItem extends DBusInterface {
         DBusPath Delete();
         Secret GetSecret(DBusPath session);
+        void SetSecret(Secret secret);
     }
 
     @DBusInterfaceName(Static.Interfaces.SESSION)
@@ -238,6 +240,24 @@ public final class FakeSecretService {
     }
 
     private volatile boolean itemDeleted;
+
+    /** The item properties that {@code Set} changed, in call order. */
+    public List<String> itemPropertySets() {
+        return List.copyOf(itemPropertySets);
+    }
+
+    private final List<String> itemPropertySets = Collections.synchronizedList(new ArrayList<>());
+
+    /** Makes {@code Set} on the item fail, as a provider refuses to change an item it keeps locked. */
+    public void setRefuseItemPropertyChanges(boolean refuse) { this.refuseItemPropertyChanges = refuse; }
+    private volatile boolean refuseItemPropertyChanges;
+
+    /** How often {@code SetSecret} was called on the item. */
+    public int setSecretCalls() {
+        return setSecretCalls.get();
+    }
+
+    private final java.util.concurrent.atomic.AtomicInteger setSecretCalls = new java.util.concurrent.atomic.AtomicInteger();
 
     public void export() throws Exception {
         connection.exportObject(SERVICE_PATH, new ServiceImpl());
@@ -471,7 +491,18 @@ public final class FakeSecretService {
             }
         }
 
-        @Override public <A> void Set(String iface, String property, A value) { }
+        @Override
+        public void SetSecret(Secret secret) {
+            setSecretCalls.incrementAndGet();
+        }
+
+        @Override
+        public <A> void Set(String iface, String property, A value) {
+            // Changes nothing: the tests need to see which properties were set, not the new values.
+            if (refuseItemPropertyChanges) throw new IllegalStateException("fake: the item is locked");
+            itemPropertySets.add(property);
+        }
+
         @Override public Map<String, Variant<?>> GetAll(String iface) { return Map.of(); }
         @Override public String getObjectPath() { return ITEM_PATH; }
         @Override public boolean isRemote() { return false; }

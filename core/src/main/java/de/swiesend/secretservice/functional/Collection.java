@@ -1078,21 +1078,29 @@ public class Collection implements CollectionInterface {
         }
         Item item = maybeItem.get();
 
-        if (label != null) {
-            item.setLabel(label);
+        // Every part is attempted, as in 1.x, and the update succeeds only if each one did.
+        boolean updated = true;
+        if (label != null && !item.setLabel(label)) {
+            log.error("Could not set the label of item {}", objectPath);
+            updated = false;
         }
 
-        if (attributes != null) {
-            item.setAttributes(attributes);
+        if (attributes != null && !item.setAttributes(attributes)) {
+            log.error("Could not set the attributes of item {}", objectPath);
+            updated = false;
         }
 
-        return session.getEncryptedSession().encrypt(password)
+        boolean secretSet = session.getEncryptedSession().encrypt(password)
                 .map(secret -> {
                     try (secret) { // auto-close
                         return item.setSecret(secret); // side-effect
                     }
                 })
                 .orElse(false);
+        if (!secretSet) {
+            log.error("Could not set the secret of item {}", objectPath);
+        }
+        return updated && secretSet;
     }
 
     @Override

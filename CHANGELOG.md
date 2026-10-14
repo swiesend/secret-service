@@ -44,6 +44,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
   - Javadoc that contradicted the code. `Service.changeLock` and `InternalUnsupportedGuiltRiddenInterface.changeWithPrompt` "toggled the lock" and returned the collection's path; both open gnome-keyring's change-password dialog, and return the prompt that shows it. `SimpleCollection.isAvailable()` listed `org.gnome.keyring` as required, which it does not check for. `Secret` linked a page of the specification that no longer exists.
   - **The module exports `handlers` and `simple.interfaces`.** The low-level `Service`, `Session`, `Collection`, `Item` and `Prompt` extend `handlers.Messaging`, whose `getSignalHandler()` and `getMessageHandler()` return handler types, and `SimpleCollection` extends `simple.interfaces.SimpleCollection`. On the module path, an application could call those methods but not use what they returned, nor name the supertype. On the class path nothing changes.
   - `search()` returns an unmodifiable list for an empty query too, as its javadoc promises. The empty query matches every item, and that list could be changed by the caller.
+  - `updateItem` reports a refused label or attribute change. It returned whether the secret was set and ignored the other two, so a caller could not tell that the provider had kept the old label.
 
 ## [3.0.0-alpha] - 2026-06-11
 
