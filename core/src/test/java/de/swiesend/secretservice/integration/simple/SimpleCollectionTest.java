@@ -115,6 +115,23 @@ public class SimpleCollectionTest {
     }
 
     @Test
+    public void updateTheLabelOnly() throws IOException {
+        // As 1.x callers rename an item: the null password and attributes stay as they are.
+        SimpleCollection collection = new SimpleCollection("test", "test");
+        String item = collection.createItem("item", "secret");
+
+        collection.updateItem(item, "renamed item", null, null);
+
+        assertEquals("renamed item", collection.getLabel(item));
+        char[] secret = collection.getSecret(item);
+        assertArrayEquals("secret".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
+
+        collection.deleteItem(item);
+        collection.delete();
+    }
+
+    @Test
     public void getItems() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection("test", "test");

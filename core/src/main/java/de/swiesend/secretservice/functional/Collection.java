@@ -75,7 +75,11 @@ public class Collection implements CollectionInterface {
         if (!c.init(maybeSession)) {
             return Optional.empty();
         }
-        c.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
+        // The collection the alias points to, not the alias: getId() names it then, and the
+        // signals the provider emits from the collection's own path reach it. The alias itself
+        // where the provider names no default collection.
+        c.path = c.defaultCollectionPath()
+                .orElseGet(() -> Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION));
         c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
         c.label = c.collection.getLabel();
         c.id = c.collection.getId();
@@ -340,14 +344,27 @@ public class Collection implements CollectionInterface {
         return Optional.ofNullable(path);
     }
 
-    private boolean isDefault() {
+    @Override
+    public boolean isDefault() {
         if (connection != null && connection.isConnected()) {
+            // gnome-keyring's login and session collections, and the alias path itself.
             List<String> defaults = Arrays.asList(null, "login", "session", "default");
-            return defaults.contains(collection.getId());
+            if (defaults.contains(collection.getId())) return true;
+            // On every provider, the collection the default alias points to, which is how KWallet
+            // and KeePassXC name their default.
+            return defaultCollectionPath()
+                    .map(path -> path.getPath().equals(collection.getObjectPath()))
+                    .orElse(false);
         } else {
             log.error("No D-Bus connection: Cannot check if the collection is the default collection.");
             return false;
         }
+    }
+
+    /** The collection that the "default" alias points to, unless the provider names none. */
+    private Optional<DBusPath> defaultCollectionPath() {
+        return service.getService().readAlias("default")
+                .filter(path -> path.getPath() != null && !"/".equals(path.getPath()));
     }
 
     private Optional<DBusPath> performPrompt(DBusPath path) {
@@ -436,8 +453,7 @@ public class Collection implements CollectionInterface {
 
             // Prompt required (e.g. KeePassXC per-item unlock)
             if (!requiresPrompt(pair.b)) {
-                // Neither an item nor a prompt, which the specification does not allow. Awaiting "/"
-                // would hand back the result of whichever prompt completed last.
+                // Neither an item nor a prompt, which the specification does not allow.
                 log.error("createItem returned neither an item nor a prompt.");
                 return Optional.empty();
             }
@@ -626,7 +642,7 @@ public class Collection implements CollectionInterface {
         Optional<List<String>> maybeAll = getItems(Map.of());
         if (maybeAll.isEmpty()) return List.of();
         List<String> all = maybeAll.get();
-        if (query.isEmpty()) return all;
+        if (query.isEmpty()) return java.util.Collections.unmodifiableList(all);
         String lq = query.toLowerCase(java.util.Locale.ROOT);
         List<String> matched = new ArrayList<>();
         for (String path : all) {
@@ -644,7 +660,7 @@ public class Collection implements CollectionInterface {
         Optional<List<String>> maybeAll = getItems(Map.of());
         if (maybeAll.isEmpty()) return List.of();
         List<String> all = maybeAll.get();
-        if (query.isEmpty()) return all;
+        if (query.isEmpty()) return java.util.Collections.unmodifiableList(all);
         String lq = query.toLowerCase(java.util.Locale.ROOT);
         List<String> matched = new ArrayList<>();
         for (String path : all) {
@@ -761,9 +777,7 @@ public class Collection implements CollectionInterface {
             Pair<List<DBusPath>, DBusPath> lock = maybeLock.get();
             log.debug("lock item: {}", lock);
             // Only when a prompt is genuinely required: a non-empty lock.a means the provider
-            // already locked the item, and "/" names no prompt object. Awaiting on "/" would
-            // consult getLastHandledSignal(Completed.class), which filters by class only and can
-            // return an unrelated prompt's result.
+            // already locked the item, and "/" names no prompt object.
             if (lock.a.isEmpty() && requiresPrompt(lock.b)) {
                 if (!isPrompting) {
                     log.debug("Locking item {} needs a prompt, and prompting is disabled; dismissing it.",
@@ -803,9 +817,7 @@ public class Collection implements CollectionInterface {
             Pair<List<DBusPath>, DBusPath> unlock = maybeUnlock.get();
             log.debug("unlock item: {}", unlock);
             // requiresPrompt(), matching lockItem: an empty unlock.a with a "/" path means the
-            // provider refused without offering a prompt, and awaiting on "/" falls through to
-            // getLastHandledSignal, which filters by class and not by path -- an unrelated earlier
-            // prompt's result.
+            // provider refused without offering a prompt.
             if (unlock.a.isEmpty() && requiresPrompt(unlock.b)) {
                 // A prompt is required. await() returns null when it times out, and reading
                 // .result on that threw a NullPointerException out of a method declared to return
@@ -813,21 +825,13 @@ public class Collection implements CollectionInterface {
                 // same as a success until the re-read below happened to contradict it.
                 de.swiesend.secretservice.interfaces.Prompt.Completed completed =
                         prompt.await(unlock.b, service.getTimeout());
-                // Logged, not returned on. await() answers null both for a real timeout and, via
-                // its "/" branch, when no Completed signal was ever handled, and it can hand back a
-                // STALE Completed from an earlier unrelated prompt. None of those are reliable
-                // enough to overrule the provider, so the re-read below stays the authority.
+                // Logged, not returned on. await() answers null when the prompt timed out, which
+                // does not tell whether the provider unlocked the item; the re-read below does.
                 if (completed == null) {
-                    // Unreliable: await() answers null for a real timeout, for its "/" branch when
-                    // no Completed was ever handled, and it can hand back a stale Completed from an
-                    // earlier prompt. Fall through and ask the provider.
                     log.warn("No prompt result for item {}; asking the provider directly.", itemPath);
                 } else if (completed.dismissed) {
-                    // Trustworthy because the enclosing requiresPrompt(unlock.b) guarantees a real
-                    // prompt path, for which SignalHandler.await filters the Completed signal by
-                    // path. On "/" Prompt.await would fall back to
-                    // getLastHandledSignal(Completed.class), which filters by class only and could
-                    // return a dismissal from an unrelated earlier prompt.
+                    // Trustworthy: requiresPrompt(unlock.b) above guarantees a real prompt path,
+                    // for which SignalHandler.await filters the Completed signal by path.
                     log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
                     return false;
                 }
@@ -849,19 +853,27 @@ public class Collection implements CollectionInterface {
      */
     private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
-        unlock();
-        if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
+        try {
+            unlock();
+            if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
 
-        return getItem(objectPath)
-                .flatMap(item -> {
-                    DBusPath sessionPath = session.getSession().getPath();
-                    return item.getSecret(sessionPath);
-                })
-                .flatMap(secret -> {
-                    try (secret) {
-                        return session.getEncryptedSession().decrypt(secret);
-                    }
-                });
+            return getItem(objectPath)
+                    .flatMap(item -> {
+                        DBusPath sessionPath = session.getSession().getPath();
+                        return item.getSecret(sessionPath);
+                    })
+                    .flatMap(secret -> {
+                        try (secret) {
+                            return session.getEncryptedSession().decrypt(secret);
+                        }
+                    });
+        } catch (RuntimeException e) {
+            // A reply that the code above does not expect. An empty result, as for any secret that
+            // cannot be read: getSecrets() then skips this item, and does not drop the secrets it
+            // has decrypted already, which nothing would erase.
+            log.error("Could not read the secret of item {}", objectPath, e);
+            return Optional.empty();
+        }
     }
 
     @Override
@@ -1064,8 +1076,10 @@ public class Collection implements CollectionInterface {
             return false;
         }
 
-        if (Static.Utils.isNullOrEmpty(password)) {
-            log.error("The password may not be null or empty.");
+        // null keeps the secret, as a null label or attributes map keeps those, which is how 1.x
+        // updated only an item's label. An empty secret is refused, as createItem refuses it.
+        if (password != null && Static.Utils.isNullOrEmpty(password)) {
+            log.error("The password may not be empty.");
             return false;
         }
 
@@ -1078,21 +1092,32 @@ public class Collection implements CollectionInterface {
         }
         Item item = maybeItem.get();
 
-        if (label != null) {
-            item.setLabel(label);
+        // Every part is attempted, as in 1.x, and the update succeeds only if each one did.
+        boolean updated = true;
+        if (label != null && !item.setLabel(label)) {
+            log.error("Could not set the label of item {}", objectPath);
+            updated = false;
         }
 
-        if (attributes != null) {
-            item.setAttributes(attributes);
+        if (attributes != null && !item.setAttributes(attributes)) {
+            log.error("Could not set the attributes of item {}", objectPath);
+            updated = false;
         }
 
-        return session.getEncryptedSession().encrypt(password)
-                .map(secret -> {
-                    try (secret) { // auto-close
-                        return item.setSecret(secret); // side-effect
-                    }
-                })
-                .orElse(false);
+        if (password != null) {
+            boolean secretSet = session.getEncryptedSession().encrypt(password)
+                    .map(secret -> {
+                        try (secret) { // auto-close
+                            return item.setSecret(secret); // side-effect
+                        }
+                    })
+                    .orElse(false);
+            if (!secretSet) {
+                log.error("Could not set the secret of item {}", objectPath);
+                updated = false;
+            }
+        }
+        return updated;
     }
 
     @Override
@@ -1104,6 +1129,8 @@ public class Collection implements CollectionInterface {
             // them registered otherwise.
             if (prompt != null) prompt.getSignalHandler().disconnect();
             if (collection != null) collection.getSignalHandler().disconnect();
+            // The session keeps the collections it has to close; this one is closed.
+            if (session instanceof Session owner) owner.forget(this);
             if (clearSessionAtClose) {
                 // Close the service (which cascades to registered sessions and the
                 // underlying SystemInterface/D-Bus connection). Closing only the session

@@ -24,11 +24,12 @@ public interface InternalUnsupportedGuiltRiddenInterface extends DBusInterface {
     boolean changeWithMasterPassword(DBusPath collection, Secret original, Secret master);
 
     /**
-     * Toggle the lock of a collection.
-     * 
+     * Change the password of a collection through gnome-keyring's dialog. It neither locks nor
+     * unlocks the collection.
+     *
      * @param collection    The DBusPath of the collection.
      *
-     * @return The DBusPath of the collection.
+     * @return The DBusPath of the prompt that shows the dialog when it is called.
      */
     Optional<DBusPath> changeWithPrompt(DBusPath collection);
 

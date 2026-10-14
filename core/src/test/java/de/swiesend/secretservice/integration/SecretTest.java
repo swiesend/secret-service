@@ -7,9 +7,11 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class SecretTest {
 
@@ -145,6 +147,29 @@ public class SecretTest {
     }
 
     @Test
+    public void aContentTypeWithAnUnknownOrIllegalCharsetHasNone() {
+        // Another application's content type: the secret stays readable.
+        for (String contentType : new String[]{"text/plain; charset=x-no-such-charset", "text/plain; charset=x@y"}) {
+            Secret secret = new Secret(session, parameters.getBytes(), value.getBytes(), contentType);
+            assertNull(secret.getCharset(), contentType);
+            assertEquals("text/plain", secret.getMimeType(), contentType);
+        }
+    }
+
+    @Test
+    public void aCharsetNameIsReadInEveryLocale() {
+        // Upper-cased in a Turkish locale, the i of iso-8859-1 becomes a dotted capital I.
+        Locale before = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            Secret secret = new Secret(session, parameters.getBytes(), value.getBytes(), "text/plain; charset=iso-8859-1");
+            assertEquals(StandardCharsets.ISO_8859_1, secret.getCharset());
+        } finally {
+            Locale.setDefault(before);
+        }
+    }
+
+    @Test
     public void toBytes() {
         String plaintext = "sécrèt";
         byte[] encoded = Secret.toBytes(plaintext);
@@ -160,6 +185,20 @@ public class SecretTest {
         String plaintext = "sécrèt";
         char[] decoded = Secret.toChars(plaintext.getBytes());
         assertEquals(plaintext, new String(decoded));
+    }
+
+    @Test
+    public void toCharsDecodesLikeTheJdkInEveryCharset() {
+        for (Charset charset : new Charset[]{StandardCharsets.UTF_8, StandardCharsets.ISO_8859_1,
+                StandardCharsets.UTF_16, StandardCharsets.UTF_16LE, StandardCharsets.US_ASCII}) {
+            for (String s : new String[]{"", "secret", "sécrèt", "пароль", "😀🔑", "ü".repeat(1000)}) {
+                byte[] bytes = s.getBytes(charset);
+                String expected = new String(bytes, charset);
+                assertEquals(expected, new String(Secret.toChars(bytes.clone(), charset)), charset + ": " + s);
+            }
+        }
+        assertEquals("sécrèt", new String(Secret.toChars("sécrèt".getBytes(StandardCharsets.UTF_8), null)),
+                "no charset is UTF-8");
     }
 
     @Test
