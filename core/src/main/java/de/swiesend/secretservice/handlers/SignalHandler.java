@@ -258,36 +258,44 @@ public class SignalHandler implements DBusSigHandler {
             }
         });
 
+        S received = null;
+        String gaveUp = "it was interrupted";
         try {
             long start = System.nanoTime();
             long nanos = timeout.toNanos();
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {
-                    return handler.get();
+                    received = handler.get();
+                    break;
                 } else if (now - start > nanos) {
-                    throw new TimeoutException();
+                    gaveUp = "it exceeded the timeout of " + timeout.getSeconds() + " seconds";
+                    break;
                 }
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
             }
-        } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            maybePrompt.ifPresentOrElse(
-                    (prompt) -> {
-                        prompt.dismiss();
-                        log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
-                    },
-                    () -> {
-                        log.warn("Cancelled the action, but could not dismiss the prompt.", e);
-                    });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (CancellationException | ExecutionException e) {
+            gaveUp = "waiting failed: " + e;
         } finally {
             handler.cancel(true);
             executor.shutdownNow();
         }
 
-        return null;
+        if (received == null) {
+            // Timed out or interrupted, also before the wait began: a prompt still open would
+            // wait for an answer that nobody collects.
+            final String reason = gaveUp;
+            maybePrompt.ifPresentOrElse(
+                    (prompt) -> {
+                        prompt.dismiss();
+                        log.warn("Cancelled the prompt ({}) because {}.", path, reason);
+                    },
+                    // The caller reports the missing signal, as createItem does.
+                    () -> log.debug("Stopped waiting for the signal because {}.", reason));
+        }
+        return received;
     }
 
 }
