@@ -188,6 +188,20 @@ public class SecretTest {
     }
 
     @Test
+    public void toCharsDecodesLikeTheJdkInEveryCharset() {
+        for (Charset charset : new Charset[]{StandardCharsets.UTF_8, StandardCharsets.ISO_8859_1,
+                StandardCharsets.UTF_16, StandardCharsets.UTF_16LE, StandardCharsets.US_ASCII}) {
+            for (String s : new String[]{"", "secret", "sécrèt", "пароль", "😀🔑", "ü".repeat(1000)}) {
+                byte[] bytes = s.getBytes(charset);
+                String expected = new String(bytes, charset);
+                assertEquals(expected, new String(Secret.toChars(bytes.clone(), charset)), charset + ": " + s);
+            }
+        }
+        assertEquals("sécrèt", new String(Secret.toChars("sécrèt".getBytes(StandardCharsets.UTF_8), null)),
+                "no charset is UTF-8");
+    }
+
+    @Test
     public void clear() {
         Secret secret;
         secret = new Secret(session, parameters.getBytes(), value.getBytes());
