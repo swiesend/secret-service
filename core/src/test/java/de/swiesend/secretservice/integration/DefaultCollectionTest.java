@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +44,7 @@ class DefaultCollectionTest {
         CollectionInterface collection = harness.start(false);
         harness.fake().setDefaultAlias(FakeSecretService.COLLECTION_PATH);
 
+        assertTrue(collection.isDefault());
         assertFalse(collection.delete(), "the provider's default collection is not deleted");
         assertEquals(0, harness.fake().collectionDeleteCalls(), "nor is its deletion requested");
     }
@@ -51,8 +54,23 @@ class DefaultCollectionTest {
         // The counterpart of the test above: the refusal there is the default check's.
         CollectionInterface collection = harness.start(false);
 
+        assertFalse(collection.isDefault());
         assertTrue(collection.delete());
         assertEquals(1, harness.fake().collectionDeleteCalls());
+    }
+
+    @Test
+    void anImplementationWithoutIsDefaultAnswersFalse() {
+        // An implementation outside the library that does not declare isDefault(): every method
+        // without a body throws, so only the interface's default body can answer.
+        CollectionInterface other = (CollectionInterface) Proxy.newProxyInstance(
+                CollectionInterface.class.getClassLoader(), new Class<?>[]{CollectionInterface.class},
+                (proxy, method, args) -> {
+                    if (method.isDefault()) return InvocationHandler.invokeDefault(proxy, method, args);
+                    throw new UnsupportedOperationException(method.getName());
+                });
+
+        assertFalse(other.isDefault());
     }
 
     @Test

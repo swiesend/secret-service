@@ -48,7 +48,23 @@ public interface CollectionInterface extends AutoCloseable {
      */
     Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes);
 
+    /**
+     * Delete this collection, unless it is a default collection; see {@link #isDefault()}.
+     *
+     * @return whether the collection was deleted
+     */
     boolean delete();
+
+    /**
+     * Whether this is a default collection, which {@link #delete()} does not delete: the one the
+     * provider's {@code default} alias points to, or gnome-keyring's login or session collection.
+     * <p>
+     * The default body answers {@code false}, for an implementation whose {@code delete()} refuses
+     * no collection. It keeps an implementation that does not declare this method compiling.
+     */
+    default boolean isDefault() {
+        return false;
+    }
 
     boolean deleteItem(String objectPath);
 
