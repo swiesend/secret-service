@@ -263,7 +263,10 @@ public class TransportEncryption implements AutoCloseable {
 
         public Optional<Secret> encrypt(byte[] plain, Charset charset) {
 
-            if (Static.Utils.isNullOrEmpty(plain)) return Optional.empty();
+            // Only null: an empty secret is encrypted like any other, as in every release. The
+            // functional API refuses an empty item secret itself, and a collection's password may
+            // be empty.
+            if (plain == null) return Optional.empty();
 
             try {
                 if (service == null) {

@@ -205,7 +205,7 @@ public class Static {
         }
 
         public static boolean isNullOrEmpty(final byte[] bytes) {
-            return bytes == null || bytes.toString().trim().isEmpty();
+            return bytes == null || bytes.length == 0;
         }
 
         public static boolean isNullOrEmpty(final String s) {

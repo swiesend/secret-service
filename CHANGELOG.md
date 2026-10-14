@@ -55,6 +55,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
   - **A secret is decoded in the charset that its content type names**, and in UTF-8, the specification's default, where it names none or one the JVM does not know. It was always decoded as UTF-8, so a secret that another application had stored as ISO-8859-1 came back with replacement characters for its non-ASCII ones. The decoding uses one buffer, erased afterwards, as the encoding does.
   - **Reading a secret that throws reports no secret.** An unexpected exception while one secret was read, an `IllegalArgumentException` from a content type as the one above, escaped `getSecret` and `withSecret`, where the functional API reports a failure as an empty result. From `getSecrets` and `withSecrets` it also dropped the secrets decrypted until then, unerased; the item is left out now, as one that cannot be read.
   - **No code in the JVM can change the transport encryption's Diffie-Hellman group.** The key exchange read it from `Static.RFC_2409.SecondOakleyGroup.PRIME` and `GENERATOR`, public arrays that any code could change, weakening every session opened afterwards. It uses a private copy now; the public arrays remain, as copies whose change has no effect.
+  - `Static.Utils.isNullOrEmpty(byte[])` is true for an empty array. It tested the array's `toString()`, `[B@...`, which is never empty. `TransportEncryption`'s guard that called it checks for `null` now, so an empty secret is still encrypted, as in every release.
 
 ## [3.0.0-alpha] - 2026-06-11
 
