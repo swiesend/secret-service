@@ -81,9 +81,11 @@ else
 fi
 
 # Run the provided command, defaulting to the system-test profile on this container's own,
-# throwaway wallet. ProviderSystemTest uses only the collection it is told to.
+# throwaway wallet. ProviderSystemTest uses only the collection it is told to, and may lock this
+# one: it unlocks again without a dialog.
 if [ $# -eq 0 ]; then
-    exec mvn -B test -Psystem-test -Dsecret-service.system-test.collection=kdewallet
+    exec mvn -B test -Psystem-test -Dsecret-service.system-test.collection=kdewallet \
+        -Dsecret-service.system-test.lockable=true
 else
     exec "$@"
 fi
