@@ -2,6 +2,8 @@
 
 This document captures the design goals, known issues, and planned direction for the 2.x.x line of `secret-service`.
 
+> **Status:** the goals below shipped. 3.0.0-alpha brought the functional API ([#32](https://github.com/swiesend/secret-service/pull/32)) and dbus-java 5.2.0; the per-item unlock for KeePassXC followed in [#72](https://github.com/swiesend/secret-service/pull/72) and [#73](https://github.com/swiesend/secret-service/pull/73), and GitHub Actions runs the tests. The problems are described as they stood before; the design tensions still apply.
+
 ## Background
 
 The 1.x API shipped a single high-level entry point (`SimpleCollection`) backed by a static D-Bus connection. While this made basic usage straightforward, the design created several fundamental problems that surfaced as the library gained adoption in projects like [Cryptomator](https://github.com/cryptomator/integrations-linux) and [KeePassXC](https://keepassxc.org/) integrations.
@@ -53,15 +55,17 @@ This allows callers to hold a single service and open/close sessions as needed, 
 
 **Direction:** Establish GitHub Actions CI with a D-Bus session bus mock or containerized gnome-keyring. This would catch regressions and enable confident merging of dependency upgrades.
 
-## Open pull requests relevant to 2.x
+**Since then:** GitHub Actions runs the regression tests in a gnome-keyring container on every pull request, and the system tests against gnome-keyring, KeePassXC and KWallet. Each container starts a D-Bus session bus on a path-based socket, which the JDK's native sockets support.
+
+## Pull requests relevant to 2.x
 
 | PR | Title | Status | Impact |
 |----|-------|--------|--------|
-| [#32](https://github.com/swiesend/secret-service/pull/32) | Draft: Develop 2.x.x | Draft | Core functional API redesign |
-| [#50](https://github.com/swiesend/secret-service/pull/50) | Update dbus-java 4.3.1 > 5.1.0 | Open | Dependency alignment |
-| [#48](https://github.com/swiesend/secret-service/pull/48) | dbus-java 5.0.0 | Open | Dependency alignment |
-| [#46](https://github.com/swiesend/secret-service/pull/46) | Unlock items before retrieval | Open | KeePassXC compatibility |
-| [#43](https://github.com/swiesend/secret-service/pull/43) | [WIP] Add initial CI | Draft | Infrastructure |
+| [#32](https://github.com/swiesend/secret-service/pull/32) | Draft: Develop 2.x.x | Merged, in 3.0.0-alpha | Core functional API redesign |
+| [#50](https://github.com/swiesend/secret-service/pull/50) | Update dbus-java 4.3.1 > 5.1.0 | Closed; dbus-java 5.2.0 came with #32 | Dependency alignment |
+| [#48](https://github.com/swiesend/secret-service/pull/48) | dbus-java 5.0.0 | Closed; dbus-java 5.2.0 came with #32 | Dependency alignment |
+| [#46](https://github.com/swiesend/secret-service/pull/46) | Unlock items before retrieval | Closed; landed as #72 and #73 | KeePassXC compatibility |
+| [#43](https://github.com/swiesend/secret-service/pull/43) | [WIP] Add initial CI | Closed; CI landed separately | Infrastructure |
 
 ## Known design tensions
 
@@ -77,4 +81,4 @@ This allows callers to hold a single service and open/close sessions as needed, 
 | 1.8.0-jdk17 | Dec 2022 | JDK 17 requirement, dbus-java 4.x, native sockets |
 | 2.0.0-alpha | Aug 2023 | JPMS module, package rename, hkdf 2.x |
 | 2.0.1-alpha | Jan 2024 | Bugfix (`DBusExecutionException` at startup) |
-| 2.x (next) | TBD | Functional API, dbus-java 5.x, KeePassXC support |
+| 3.0.0-alpha | Jun 2026 | Functional API, dbus-java 5.2.0 |

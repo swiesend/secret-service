@@ -28,10 +28,11 @@ public class Example {
 
         char[] password;
         try (ServiceInterface service = SecretService.create().get()) {
+            // The throwaway collection "test", with a password: without one, gnome-keyring creates a
+            // collection only through its dialog, which an IDE run then waits for.
             CollectionInterface collection = service
                     .openSession()
-                    //.flatMap(session -> session.collection("täst", Optional.of("test")))
-                    .flatMap(session -> session.collection("täst", Optional.empty()))
+                    .flatMap(session -> session.collection("test", Optional.of("test")))
                     //.flatMap(session -> session.defaultCollection())
                     .get();
             String collectionLabel = collection.getLabel().get();
@@ -52,7 +53,7 @@ public class Example {
             }*/
 
             // WARN: be careful activating this on the default collection...
-            if (collectionLabel == "test" || collectionLabel == "täst") {
+            if ("test".equals(collectionLabel)) {
                 log.info(String.format("Deleting collection {label: \"%s\", id: \"%s\"} ...", collectionLabel, collectionId));
                 boolean success = collection.delete();
                 if (success)
@@ -109,7 +110,7 @@ public class Example {
     public void collection() throws Exception {
         char[] secret = null;
 
-        try (CollectionInterface collection = Collection.open("test").get()) {
+        try (CollectionInterface collection = Collection.open("test", Optional.of("test")).get()) {
             Map<String, String> attributes = Map.of("key", "value");
             String item1 = collection.createItem("s1", "s1", attributes).orElseThrow();
             secret = collection.getSecret(item1).orElseThrow();
@@ -135,7 +136,7 @@ public class Example {
     @Test
     @Disabled("lockItem does not apply immediately in gnome-keyring; needs sleep-based workaround")
     public void unlockItem() throws Exception {
-        try (CollectionInterface collection = Collection.open("test").get()) {
+        try (CollectionInterface collection = Collection.open("test", Optional.of("test")).get()) {
             Map<String, String> attributes = Map.of("key", "asdf");
             String item1 = collection.createItem("item-1", "secret", attributes).get();
             collection.lockItem(item1);

@@ -22,14 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # collection: the id of the container's throwaway collection. ProviderSystemTest uses
+      # that one and no other, so on a developer's desktop it cannot reach a real wallet.
       matrix:
         include:
           - provider: gnome-keyring
             experimental: false
+            collection: test
           - provider: kwallet
             experimental: true
+            collection: kdewallet
           - provider: keepassxc
             experimental: true
+            collection: test
     name: system-tests (${{ matrix.provider }})
     continue-on-error: ${{ matrix.experimental }}
     # Each leg normally takes about two minutes. The bound is generous enough that a slow
@@ -57,7 +62,7 @@ jobs:
             -v "${{ github.workspace }}":/workspace \
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-${{ matrix.provider }} \
-            mvn -B test -Psystem-test
+            mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }}
 
       # The container runs --rm, so anything it left in /tmp is gone by the time the job
       # is read. Surefire reports are collected for every provider; the daemon logs only

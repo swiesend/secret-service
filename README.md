@@ -69,20 +69,25 @@ The library provides two API layers, both using transport-encrypted secrets over
 
 ### Dependency
 
-Add the `secret-service` as dependency to your project. You may want to exclude the `slf4j-api` if you use an incompatible version. The current version requires at least _JDK 17_.
+Add the `secret-service` as dependency to your project. The current version requires at least _JDK 17_.
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
     <version>3.0.0-beta</version>
-    <exclusions>
-        <exclusion>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </exclusion>
-    </exclusions>
 </dependency>
+```
+
+The library logs through `slf4j-api`, which it brings along. Exclude it only when your project depends on `slf4j-api` itself, in a version that conflicts; without one, the library fails with `NoClassDefFoundError`, and on the module path its `requires org.slf4j` does not resolve:
+
+```xml
+<exclusions>
+    <exclusion>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+    </exclusion>
+</exclusions>
 ```
 
 ### Functional API (Recommended)
@@ -206,7 +211,7 @@ try (SimpleCollection collection = new SimpleCollection("My Collection", "super 
 __Transport Encryption:__
 
 Both APIs use transport encryption (DH key exchange + AES-128-CBC) automatically.
-For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/ch07.html),
+For details see: [Transfer of Secrets](https://specifications.freedesktop.org/secret-service/0.2/transfer-secrets.html),
 [Transport Encryption Example](core/src/test/java/de/swiesend/secretservice/integration/IntegrationTest.java)
 
 ### Low-Level API
@@ -244,7 +249,9 @@ The CI test environments live under [`.github/providers/`](.github/providers) â€
 provider (`gnome-keyring`, `kwallet`, `keepassxc`), each starting a path-based D-Bus via the shared
 `dbus-up.sh`. The default regression workflow runs against gnome-keyring; the
 [`system-tests`](.github/workflows/system-tests.yml) workflow runs the system suite across all three
-providers (the KWallet/KeePassXC legs are best-effort and non-blocking).
+providers (the KWallet/KeePassXC legs are best-effort and non-blocking). The KWallet leg fails for
+now: headless, kwalletd5 creates no wallet, so there is no collection to test, and the leg says so
+instead of passing with every test skipped.
 
 ```bash
 docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test .

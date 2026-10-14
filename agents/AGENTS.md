@@ -159,7 +159,7 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
   `mvn -f tools/gui/pom.xml exec:java`.
 - `DBusConnection.isConnected()` is **unreliable after `close()`** in dbus-java 4.x — do not assert on post-close connection state.
 - Use `Thread.sleep()` (not `Thread.currentThread().sleep()`) for D-Bus signal waits.
-- `@Disabled` tests require interactive prompts or affect global state — the reason is in the annotation string.
+- `@Disabled` tests need a user to answer a dialog, touch the user's own keyring, or depend on timing or on the rest of the run; the annotation string says which. Give every new one its reason.
 
 ## Security Considerations
 

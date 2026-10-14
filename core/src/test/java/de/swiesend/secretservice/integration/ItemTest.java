@@ -72,7 +72,7 @@ public class ItemTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Reads a secret from the user's default collection")
     public void getForeignSecret() {
         //
         // NOTE: This is considered by NIST as a security vulnerability, but apparently it is not easy to solve with the
@@ -199,9 +199,10 @@ public class ItemTest {
     @Test
     @DisplayName("modified at unixtime")
     public void modified() {
-        UInt64 modified = context.item.created().get();
+        UInt64 modified = context.item.modified().get();
         log.info(String.valueOf(modified));
-        assertTrue(modified.longValue() >= 0L);
+        assertTrue(modified.longValue() >= context.item.created().get().longValue(),
+                "an item is not modified before it is created");
     }
 
     @Test
