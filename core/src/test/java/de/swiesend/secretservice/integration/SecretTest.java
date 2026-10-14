@@ -7,9 +7,11 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class SecretTest {
 
@@ -142,6 +144,29 @@ public class SecretTest {
 
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), StandardCharsets.US_ASCII);
         assertEquals(StandardCharsets.US_ASCII, secret.getCharset());
+    }
+
+    @Test
+    public void aContentTypeWithAnUnknownOrIllegalCharsetHasNone() {
+        // Another application's content type: the secret stays readable.
+        for (String contentType : new String[]{"text/plain; charset=x-no-such-charset", "text/plain; charset=x@y"}) {
+            Secret secret = new Secret(session, parameters.getBytes(), value.getBytes(), contentType);
+            assertNull(secret.getCharset(), contentType);
+            assertEquals("text/plain", secret.getMimeType(), contentType);
+        }
+    }
+
+    @Test
+    public void aCharsetNameIsReadInEveryLocale() {
+        // Upper-cased in a Turkish locale, the i of iso-8859-1 becomes a dotted capital I.
+        Locale before = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            Secret secret = new Secret(session, parameters.getBytes(), value.getBytes(), "text/plain; charset=iso-8859-1");
+            assertEquals(StandardCharsets.ISO_8859_1, secret.getCharset());
+        } finally {
+            Locale.setDefault(before);
+        }
     }
 
     @Test

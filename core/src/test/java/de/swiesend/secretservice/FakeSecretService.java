@@ -84,8 +84,31 @@ public final class FakeSecretService {
     @DBusInterfaceName(Static.Interfaces.ITEM)
     public interface WireItem extends DBusInterface {
         DBusPath Delete();
-        Secret GetSecret(DBusPath session);
+        WireSecret GetSecret(DBusPath session);
         void SetSecret(Secret secret);
+    }
+
+    /**
+     * A secret as it goes over the bus, {@code (oayays)}, with the content type as given. The
+     * library's {@link Secret} would rewrite a content type it cannot parse, and the client would
+     * never see it.
+     */
+    public static final class WireSecret extends org.freedesktop.dbus.Struct {
+        @org.freedesktop.dbus.annotations.Position(0)
+        private final DBusPath session;
+        @org.freedesktop.dbus.annotations.Position(1)
+        private final byte[] parameters;
+        @org.freedesktop.dbus.annotations.Position(2)
+        private final byte[] value;
+        @org.freedesktop.dbus.annotations.Position(3)
+        private final String contentType;
+
+        public WireSecret(DBusPath session, byte[] parameters, byte[] value, String contentType) {
+            this.session = session;
+            this.parameters = parameters;
+            this.value = value;
+            this.contentType = contentType;
+        }
     }
 
     @DBusInterfaceName(Static.Interfaces.SESSION)
@@ -265,6 +288,13 @@ public final class FakeSecretService {
      */
     public void setDefaultAlias(String path) { this.defaultAlias = path; }
     private volatile String defaultAlias;
+
+    /**
+     * The content type that {@code GetSecret} gives the secret, as the application that stored it
+     * chose it. The specification's own default, with its unusual spelling, unless set.
+     */
+    public void setSecretContentType(String contentType) { this.secretContentType = contentType; }
+    private volatile String secretContentType = "text/plain; charset=utf8";
 
     /** How often {@code Delete} was called on the collection. */
     public int collectionDeleteCalls() {
@@ -488,7 +518,7 @@ public final class FakeSecretService {
         }
 
         @Override
-        public Secret GetSecret(DBusPath session) {
+        public WireSecret GetSecret(DBusPath session) {
             if (itemLocked || collectionLocked) {
                 // What a provider does for a locked item -- including one locked only because its
                 // collection is. The client must not get here.
@@ -500,7 +530,7 @@ public final class FakeSecretService {
                 Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
                 byte[] ct = c.doFinal(SECRET_VALUE.getBytes(StandardCharsets.UTF_8));
-                return new Secret(new DBusPath(SESSION_PATH), iv, ct, "text/plain; charset=utf8");
+                return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
             }

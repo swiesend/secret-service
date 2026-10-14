@@ -205,7 +205,16 @@ public final class Secret extends Struct implements AutoCloseable {
         }
 
         if (filtered.size() == 2 && filtered.get(1).startsWith(CHARSET)) {
-            charset = Charset.forName(filtered.get(1).substring(CHARSET.length()).toUpperCase());
+            try {
+                // As it is: charset names are case-insensitive, and upper-casing in the default
+                // locale turned the i of iso-8859-1 into a dotted capital I under a Turkish one,
+                // which no charset name may contain.
+                charset = Charset.forName(filtered.get(1).substring(CHARSET.length()));
+            } catch (IllegalArgumentException e) {
+                // An illegal or unsupported name, from the application that stored the secret. It
+                // must not make the secret unreadable: read it as having no charset.
+                charset = null;
+            }
         } else {
             charset = null;
         }
