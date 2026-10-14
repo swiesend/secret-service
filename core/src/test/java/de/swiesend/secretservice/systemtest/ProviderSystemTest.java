@@ -245,4 +245,95 @@ public class ProviderSystemTest {
                 de.swiesend.secretservice.Static.Convert.toObjectPath(itemPath),
                 service.getService()).isLocked();
     }
+
+    /**
+     * Whether the tests below may lock a collection that they did not create. Set
+     * {@code -Dsecret-service.system-test.lockable=true} where it unlocks again without a dialog,
+     * as the wallet of a KWallet CI container does. Elsewhere the unlock waits for the user, and
+     * KeePassXC locks the whole database. The gnome-keyring collection that the suite creates
+     * unlocks with its password and may always be locked.
+     */
+    private static final boolean LOCKABLE = Boolean.getBoolean("secret-service.system-test.lockable");
+
+    @Test
+    @DisplayName("the collection locks and unlocks again")
+    void lockAndUnlock() {
+        assumeLockable();
+        String itemPath = collection.createItem("provider-system-lock", "s3cr3t-lock").orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+        try {
+            assertTrue(collection.lock(), "lock()");
+            assertTrue(collection.isLocked(), "locked after lock()");
+            assertTrue(collection.unlockWithUserPermission(), "unlockWithUserPermission()");
+            assertFalse(collection.isLocked(), "unlocked again");
+
+            char[] got = collection.getSecret(itemPath).orElse(null);
+            assertNotNull(got, "getSecret returned empty after the unlock");
+            assertArrayEquals("s3cr3t-lock".toCharArray(), got);
+            Arrays.fill(got, '\0');
+        } finally {
+            collection.deleteItem(itemPath);
+        }
+    }
+
+    @Test
+    @DisplayName("an item of a collection that stays locked has no secret")
+    void aLockedItemHasNoSecret() throws Exception {
+        assumeLockable();
+        String itemPath = collection.createItem("provider-system-locked-read", "s3cr3t-locked").orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+        try {
+            assertTrue(collection.lock(), "lock()");
+            try (CollectionInterface refusing = refusingToUnlock()) {
+                // KWallet answers the read of a locked item with an empty secret (KDE bug 524650).
+                assertEquals(Optional.empty(), refusing.getSecret(itemPath).map(String::new),
+                        "no secret, not an empty one");
+                assertEquals(Optional.empty(), refusing.withSecret(itemPath, chars -> chars.length),
+                        "and no callback");
+            }
+        } finally {
+            collection.unlockWithUserPermission();
+            collection.deleteItem(itemPath);
+        }
+    }
+
+    @Test
+    @DisplayName("an item of a collection that stays locked keeps its secret")
+    void aLockedItemKeepsItsSecret() throws Exception {
+        assumeLockable();
+        String itemPath = collection.createItem("provider-system-locked-update", "s3cr3t-before").orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+        try {
+            assertTrue(collection.lock(), "lock()");
+            try (CollectionInterface refusing = refusingToUnlock()) {
+                // KWallet reports a secret for a locked item set, and throws it away.
+                assertFalse(refusing.updateItem(itemPath, null, "s3cr3t-after", null),
+                        "a secret for a locked item is not reported as set");
+            }
+            assertTrue(collection.unlockWithUserPermission(), "unlockWithUserPermission()");
+            char[] got = collection.getSecret(itemPath).orElse(null);
+            assertNotNull(got, "getSecret returned empty after the unlock");
+            assertArrayEquals("s3cr3t-before".toCharArray(), got, "the item keeps its secret");
+            Arrays.fill(got, '\0');
+        } finally {
+            collection.deleteItem(itemPath);
+        }
+    }
+
+    private void assumeLockable() {
+        Assumptions.assumeTrue(ownsCollection || LOCKABLE,
+                "the collection may not unlock again without a dialog; "
+                        + "-Dsecret-service.system-test.lockable=true where it does");
+    }
+
+    /**
+     * A second handle on the collection, without its password and with prompting disabled: an
+     * unlock through it is refused, as when the user dismisses the provider's dialog.
+     */
+    private CollectionInterface refusingToUnlock() {
+        String id = collection.getId().orElseThrow();
+        CollectionInterface refusing = session.collectionById(id).orElseThrow();
+        refusing.disablePrompt();
+        return refusing;
+    }
 }
