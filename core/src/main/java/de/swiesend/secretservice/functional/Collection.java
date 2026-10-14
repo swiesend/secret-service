@@ -453,8 +453,7 @@ public class Collection implements CollectionInterface {
 
             // Prompt required (e.g. KeePassXC per-item unlock)
             if (!requiresPrompt(pair.b)) {
-                // Neither an item nor a prompt, which the specification does not allow. Awaiting "/"
-                // would hand back the result of whichever prompt completed last.
+                // Neither an item nor a prompt, which the specification does not allow.
                 log.error("createItem returned neither an item nor a prompt.");
                 return Optional.empty();
             }
@@ -778,9 +777,7 @@ public class Collection implements CollectionInterface {
             Pair<List<DBusPath>, DBusPath> lock = maybeLock.get();
             log.debug("lock item: {}", lock);
             // Only when a prompt is genuinely required: a non-empty lock.a means the provider
-            // already locked the item, and "/" names no prompt object. Awaiting on "/" would
-            // consult getLastHandledSignal(Completed.class), which filters by class only and can
-            // return an unrelated prompt's result.
+            // already locked the item, and "/" names no prompt object.
             if (lock.a.isEmpty() && requiresPrompt(lock.b)) {
                 if (!isPrompting) {
                     log.debug("Locking item {} needs a prompt, and prompting is disabled; dismissing it.",
@@ -820,9 +817,7 @@ public class Collection implements CollectionInterface {
             Pair<List<DBusPath>, DBusPath> unlock = maybeUnlock.get();
             log.debug("unlock item: {}", unlock);
             // requiresPrompt(), matching lockItem: an empty unlock.a with a "/" path means the
-            // provider refused without offering a prompt, and awaiting on "/" falls through to
-            // getLastHandledSignal, which filters by class and not by path -- an unrelated earlier
-            // prompt's result.
+            // provider refused without offering a prompt.
             if (unlock.a.isEmpty() && requiresPrompt(unlock.b)) {
                 // A prompt is required. await() returns null when it times out, and reading
                 // .result on that threw a NullPointerException out of a method declared to return
@@ -830,21 +825,14 @@ public class Collection implements CollectionInterface {
                 // same as a success until the re-read below happened to contradict it.
                 de.swiesend.secretservice.interfaces.Prompt.Completed completed =
                         prompt.await(unlock.b, service.getTimeout());
-                // Logged, not returned on. await() answers null both for a real timeout and, via
-                // its "/" branch, when no Completed signal was ever handled, and it can hand back a
-                // STALE Completed from an earlier unrelated prompt. None of those are reliable
+                // Logged, not returned on. await() answers null for a timeout, and it can hand back
+                // a stale Completed from an earlier prompt on the same path. Neither is reliable
                 // enough to overrule the provider, so the re-read below stays the authority.
                 if (completed == null) {
-                    // Unreliable: await() answers null for a real timeout, for its "/" branch when
-                    // no Completed was ever handled, and it can hand back a stale Completed from an
-                    // earlier prompt. Fall through and ask the provider.
                     log.warn("No prompt result for item {}; asking the provider directly.", itemPath);
                 } else if (completed.dismissed) {
-                    // Trustworthy because the enclosing requiresPrompt(unlock.b) guarantees a real
-                    // prompt path, for which SignalHandler.await filters the Completed signal by
-                    // path. On "/" Prompt.await would fall back to
-                    // getLastHandledSignal(Completed.class), which filters by class only and could
-                    // return a dismissal from an unrelated earlier prompt.
+                    // Trustworthy: requiresPrompt(unlock.b) above guarantees a real prompt path,
+                    // for which SignalHandler.await filters the Completed signal by path.
                     log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
                     return false;
                 }

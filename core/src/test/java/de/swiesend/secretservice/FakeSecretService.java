@@ -338,9 +338,8 @@ public final class FakeSecretService {
             }
             if (dismissPrompts) {
                 // A REAL prompt path, and a Completed(dismissed=true) to go with it. Answering "/"
-                // instead would send the client down Prompt.await's getLastHandledSignal branch,
-                // where no signal is ever handled -- so every test hit the "no prompt result" path
-                // and the dismissal branch had no coverage at all.
+                // instead would leave the client no prompt to await -- so every test would hit the
+                // "no prompt result" path, and the dismissal branch would have no coverage at all.
                 //
                 // No Prompt object is exported: declaring @DBusInterfaceName for
                 // org.freedesktop.Secret.Prompt registers a JVM-wide interface->class mapping that
