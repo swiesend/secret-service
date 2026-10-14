@@ -13,8 +13,8 @@
       java.desktop. It depends on the published/installed core artifact.
 
       Build the core first, then launch:
-        mvn -q -DskipTests install            # from repository root
-        mvn -f tools/gui/pom.xml exec:java    # launch the GUI
+        mvn -q -DskipTests -Dgpg.skip=true install   # from repository root; skip the release signing
+        mvn -f tools/gui/pom.xml exec:java           # launch the GUI
     -->
 
     <groupId>de.swiesend</groupId>
