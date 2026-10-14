@@ -1,9 +1,9 @@
 name: System Tests
 
 # Runs the provider-agnostic system test suite (@Tag("system-test")) against each
-# supported Secret Service provider. gnome-keyring is the reliable, blocking leg;
-# headless KWallet and KeePassXC bring-up is fragile, so those legs are
-# non-blocking (continue-on-error) and informative.
+# supported Secret Service provider. gnome-keyring is the reliable, blocking leg.
+# KeePassXC's headless bring-up is fragile, and KWallet's has yet to prove itself on
+# the runners, so those legs are non-blocking (continue-on-error) and informative.
 
 on:
   push:
