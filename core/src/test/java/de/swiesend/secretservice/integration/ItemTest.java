@@ -72,7 +72,7 @@ public class ItemTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Reads a secret from the user's default collection")
     public void getForeignSecret() {
         //
         // NOTE: This is considered by NIST as a security vulnerability, but apparently it is not easy to solve with the
