@@ -19,7 +19,8 @@ public class SecretService implements ServiceInterface {
 
     private static final Logger log = LoggerFactory.getLogger(SecretService.class);
     private final Optional<SystemInterface> maybeSystem;
-    private Map<UUID, SessionInterface> sessions = new HashMap<>();
+    // Concurrent: a session removes itself when it closes, on whichever thread closes it.
+    private Map<UUID, SessionInterface> sessions = new java.util.concurrent.ConcurrentHashMap<>();
     private de.swiesend.secretservice.Service service;
     private boolean isGnomeKeyringAvailable;
 
@@ -104,7 +105,8 @@ public class SecretService implements ServiceInterface {
         this.sessions.put(session.getId(), session);
     }
 
-    private void unregisterSession(SessionInterface session) {
+    /** Forgets a session, which {@link Session#close()} calls: a closed one has nothing to close. */
+    void unregisterSession(SessionInterface session) {
         this.sessions.remove(session.getId());
     }
 

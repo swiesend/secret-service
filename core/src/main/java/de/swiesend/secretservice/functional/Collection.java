@@ -1129,6 +1129,8 @@ public class Collection implements CollectionInterface {
             // them registered otherwise.
             if (prompt != null) prompt.getSignalHandler().disconnect();
             if (collection != null) collection.getSignalHandler().disconnect();
+            // The session keeps the collections it has to close; this one is closed.
+            if (session instanceof Session owner) owner.forget(this);
             if (clearSessionAtClose) {
                 // Close the service (which cascades to registered sessions and the
                 // underlying SystemInterface/D-Bus connection). Closing only the session
