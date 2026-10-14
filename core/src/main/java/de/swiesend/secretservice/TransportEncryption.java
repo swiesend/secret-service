@@ -321,7 +321,8 @@ public class TransportEncryption implements AutoCloseable {
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
                 cipher.init(Cipher.DECRYPT_MODE, key, ivSpec);
                 decrypted = cipher.doFinal(secret.getSecretValue());
-                return Optional.of(Secret.toChars(decrypted));
+                // In the charset that the secret's content type names; UTF-8 where it names none.
+                return Optional.of(Secret.toChars(decrypted, secret.getCharset()));
             } catch (InvalidAlgorithmParameterException |
                      InvalidKeyException |
                      NoSuchPaddingException |

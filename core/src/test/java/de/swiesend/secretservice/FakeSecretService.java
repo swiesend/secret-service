@@ -296,6 +296,19 @@ public final class FakeSecretService {
     public void setSecretContentType(String contentType) { this.secretContentType = contentType; }
     private volatile String secretContentType = "text/plain; charset=utf8";
 
+    /**
+     * The secret that {@code GetSecret} hands out instead of {@link #SECRET_VALUE}: {@code value},
+     * encoded in {@code encoding}, under {@code contentType}.
+     */
+    public void setStoredSecret(String value, java.nio.charset.Charset encoding, String contentType) {
+        this.secretValue = value;
+        this.secretEncoding = encoding;
+        this.secretContentType = contentType;
+    }
+
+    private volatile String secretValue = SECRET_VALUE;
+    private volatile java.nio.charset.Charset secretEncoding = StandardCharsets.UTF_8;
+
     /** How often {@code Delete} was called on the collection. */
     public int collectionDeleteCalls() {
         return collectionDeleteCalls.get();
@@ -529,7 +542,7 @@ public final class FakeSecretService {
                 new SecureRandom().nextBytes(iv);
                 Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
-                byte[] ct = c.doFinal(SECRET_VALUE.getBytes(StandardCharsets.UTF_8));
+                byte[] ct = c.doFinal(secretValue.getBytes(secretEncoding));
                 return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
