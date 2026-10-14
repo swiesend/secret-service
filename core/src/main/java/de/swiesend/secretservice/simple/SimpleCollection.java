@@ -280,7 +280,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                     return true;
                 }
             }
-        } catch (IOException | RejectedExecutionException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            // The caller's to handle, as the thread's owner: often a shutdown in progress.
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for the D-Bus connection to close.");
+            return false;
+        } catch (IOException | RejectedExecutionException e) {
             log.error("Failed to disconnect properly from the D-Bus.", e);
             return false;
         }

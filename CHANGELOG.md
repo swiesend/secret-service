@@ -40,6 +40,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
   - **The low-level `Service.getSecrets()` returns `Secret` values, and `openSession()` a `byte[]` output.** dbus-java decodes the reply without type information: each secret struct as an `Object[]`, and a byte array possibly as `List<Byte>`. The declared types only cast the reply, so the first read of a value threw a `ClassCastException`. Both now convert the reply, as `Item.getSecret()` already did; a plain session's output stays the empty string it is.
   - **A D-Bus call that gets no reply in time is logged.** `MessageHandler` waits two seconds for a reply. When none came, the call returned empty without a word, so a slow provider looked like a refusing one, although it can still carry the call out after the wait. It now logs a warning that names the call.
   - The javadoc of `SimpleCollection` shows migration examples that compile and close what they open. The full example put the `Optional` from `System.connect()` into a try-with-resources, and the simple one never closed its collection, which leaks the connection the collection opened. It also says that the class goes in 4.0, not 3.0, and that `clear()` clears the collection's passphrase; the transport keys are erased on `close()`.
+  - `SimpleCollection.disconnect()` keeps the thread's interrupt flag when it is interrupted while it waits for the connection to close. It dropped the flag, so the caller, often a shutdown in progress, did not learn of the interruption.
 
 ## [3.0.0-alpha] - 2026-06-11
 
