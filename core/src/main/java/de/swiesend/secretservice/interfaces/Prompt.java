@@ -43,10 +43,10 @@ public interface Prompt extends DBusInterface {
     boolean prompt(String window_id);
 
     /**
-     * Perform the prompt.
-     * 
+     * Perform the prompt, with an empty window_id: the library knows no window of the caller's.
+     *
      * @param prompt        Objectpath of the prompt.
-     * 
+     *
      * @see Completed
      */
     boolean prompt(DBusPath prompt);

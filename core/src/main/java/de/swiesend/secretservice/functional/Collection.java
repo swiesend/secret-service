@@ -62,6 +62,9 @@ public class Collection implements CollectionInterface {
 
     /**
      * Open the default collection with an optional existing session.
+     * <p>
+     * A provider that names no default collection is logged as a warning. The collection is then
+     * the default alias's path, where reading and creating items fail.
      *
      * @param maybeSession an existing session to reuse, or empty to create a new one
      * @return the default collection, or empty if the service is unavailable
@@ -78,7 +81,16 @@ public class Collection implements CollectionInterface {
         // The collection the alias points to, not the alias: getId() names it then, and the
         // signals the provider emits from the collection's own path reach it. The alias itself
         // where the provider names no default collection.
-        c.path = c.defaultCollectionPath()
+        Optional<DBusPath> alias = c.service.getService().readAlias("default");
+        if (alias.isPresent() && "/".equals(alias.get().getPath())) {
+            // "/" for no such alias. Nothing can be read from or created in the alias's path then,
+            // and the failures come later, without a word on why: a fresh account where nothing
+            // has created the login keyring yet, or a provider set up without a default.
+            log.warn("The provider names no default collection; items of the default collection can be "
+                    + "neither read nor created. Open a collection by its label instead, or set the "
+                    + "provider's default.");
+        }
+        c.path = namedCollection(alias)
                 .orElseGet(() -> Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION));
         c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
         c.label = c.collection.getLabel();
@@ -363,8 +375,12 @@ public class Collection implements CollectionInterface {
 
     /** The collection that the "default" alias points to, unless the provider names none. */
     private Optional<DBusPath> defaultCollectionPath() {
-        return service.getService().readAlias("default")
-                .filter(path -> path.getPath() != null && !"/".equals(path.getPath()));
+        return namedCollection(service.getService().readAlias("default"));
+    }
+
+    /** The collection that ReadAlias answered with, unless it answered "/", for none. */
+    private static Optional<DBusPath> namedCollection(Optional<DBusPath> alias) {
+        return alias.filter(path -> path.getPath() != null && !"/".equals(path.getPath()));
     }
 
     private Optional<DBusPath> performPrompt(DBusPath path) {
@@ -850,17 +866,18 @@ public class Collection implements CollectionInterface {
      * A locked item is not read: gnome-keyring and KeePassXC refuse to read one, but KWallet
      * answers with an empty secret (KDE bug 524650), which would pass for the item's own.
      *
-     * @param allowItemUnlock whether a locked item may be unlocked first, which can raise a prompt.
-     *                        False for the bulk readers: they iterate the whole collection, and one
-     *                        prompt per item is not a reasonable thing to do to a user. They skip a
-     *                        locked item.
+     * @param unlockIfLocked whether to unlock the collection and a locked item first, which can
+     *                       raise a prompt. False for the bulk readers, which have unlocked every
+     *                       locked item at once and read only those found unlocked: one prompt per
+     *                       item is not a reasonable thing to do to a user.
      */
-    private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
+    private Optional<char[]> getSecret(String objectPath, boolean unlockIfLocked) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         try {
-            unlock();
-            boolean readable = allowItemUnlock ? unlockItemIfLocked(objectPath) : !isItemLocked(objectPath);
-            if (!readable) return Optional.empty();
+            if (unlockIfLocked) {
+                unlock();
+                if (!unlockItemIfLocked(objectPath)) return Optional.empty();
+            }
 
             return getItem(objectPath)
                     .flatMap(item -> {
@@ -907,13 +924,75 @@ public class Collection implements CollectionInterface {
 
         List<DBusPath> items = maybeItems.get();
 
+        // Each item's lock is read once, here.
+        List<DBusPath> locked = new ArrayList<>();
+        for (DBusPath item : items) {
+            if (isItemLocked(item.getPath())) locked.add(item);
+        }
+        Set<String> stillLocked = locked.isEmpty() ? Set.of() : unlockItems(locked);
+
         Map<String, char[]> passwords = new HashMap<>();
         for (DBusPath item : items) {
             String path = item.getPath();
+            if (stillLocked.contains(path)) {
+                log.debug("Item {} stayed locked; not read.", path);
+                continue;
+            }
             getSecret(path, false).ifPresent(secret -> passwords.put(path, secret));
         }
 
         return Optional.of(passwords);
+    }
+
+    /**
+     * Unlocks {@code locked}, items of this collection, with one Unlock call, and answers the paths
+     * of those that stay locked.
+     *
+     * <p>KeePassXC keeps an item locked for a client until the user confirms that client's access,
+     * which it asks by default, and shows one dialog for all the items of an Unlock call. One call
+     * per item, as {@link #unlockItemIfLocked} makes, would bring up a dialog per item. The prompt
+     * is carried out whenever the provider gives one, also when some items came back unlocked
+     * without it: the prompt unlocks the rest.</p>
+     *
+     * <p>Not with prompting disabled: a locked item unlocks only through a prompt. Nor in a
+     * collection that is not known to be unlocked, for the reason {@link #unlockItemIfLocked}
+     * gives: gnome-keyring reports every item locked while its collection is, and an unlock would
+     * bring up a second dialog for the collection the user has just refused.</p>
+     */
+    private Set<String> unlockItems(List<DBusPath> locked) {
+        Set<String> paths = new HashSet<>();
+        for (DBusPath item : locked) paths.add(item.getPath());
+        if (!isPrompting) {
+            log.debug("{} items are locked, and prompting is disabled.", locked.size());
+            return paths;
+        }
+        Optional<Boolean> collectionLocked = collection.lockedState();
+        if (collectionLocked.isEmpty() || collectionLocked.get()) {
+            log.debug("{} items are locked, and their collection is not known to be unlocked.", locked.size());
+            return paths;
+        }
+        Optional<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlock(locked);
+        if (maybeUnlock.isEmpty()) {
+            log.error("Could not unlock {} locked items.", locked.size());
+            return paths;
+        }
+        DBusPath promptPath = maybeUnlock.get().b;
+        if (requiresPrompt(promptPath)) {
+            de.swiesend.secretservice.interfaces.Prompt.Completed completed =
+                    prompt.await(promptPath, service.getTimeout());
+            if (completed == null) {
+                log.warn("No result from the prompt that unlocks {} items; asking the provider directly.",
+                        locked.size());
+            } else if (completed.dismissed) {
+                log.info("The prompt that unlocks {} items was dismissed.", locked.size());
+            }
+        }
+        // The provider's state, not the prompt result, is the authority.
+        Set<String> stillLocked = new HashSet<>();
+        for (String path : paths) {
+            if (isItemLocked(path)) stillLocked.add(path);
+        }
+        return stillLocked;
     }
 
     @Override
@@ -1097,6 +1176,16 @@ public class Collection implements CollectionInterface {
         }
         Item item = maybeItem.get();
 
+        // The specification: a locked item cannot be modified. Providers differ in what they take
+        // from one: KWallet keeps a new label and drops the secret, and KeePassXC, which keeps an item
+        // locked for a client until the user confirms its access, takes the label and the attributes
+        // and refuses the secret. So the item is unlocked first, as for a read, and left as it is
+        // when it stays locked.
+        if (!unlockItemIfLocked(objectPath)) {
+            log.info("Item {} stayed locked, so it is not changed.", objectPath);
+            return false;
+        }
+
         // Every part is attempted, as in 1.x, and the update succeeds only if each one did.
         boolean updated = true;
         if (label != null && !item.setLabel(label)) {
@@ -1110,23 +1199,16 @@ public class Collection implements CollectionInterface {
         }
 
         if (password != null) {
-            if (item.isLocked()) {
-                // Not sent: gnome-keyring refuses a secret for a locked item, but KWallet reports
-                // it set and throws it away. A label or attributes, above, KWallet keeps.
-                log.error("Item {} is locked; its secret is not set.", objectPath);
+            boolean secretSet = session.getEncryptedSession().encrypt(password)
+                    .map(secret -> {
+                        try (secret) { // auto-close
+                            return item.setSecret(secret); // side-effect
+                        }
+                    })
+                    .orElse(false);
+            if (!secretSet) {
+                log.error("Could not set the secret of item {}", objectPath);
                 updated = false;
-            } else {
-                boolean secretSet = session.getEncryptedSession().encrypt(password)
-                        .map(secret -> {
-                            try (secret) { // auto-close
-                                return item.setSecret(secret); // side-effect
-                            }
-                        })
-                        .orElse(false);
-                if (!secretSet) {
-                    log.error("Could not set the secret of item {}", objectPath);
-                    updated = false;
-                }
             }
         }
         return updated;
@@ -1216,7 +1298,8 @@ public class Collection implements CollectionInterface {
     }
 
     /**
-     * Unlocks a single item when the provider reports it as locked, so a read can proceed.
+     * Unlocks a single item when the provider reports it as locked, so a read or a change can
+     * proceed.
      *
      * <p>The freedesktop specification says a client "should act as if it must unlock each item
      * individually". KeePassXC does exactly that and prompts per item; gnome-keyring never locks an
@@ -1237,13 +1320,13 @@ public class Collection implements CollectionInterface {
      * which here would mean a transient read failure silently re-enables the double prompt.
      *
      * <p>Not applied to {@code getSecrets}/{@code withSecrets}, which iterate the whole collection:
-     * one prompt per item is not a reasonable thing to do to a user. They call the private
-     * {@code getSecret(path, false)} overload for that reason -- an earlier version of this comment
-     * claimed the exemption while {@code getSecrets} in fact looped through the public
-     * {@code getSecret}, so a bulk read on KeePassXC would have raised N prompts.
+     * one prompt per item is not a reasonable thing to do to a user. They unlock every locked item
+     * with one Unlock call, through {@link #unlockItems}, and read through the private
+     * {@code getSecret(path, false)}.
      *
-     * @return true when the item can be read: it was already unlocked, or the unlock succeeded.
-     *         False when the item stayed locked, which includes the user dismissing the prompt.
+     * @return true when the item can be read or changed: it was already unlocked, or the unlock
+     *         succeeded. False when the item stayed locked, which includes the user dismissing the
+     *         prompt.
      */
     private boolean unlockItemIfLocked(String objectPath) {
         // The collection must already be unlocked. gnome-keyring reports EVERY item as locked while
@@ -1270,37 +1353,35 @@ public class Collection implements CollectionInterface {
         // prompt on any transient D-Bus error, so unknown skips the unlock, and the read, just like
         // locked does.
         if (collectionLocked.isEmpty() || collectionLocked.get()) {
-            log.debug("Item {} is locked, and its collection is not known to be unlocked; not read.", objectPath);
+            log.debug("Item {} is locked, and its collection is not known to be unlocked.", objectPath);
             return false;
         }
 
         log.debug("Item is locked; asking the provider to unlock it: {}", objectPath);
         if (unlockItem(objectPath)) return true;
 
-        // Do not fall through to GetSecret. It cannot succeed on a locked item, and the failure it
-        // produces would be reported as a missing or unreadable secret rather than as the refusal
-        // it actually is.
+        // Do not fall through to GetSecret, or to a change. A read cannot succeed on a locked item,
+        // and the failure it produces would be reported as a missing or unreadable secret rather
+        // than as the refusal it actually is.
         // WARN only when something unexpected happened. With prompting disabled the item staying
         // locked is the caller's own instruction being carried out, and warning about it would
         // report a deliberate configuration as a fault on every read.
         if (isPrompting) {
-            log.warn("Item stayed locked, so its secret cannot be read: {}. The unlock prompt was "
-                    + "dismissed, timed out, or the provider refused it.", objectPath);
+            log.warn("Item stayed locked: {}. The unlock prompt was dismissed, timed out, or the "
+                    + "provider refused it.", objectPath);
         } else {
-            log.debug("Item {} stayed locked because prompting is disabled; not read.", objectPath);
+            log.debug("Item {} stayed locked because prompting is disabled.", objectPath);
         }
         return false;
     }
 
     /**
-     * Whether the provider reports the item as locked, for the bulk readers, which skip a locked
-     * item. False also when that cannot be read, as {@link de.swiesend.secretservice.Item#isLocked()}
-     * answers then.
+     * Whether the provider reports the item as locked, for the bulk readers, which unlock the
+     * locked items at once and skip those that stay locked. False also when that cannot be read, as
+     * {@link de.swiesend.secretservice.Item#isLocked()} answers then.
      */
     private boolean isItemLocked(String objectPath) {
-        boolean locked = getItem(objectPath).map(de.swiesend.secretservice.Item::isLocked).orElse(false);
-        if (locked) log.debug("Item {} is locked; not read.", objectPath);
-        return locked;
+        return getItem(objectPath).map(de.swiesend.secretservice.Item::isLocked).orElse(false);
     }
 
     /**

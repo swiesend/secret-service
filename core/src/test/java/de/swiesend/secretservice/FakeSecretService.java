@@ -41,7 +41,8 @@ import javax.crypto.spec.DHPublicKeySpec;
  * <p>Only the members the read path touches are implemented, and {@code Item.Delete},
  * {@code Item.SetSecret}, setting the item's properties, {@code Collection.Delete},
  * {@code ReadAlias}, {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a
- * provider: it does no access control and keeps its secret in a field.</p>
+ * provider: it does no access control and keeps its secret in a field. A test can add a second
+ * item, with a lock of its own, for the reads of several items.</p>
  */
 public final class FakeSecretService {
 
@@ -51,11 +52,15 @@ public final class FakeSecretService {
     /** The client resolves a collection by label, so the Label property must match this. */
     public static final String COLLECTION_LABEL = "fake";
     public static final String ITEM_PATH = COLLECTION_PATH + "/1";
+    /** The item that {@link #addSecondItem(boolean)} adds. */
+    public static final String SECOND_ITEM_PATH = COLLECTION_PATH + "/3";
     public static final String SESSION_PATH = "/org/freedesktop/secrets/session/fake";
     public static final String PROMPT_PATH = "/org/freedesktop/secrets/prompt/fake";
 
     /** What the fake item holds. */
     public static final String SECRET_VALUE = "the-locked-secret";
+    /** What the second item holds. */
+    public static final String SECOND_SECRET_VALUE = "the-second-secret";
 
     /**
      * RFC 2409, section 6.2: the prime of the group that the specification prescribes. The fake's
@@ -87,7 +92,7 @@ public final class FakeSecretService {
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
-        Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace);
+        Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, WireSecret secret, boolean replace);
         DBusPath Delete();
     }
 
@@ -95,13 +100,13 @@ public final class FakeSecretService {
     public interface WireItem extends DBusInterface {
         DBusPath Delete();
         WireSecret GetSecret(DBusPath session);
-        void SetSecret(Secret secret);
+        void SetSecret(WireSecret secret);
     }
 
     /**
      * A secret as it goes over the bus, {@code (oayays)}, with the content type as given. The
-     * library's {@link Secret} would rewrite a content type it cannot parse, and the client would
-     * never see it.
+     * library's {@link Secret} would rewrite a content type it cannot parse: the client would never
+     * see it, and the fake would not see the one the client sends.
      */
     public static final class WireSecret extends org.freedesktop.dbus.Struct {
         @org.freedesktop.dbus.annotations.Position(0)
@@ -118,6 +123,10 @@ public final class FakeSecretService {
             this.parameters = parameters;
             this.value = value;
             this.contentType = contentType;
+        }
+
+        public String contentType() {
+            return contentType;
         }
     }
 
@@ -152,6 +161,43 @@ public final class FakeSecretService {
     public List<String> unlockCalls() {
         return List.copyOf(unlockCalls);
     }
+
+    /** The paths of each {@code Unlock} call, one list per call, in call order. */
+    public List<List<String>> unlockRequests() {
+        return List.copyOf(unlockRequests);
+    }
+
+    private final List<List<String>> unlockRequests = Collections.synchronizedList(new ArrayList<>());
+
+    /**
+     * Adds a second item to the collection, locked on its own or not, as KeePassXC locks each item
+     * for a client until the user confirms its access. It holds {@link #SECOND_SECRET_VALUE}.
+     */
+    public void addSecondItem(boolean locked) throws Exception {
+        secondItemLocked = locked;
+        connection.exportObject(SECOND_ITEM_PATH, new ItemImpl(SECOND_ITEM_PATH));
+    }
+
+    /** Null while there is no second item. */
+    private volatile Boolean secondItemLocked;
+
+    public boolean isSecondItemLocked() {
+        return Boolean.TRUE.equals(secondItemLocked);
+    }
+
+    /** How many prompts {@code Unlock} gave for items. */
+    public int itemUnlockPrompts() {
+        return itemUnlockPrompts.get();
+    }
+
+    private final java.util.concurrent.atomic.AtomicInteger itemUnlockPrompts = new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * Makes {@code Unlock} of several items unlock the first at once and give a prompt for the rest,
+     * an answer that the specification allows: the prompt unlocks the remaining objects.
+     */
+    public void setUnlockFirstItemWithoutPrompt(boolean partly) { this.unlockFirstItemWithoutPrompt = partly; }
+    private volatile boolean unlockFirstItemWithoutPrompt;
 
     /** Labels that {@code CreateCollection} was called with, in order. */
     public List<String> createCollectionCalls() {
@@ -247,6 +293,13 @@ public final class FakeSecretService {
 
     private final List<String> createItemCalls = Collections.synchronizedList(new ArrayList<>());
 
+    /** The names of the properties that each {@code CreateItem} call was given, in call order. */
+    public List<java.util.Set<String>> createItemPropertyNames() {
+        return List.copyOf(createItemPropertyNames);
+    }
+
+    private final List<java.util.Set<String>> createItemPropertyNames = Collections.synchronizedList(new ArrayList<>());
+
     /** Whether a Lock prompt is outstanding, so a test can wait for it instead of racing it. */
     public boolean hasPendingPrompt() { return pendingApproval != null; }
 
@@ -271,7 +324,7 @@ public final class FakeSecretService {
 
     /** Whether the store holds an item at {@code path}. */
     public boolean hasItem(String path) {
-        return ITEM_PATH.equals(path) && !itemDeleted;
+        return (ITEM_PATH.equals(path) && !itemDeleted) || (SECOND_ITEM_PATH.equals(path) && secondItemLocked != null);
     }
 
     private volatile boolean itemDeleted;
@@ -291,6 +344,13 @@ public final class FakeSecretService {
     public int setSecretCalls() {
         return setSecretCalls.get();
     }
+
+    /** The content types of the secrets that {@code CreateItem} and {@code SetSecret} were given, in call order. */
+    public List<String> sentContentTypes() {
+        return List.copyOf(sentContentTypes);
+    }
+
+    private final List<String> sentContentTypes = Collections.synchronizedList(new ArrayList<>());
 
     /**
      * Points the {@code default} alias at {@code path}, as a provider names its default collection.
@@ -371,10 +431,32 @@ public final class FakeSecretService {
 
     private final java.util.concurrent.atomic.AtomicInteger setSecretCalls = new java.util.concurrent.atomic.AtomicInteger();
 
+    private static boolean isItem(String path) {
+        return ITEM_PATH.equals(path) || SECOND_ITEM_PATH.equals(path);
+    }
+
+    private void unlockItem(String path) {
+        if (ITEM_PATH.equals(path)) itemLocked = false;
+        if (SECOND_ITEM_PATH.equals(path) && secondItemLocked != null) secondItemLocked = false;
+    }
+
+    /** The collection's items: the first, and the second once it is added. */
+    private List<DBusPath> items() {
+        List<DBusPath> items = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
+        if (secondItemLocked != null) items.add(new DBusPath(SECOND_ITEM_PATH));
+        return items;
+    }
+
+    /** Whether the item at {@code path} is locked, on its own or with its collection. */
+    private boolean isLocked(String path) {
+        boolean own = SECOND_ITEM_PATH.equals(path) ? Boolean.TRUE.equals(secondItemLocked) : itemLocked;
+        return own || collectionLocked;
+    }
+
     public void export() throws Exception {
         connection.exportObject(SERVICE_PATH, new ServiceImpl());
         connection.exportObject(COLLECTION_PATH, new CollectionImpl());
-        connection.exportObject(ITEM_PATH, new ItemImpl());
+        connection.exportObject(ITEM_PATH, new ItemImpl(ITEM_PATH));
         connection.exportObject(SESSION_PATH, new SessionImpl());
         connection.requestBusName(BUS_NAME);
     }
@@ -425,8 +507,10 @@ public final class FakeSecretService {
         @Override
         public Pair<List<DBusPath>, DBusPath> Unlock(List<DBusPath> objects) {
             for (DBusPath p : objects) unlockCalls.add(p.getPath());
+            unlockRequests.add(objects.stream().map(DBusPath::getPath).toList());
             // The bug this fixture exists for: unlocking the COLLECTION does nothing to the item.
-            boolean itemRequested = objects.stream().anyMatch(p -> ITEM_PATH.equals(p.getPath()));
+            List<String> items = objects.stream().map(DBusPath::getPath).filter(FakeSecretService::isItem).toList();
+            boolean itemRequested = !items.isEmpty();
             if (!itemRequested) {
                 if (refuseCollectionUnlock) {
                     return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
@@ -450,16 +534,27 @@ public final class FakeSecretService {
                 // org.freedesktop.Secret.Prompt registers a JVM-wide interface->class mapping that
                 // stops dbus-java constructing the library's own Prompt.Completed. The client's
                 // Prompt() method call therefore fails harmlessly; only the signal matters.
+                itemUnlockPrompts.incrementAndGet();
                 emitCompletedLater(true);
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+            }
+            if (unlockFirstItemWithoutPrompt && items.size() > 1) {
+                // The first at once, the rest when the prompt is answered.
+                unlockItem(items.get(0));
+                List<String> rest = items.subList(1, items.size());
+                itemUnlockPrompts.incrementAndGet();
+                emitCompletedLater(false, () -> rest.forEach(FakeSecretService.this::unlockItem));
+                return new Pair<>(new ArrayList<>(List.of(new DBusPath(items.get(0)))), new DBusPath(PROMPT_PATH));
             }
             if (requirePromptForItemOps) {
                 // Unlocked only when the prompt is answered -- see emitCompletedLater. Doing it
                 // here would mean a client that declines to prompt still sees the item unlocked.
-                emitCompletedLater(false, () -> itemLocked = false);
+                // One prompt for every item of the call, as KeePassXC shows one dialog for them.
+                itemUnlockPrompts.incrementAndGet();
+                emitCompletedLater(false, () -> items.forEach(FakeSecretService.this::unlockItem));
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
-            itemLocked = false;
+            items.forEach(FakeSecretService.this::unlockItem);
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
         }
 
@@ -499,13 +594,13 @@ public final class FakeSecretService {
             }
             // (unlocked, locked). Reporting the item in neither list when it is locked would be a
             // trap for the next test to use this: it would look like the item does not exist.
-            List<DBusPath> item = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
             // Same condition as the Locked property and GetSecret below: a fixture that reports an
             // item locked in one place and hands out its plaintext in another teaches the next test
             // something no real provider does.
-            return (itemLocked || collectionLocked)
-                    ? new Pair<>(new ArrayList<DBusPath>(), item)
-                    : new Pair<>(item, new ArrayList<DBusPath>());
+            List<DBusPath> unlocked = new ArrayList<>();
+            List<DBusPath> locked = new ArrayList<>();
+            for (DBusPath item : items()) (isLocked(item.getPath()) ? locked : unlocked).add(item);
+            return new Pair<>(unlocked, locked);
         }
 
         @Override
@@ -543,13 +638,15 @@ public final class FakeSecretService {
     private final class CollectionImpl implements WireCollection, Properties {
         @Override
         public List<DBusPath> SearchItems(Map<String, String> attributes) {
-            return List.of(new DBusPath(ITEM_PATH));
+            return items();
         }
 
         @Override
-        public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace) {
+        public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, WireSecret secret, boolean replace) {
             Variant<?> label = properties.get(Item.LABEL);
             createItemCalls.add(label == null ? "" : String.valueOf(label.getValue()));
+            createItemPropertyNames.add(java.util.Set.copyOf(properties.keySet()));
+            sentContentTypes.add(secret.contentType());
             // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
             // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
             pendingApproval = () -> { };
@@ -569,7 +666,7 @@ public final class FakeSecretService {
         public <A> A Get(String iface, String property) {
             switch (property) {
                 case "Locked":  return (A) Boolean.valueOf(collectionLocked);
-                case "Items":   return (A) new Variant<>(new ArrayList<>(List.of(new DBusPath(ITEM_PATH))), "ao");
+                case "Items":   return (A) new Variant<>(items(), "ao");
                 case "Label":   return (A) COLLECTION_LABEL;
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
             }
@@ -582,19 +679,26 @@ public final class FakeSecretService {
     }
 
     private final class ItemImpl implements WireItem, Properties {
+        private final String path;
+
+        ItemImpl(String path) {
+            this.path = path;
+        }
+
         @Override
         public DBusPath Delete() {
             // Deleted at once, answering "/" for "no prompt necessary", as gnome-keyring does. The
             // fake does not own org.gnome.keyring, so the client sees a provider other than
             // gnome-keyring giving that answer.
-            itemDeleted = true;
-            connection.unExportObject(ITEM_PATH);
+            if (ITEM_PATH.equals(path)) itemDeleted = true;
+            else secondItemLocked = null;
+            connection.unExportObject(path);
             return new DBusPath("/");
         }
 
         @Override
         public WireSecret GetSecret(DBusPath session) {
-            boolean locked = itemLocked || collectionLocked;
+            boolean locked = isLocked(path);
             if (locked) {
                 lockedItemReads.incrementAndGet();
                 // What a provider does for a locked item -- including one locked only because its
@@ -606,7 +710,8 @@ public final class FakeSecretService {
                 new SecureRandom().nextBytes(iv);
                 Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
-                byte[] ct = c.doFinal(locked ? new byte[0] : secretValue.getBytes(secretEncoding));
+                String value = ITEM_PATH.equals(path) ? secretValue : SECOND_SECRET_VALUE;
+                byte[] ct = c.doFinal(locked ? new byte[0] : value.getBytes(secretEncoding));
                 return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
@@ -619,16 +724,17 @@ public final class FakeSecretService {
             switch (property) {
                 // gnome-keyring reports an item as locked whenever its collection is locked, so
                 // the fake does too when asked to. This is what makes the regression reproducible.
-                case "Locked":     return (A) Boolean.valueOf(itemLocked || collectionLocked);
+                case "Locked":     return (A) Boolean.valueOf(isLocked(path));
                 case "Attributes": return (A) new Variant<>(new HashMap<String, String>(), "a{ss}");
-                case "Label":      return (A) "fake-item";
+                case "Label":      return (A) (ITEM_PATH.equals(path) ? "fake-item" : "fake-item-2");
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
             }
         }
 
         @Override
-        public void SetSecret(Secret secret) {
+        public void SetSecret(WireSecret secret) {
             setSecretCalls.incrementAndGet();
+            sentContentTypes.add(secret.contentType());
         }
 
         @Override
@@ -639,7 +745,7 @@ public final class FakeSecretService {
         }
 
         @Override public Map<String, Variant<?>> GetAll(String iface) { return Map.of(); }
-        @Override public String getObjectPath() { return ITEM_PATH; }
+        @Override public String getObjectPath() { return path; }
         @Override public boolean isRemote() { return false; }
     }
 
