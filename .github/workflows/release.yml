@@ -1,0 +1,102 @@
+name: Release
+
+# Publishes a release to Maven Central from a tag. A v* tag (or a manual run on one)
+# first passes the checks that main requires, in a job without secrets; then the
+# publish job runs mvn deploy in the protected "release" environment, which holds the
+# Central token and the signing key. docs/release.md describes the environment.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release at a time, and never one cancelled halfway through its upload.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # A tag must name the version it publishes: v4.0.0 for 4.0.0. A manual run on a
+      # branch fails here, as its ref is no tag.
+      - name: Check that the tag names the project version
+        run: |
+          version=$(mvn -B -q -N help:evaluate -Dexpression=project.version -DforceStdout)
+          if [ "$GITHUB_REF" != "refs/tags/v$version" ]; then
+            echo "::error::$GITHUB_REF is not refs/tags/v$version, the tag of the project version $version"
+            exit 1
+          fi
+          echo "Releasing $version"
+
+      - name: Check the logging policy
+        run: python3 .github/scripts/check_logging.py
+
+      - name: Build test container
+        run: docker build -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test .
+
+      # The regression tests, as the regression job runs them, and the jars as the release
+      # builds them, the javadoc included. Not signed: the key stays in the publish job.
+      - name: Build and run the regression tests
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/workspace \
+            -v "$RUNNER_TEMP/m2":/root/.m2/repository \
+            secret-service-test \
+            mvn -B -ntp verify -Dgpg.skip=true
+
+      - name: Run the system tests against gnome-keyring
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/workspace \
+            -v "$RUNNER_TEMP/m2":/root/.m2/repository \
+            secret-service-test \
+            mvn -B -ntp test -Psystem-test
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    # central-publishing-maven-plugin waits up to 30 minutes for Central to validate.
+    timeout-minutes: 45
+    environment:
+      name: release
+      url: https://central.sonatype.com/publishing/deployments
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # No Maven cache, here or in the test job: a cache that a pull request can write
+      # must not feed a release.
+      - name: Set up JDK 25 with the Central token and the signing key
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "25"
+          # The <server> that central-publishing-maven-plugin reads (publishingServerId).
+          server-id: central
+          server-username: CENTRAL_TOKEN_USERNAME
+          server-password: CENTRAL_TOKEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      # Signs every artifact (maven-gpg-plugin, at verify) and uploads the reactor as one
+      # deployment. autoPublish is false: it waits at central.sonatype.com until a
+      # maintainer publishes or drops it. The tests ran in the test job.
+      - name: Deploy to the Central Portal
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -ntp deploy -DskipTests
