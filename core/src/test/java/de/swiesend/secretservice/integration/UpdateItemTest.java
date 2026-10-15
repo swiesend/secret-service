@@ -15,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code updateItem} changes an item's label, attributes and secret, and reports whether it did.
+ * {@code updateItem} changes an item's label, attributes and secret, and reports whether it did. A
+ * locked item it unlocks first, and leaves as it is when it stays locked.
  */
 class UpdateItemTest {
 
@@ -67,16 +68,54 @@ class UpdateItemTest {
     }
 
     @Test
-    void theLabelOfALockedItemIsStillSent() throws Exception {
-        // The counterpart of the test above: only the secret is held back. KWallet keeps a label
-        // that it gets for a locked item, as through setItemLabel.
+    void theLabelOfALockedItemIsNotSent() throws Exception {
+        // KWallet keeps a label that it gets for an item of a closed wallet.
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();
         fake.lockCollection();
         fake.setRefuseCollectionUnlock(true);
 
-        assertTrue(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", null, null));
-        assertEquals(List.of("Label"), fake.itemPropertySets());
+        assertFalse(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", null, Map.of("k", "v")),
+                "a locked item is not changed");
+        assertEquals(List.of(), fake.itemPropertySets(), "neither its label nor its attributes");
+    }
+
+    @Test
+    void aLockedItemIsUnlockedFirst() throws Exception {
+        // KeePassXC keeps an item locked for a client until the user confirms its access, and
+        // takes a new label and attributes for it all the same; only the secret it refuses.
+        CollectionInterface collection = harness.start(true);
+        FakeSecretService fake = harness.fake();
+        fake.setRequirePromptForItemOps(true);
+
+        assertTrue(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", "new-secret", Map.of("k", "v")));
+        assertEquals(List.of(FakeSecretService.ITEM_PATH), fake.unlockCalls(), "the item was unlocked through its prompt");
+        assertEquals(List.of("Label", "Attributes"), fake.itemPropertySets(), "then every part was set");
+        assertEquals(1, fake.setSecretCalls());
+    }
+
+    @Test
+    void anItemThatStaysLockedIsNotChanged() throws Exception {
+        // The user dismisses the dialog that would confirm the access.
+        CollectionInterface collection = harness.start(true);
+        FakeSecretService fake = harness.fake();
+        fake.setDismissPrompts(true);
+
+        assertFalse(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", "new-secret", Map.of("k", "v")));
+        assertEquals(List.of(FakeSecretService.ITEM_PATH), fake.unlockCalls(), "asked once");
+        assertEquals(List.of(), fake.itemPropertySets(), "neither the label nor the attributes were set");
+        assertEquals(0, fake.setSecretCalls(), "nor the secret");
+    }
+
+    @Test
+    void withPromptingDisabledALockedItemIsNotChanged() throws Exception {
+        CollectionInterface collection = harness.start(true);
+        FakeSecretService fake = harness.fake();
+        assertTrue(collection.disablePrompt());
+
+        assertFalse(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", null, null));
+        assertEquals(List.of(), fake.unlockCalls(), "no unlock, which needs the prompt");
+        assertEquals(List.of(), fake.itemPropertySets());
     }
 
     @Test

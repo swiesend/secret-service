@@ -1097,6 +1097,16 @@ public class Collection implements CollectionInterface {
         }
         Item item = maybeItem.get();
 
+        // The specification: a locked item cannot be modified. Providers differ in what they take
+        // from one: KWallet keeps a new label and drops the secret, and KeePassXC, which keeps an item
+        // locked for a client until the user confirms its access, takes the label and the attributes
+        // and refuses the secret. So the item is unlocked first, as for a read, and left as it is
+        // when it stays locked.
+        if (!unlockItemIfLocked(objectPath)) {
+            log.info("Item {} stayed locked, so it is not changed.", objectPath);
+            return false;
+        }
+
         // Every part is attempted, as in 1.x, and the update succeeds only if each one did.
         boolean updated = true;
         if (label != null && !item.setLabel(label)) {
@@ -1110,23 +1120,16 @@ public class Collection implements CollectionInterface {
         }
 
         if (password != null) {
-            if (item.isLocked()) {
-                // Not sent: gnome-keyring refuses a secret for a locked item, but KWallet reports
-                // it set and throws it away. A label or attributes, above, KWallet keeps.
-                log.error("Item {} is locked; its secret is not set.", objectPath);
+            boolean secretSet = session.getEncryptedSession().encrypt(password)
+                    .map(secret -> {
+                        try (secret) { // auto-close
+                            return item.setSecret(secret); // side-effect
+                        }
+                    })
+                    .orElse(false);
+            if (!secretSet) {
+                log.error("Could not set the secret of item {}", objectPath);
                 updated = false;
-            } else {
-                boolean secretSet = session.getEncryptedSession().encrypt(password)
-                        .map(secret -> {
-                            try (secret) { // auto-close
-                                return item.setSecret(secret); // side-effect
-                            }
-                        })
-                        .orElse(false);
-                if (!secretSet) {
-                    log.error("Could not set the secret of item {}", objectPath);
-                    updated = false;
-                }
             }
         }
         return updated;
@@ -1216,7 +1219,8 @@ public class Collection implements CollectionInterface {
     }
 
     /**
-     * Unlocks a single item when the provider reports it as locked, so a read can proceed.
+     * Unlocks a single item when the provider reports it as locked, so a read or a change can
+     * proceed.
      *
      * <p>The freedesktop specification says a client "should act as if it must unlock each item
      * individually". KeePassXC does exactly that and prompts per item; gnome-keyring never locks an
@@ -1242,8 +1246,9 @@ public class Collection implements CollectionInterface {
      * claimed the exemption while {@code getSecrets} in fact looped through the public
      * {@code getSecret}, so a bulk read on KeePassXC would have raised N prompts.
      *
-     * @return true when the item can be read: it was already unlocked, or the unlock succeeded.
-     *         False when the item stayed locked, which includes the user dismissing the prompt.
+     * @return true when the item can be read or changed: it was already unlocked, or the unlock
+     *         succeeded. False when the item stayed locked, which includes the user dismissing the
+     *         prompt.
      */
     private boolean unlockItemIfLocked(String objectPath) {
         // The collection must already be unlocked. gnome-keyring reports EVERY item as locked while
@@ -1270,24 +1275,24 @@ public class Collection implements CollectionInterface {
         // prompt on any transient D-Bus error, so unknown skips the unlock, and the read, just like
         // locked does.
         if (collectionLocked.isEmpty() || collectionLocked.get()) {
-            log.debug("Item {} is locked, and its collection is not known to be unlocked; not read.", objectPath);
+            log.debug("Item {} is locked, and its collection is not known to be unlocked.", objectPath);
             return false;
         }
 
         log.debug("Item is locked; asking the provider to unlock it: {}", objectPath);
         if (unlockItem(objectPath)) return true;
 
-        // Do not fall through to GetSecret. It cannot succeed on a locked item, and the failure it
-        // produces would be reported as a missing or unreadable secret rather than as the refusal
-        // it actually is.
+        // Do not fall through to GetSecret, or to a change. A read cannot succeed on a locked item,
+        // and the failure it produces would be reported as a missing or unreadable secret rather
+        // than as the refusal it actually is.
         // WARN only when something unexpected happened. With prompting disabled the item staying
         // locked is the caller's own instruction being carried out, and warning about it would
         // report a deliberate configuration as a fault on every read.
         if (isPrompting) {
-            log.warn("Item stayed locked, so its secret cannot be read: {}. The unlock prompt was "
-                    + "dismissed, timed out, or the provider refused it.", objectPath);
+            log.warn("Item stayed locked: {}. The unlock prompt was dismissed, timed out, or the "
+                    + "provider refused it.", objectPath);
         } else {
-            log.debug("Item {} stayed locked because prompting is disabled; not read.", objectPath);
+            log.debug("Item {} stayed locked because prompting is disabled.", objectPath);
         }
         return false;
     }

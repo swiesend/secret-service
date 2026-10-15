@@ -9,6 +9,8 @@ import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.functional.interfaces.SystemInterface;
+import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -320,10 +322,68 @@ public class ProviderSystemTest {
         }
     }
 
+    @Test
+    @DisplayName("an item of a collection that stays locked keeps its label")
+    void aLockedItemKeepsItsLabel() throws Exception {
+        assumeLockable();
+        String itemPath = collection.createItem("provider-system-locked-label", "s3cr3t-label").orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+        try {
+            assertTrue(collection.lock(), "lock()");
+            try (CollectionInterface refusing = refusingToUnlock()) {
+                // KWallet keeps a new label for an item of a closed wallet.
+                assertFalse(refusing.updateItem(itemPath, "provider-system-renamed", null, null),
+                        "a locked item is not changed");
+            }
+            assertTrue(collection.unlockWithUserPermission(), "unlockWithUserPermission()");
+            assertEquals(Optional.of("provider-system-locked-label"), collection.getItemLabel(itemPath),
+                    "the item keeps its label");
+        } finally {
+            collection.deleteItem(itemPath);
+        }
+    }
+
+    /**
+     * Whether someone answers the provider's dialogs, as xdotool does in the CI leg that runs
+     * KeePassXC with ConfirmAccessItem on: {@code -Dsecret-service.system-test.dialogs-answered=true}.
+     * There a second client needs a dialog for the items of the first, which elsewhere nobody
+     * answers.
+     */
+    private static final boolean DIALOGS_ANSWERED = Boolean.getBoolean("secret-service.system-test.dialogs-answered");
+
+    @Test
+    @DisplayName("another client changes an item, through the provider's dialog where it needs one")
+    void anotherClientChangesAnItem() throws Exception {
+        assumeDialogsAnswered();
+        String itemPath = collection.createItem("provider-system-other-update", "s3cr3t-before").orElse(null);
+        assertNotNull(itemPath, "createItem returned empty");
+        try {
+            try (Client other = new Client()) {
+                // KeePassXC takes a new label from a client that it has not been allowed to give
+                // access, and refuses the secret.
+                assertTrue(other.collection.updateItem(itemPath, "provider-system-other-renamed", "s3cr3t-after", null),
+                        "the update by another client");
+            }
+            assertEquals(Optional.of("provider-system-other-renamed"), collection.getItemLabel(itemPath));
+            char[] got = collection.getSecret(itemPath).orElse(null);
+            assertNotNull(got, "getSecret returned empty after the update");
+            assertArrayEquals("s3cr3t-after".toCharArray(), got, "the new secret");
+            Arrays.fill(got, '\0');
+        } finally {
+            collection.deleteItem(itemPath);
+        }
+    }
+
     private void assumeLockable() {
         Assumptions.assumeTrue(ownsCollection || LOCKABLE,
                 "the collection may not unlock again without a dialog; "
                         + "-Dsecret-service.system-test.lockable=true where it does");
+    }
+
+    private void assumeDialogsAnswered() {
+        Assumptions.assumeTrue(DIALOGS_ANSWERED,
+                "a second client may need a dialog that nobody answers; "
+                        + "-Dsecret-service.system-test.dialogs-answered=true where someone does");
     }
 
     /**
@@ -335,5 +395,29 @@ public class ProviderSystemTest {
         CollectionInterface refusing = session.collectionById(id).orElseThrow();
         refusing.disablePrompt();
         return refusing;
+    }
+
+    /**
+     * Another client of the provider, on an unshared connection of its own, as another application
+     * has one: KeePassXC confirms access for each client.
+     */
+    private final class Client implements AutoCloseable {
+        private final DBusConnection connection;
+        private final ServiceInterface service;
+        private final CollectionInterface collection;
+
+        Client() throws Exception {
+            connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
+            service = SecretService.create(Optional.of(System.wrap(connection))).orElseThrow();
+            SessionInterface session = service.openSession().orElseThrow();
+            collection = session.collectionById(ProviderSystemTest.this.collection.getId().orElseThrow()).orElseThrow();
+        }
+
+        @Override
+        public void close() throws Exception {
+            collection.close();
+            service.close();
+            connection.disconnect();
+        }
     }
 }

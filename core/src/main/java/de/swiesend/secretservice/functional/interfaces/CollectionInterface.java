@@ -207,13 +207,16 @@ public interface CollectionInterface extends AutoCloseable {
     /**
      * Update an item's label, secret and attributes. A part that is {@code null} stays as it is.
      *
+     * <p>A locked item is unlocked first, as {@link #getSecret(String)} unlocks it, which can show
+     * the provider's dialog. An item that stays locked is not changed at all.</p>
+     *
      * @param objectPath the item's object path
      * @param label      the new label, or {@code null}
      * @param password   the new secret, or {@code null}; an empty one is refused, as by
-     *                   {@link #createItem(String, CharSequence, Map)}, and none is set for a
-     *                   locked item
+     *                   {@link #createItem(String, CharSequence, Map)}
      * @param attributes the attributes that replace the item's, or {@code null}
-     * @return whether every part that was given has been changed
+     * @return whether every part that was given has been changed; {@code false} for an item that
+     *         stayed locked
      */
     boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes);
 
