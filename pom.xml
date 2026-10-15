@@ -290,6 +290,21 @@
                     <version>0.8.15</version>
                 </plugin>
                 <plugin>
+                    <groupId>org.pitest</groupId>
+                    <artifactId>pitest-maven</artifactId>
+                    <!-- Its ASM 9.10 reads Java 25 class files. -->
+                    <version>1.30.0</version>
+                    <dependencies>
+                        <!-- Runs JUnit 5 tests, with the JUnit Platform launcher that the module
+                             declares for its tests. -->
+                        <dependency>
+                            <groupId>org.pitest</groupId>
+                            <artifactId>pitest-junit5-plugin</artifactId>
+                            <version>1.2.3</version>
+                        </dependency>
+                    </dependencies>
+                </plugin>
+                <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>versions-maven-plugin</artifactId>
                     <version>2.18.0</version>
