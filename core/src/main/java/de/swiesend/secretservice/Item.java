@@ -116,7 +116,7 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
         String contentType = (String) struct[3];
 
         if (contentType.equals(Secret.TEXT_PLAIN) || contentType.equals(Secret.TEXT_PLAIN_CHARSET_UTF_8)) {
-            // replace the content-type "text/plain" with default "text/plain; charset=utf8"
+            // UTF-8 text, under the library's own content type for it, "text/plain".
             return new Secret(session_path, parameters, value);
         }
         // use given non default content-type

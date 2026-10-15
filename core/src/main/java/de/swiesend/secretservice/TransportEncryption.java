@@ -340,6 +340,7 @@ public class TransportEncryption implements AutoCloseable {
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
                 cipher.init(Cipher.ENCRYPT_MODE, key, ivSpec);
 
+                // "text/plain" for UTF-8, which libsecret and oo7 0.6 require of a password.
                 String contentType = Secret.createContentType(charset);
 
                 return Optional.of(new Secret(session.getPath(), ivSpec.getIV(), cipher.doFinal(plain), contentType));

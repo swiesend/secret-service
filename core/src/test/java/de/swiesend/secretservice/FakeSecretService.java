@@ -87,7 +87,7 @@ public final class FakeSecretService {
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
-        Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace);
+        Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, WireSecret secret, boolean replace);
         DBusPath Delete();
     }
 
@@ -95,13 +95,13 @@ public final class FakeSecretService {
     public interface WireItem extends DBusInterface {
         DBusPath Delete();
         WireSecret GetSecret(DBusPath session);
-        void SetSecret(Secret secret);
+        void SetSecret(WireSecret secret);
     }
 
     /**
      * A secret as it goes over the bus, {@code (oayays)}, with the content type as given. The
-     * library's {@link Secret} would rewrite a content type it cannot parse, and the client would
-     * never see it.
+     * library's {@link Secret} would rewrite a content type it cannot parse: the client would never
+     * see it, and the fake would not see the one the client sends.
      */
     public static final class WireSecret extends org.freedesktop.dbus.Struct {
         @org.freedesktop.dbus.annotations.Position(0)
@@ -118,6 +118,10 @@ public final class FakeSecretService {
             this.parameters = parameters;
             this.value = value;
             this.contentType = contentType;
+        }
+
+        public String contentType() {
+            return contentType;
         }
     }
 
@@ -291,6 +295,13 @@ public final class FakeSecretService {
     public int setSecretCalls() {
         return setSecretCalls.get();
     }
+
+    /** The content types of the secrets that {@code CreateItem} and {@code SetSecret} were given, in call order. */
+    public List<String> sentContentTypes() {
+        return List.copyOf(sentContentTypes);
+    }
+
+    private final List<String> sentContentTypes = Collections.synchronizedList(new ArrayList<>());
 
     /**
      * Points the {@code default} alias at {@code path}, as a provider names its default collection.
@@ -549,9 +560,10 @@ public final class FakeSecretService {
         }
 
         @Override
-        public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace) {
+        public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, WireSecret secret, boolean replace) {
             Variant<?> label = properties.get(Item.LABEL);
             createItemCalls.add(label == null ? "" : String.valueOf(label.getValue()));
+            sentContentTypes.add(secret.contentType());
             // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
             // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
             pendingApproval = () -> { };
@@ -629,8 +641,9 @@ public final class FakeSecretService {
         }
 
         @Override
-        public void SetSecret(Secret secret) {
+        public void SetSecret(WireSecret secret) {
             setSecretCalls.incrementAndGet();
+            sentContentTypes.add(secret.contentType());
         }
 
         @Override
