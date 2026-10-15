@@ -108,13 +108,12 @@ public class MessageHandler {
      * A reply, the reason it carried no value, and the D-Bus error name behind it.
      *
      * <p>{@code errorName} is null on success. It is kept because the same error means different
-     * things depending on the call: see {@link #getPropertyChecked}, where
-     * {@code DBus.Error.UnknownMethod} proves the object is gone rather than that the method is
-     * missing.</p>
+     * things depending on its text: {@code DBus.Error.UnknownMethod} that names the called path as
+     * missing proves the object is gone rather than that the method is missing.</p>
      *
      * @param errorMessage the D-Bus error's human-readable text, when there was one. Two providers
      *                     can raise the same error name for different reasons, and only the text
-     *                     separates them; {@link #getPropertyChecked} relies on it.
+     *                     separates them; {@link #sendChecked} relies on it.
      * @param cause        what ended a call that got no D-Bus answer: a {@link TimeoutException}
      *                     when no reply came within the {@link #setReplyTimeout reply timeout}, or the
      *                     exception of the connection. Null when an answer came.
@@ -215,13 +214,29 @@ public class MessageHandler {
                         logParameterised(error, parameters, Level.INFO);
                         return Reply.failed(Outcome.DENIED, error, errorText);
                     case "org.freedesktop.DBus.Error.UnknownMethod":
-                        // WARN, not ERROR: getPropertyChecked reinterprets this reply as the
-                        // perfectly ordinary ABSENT when it names the path as missing -- which is
-                        // how gnome-keyring, the primary provider, reports every deleted item. At
-                        // ERROR, a caller sweeping a collection with exists() would produce one
-                        // ERROR line per absent item for a non-error outcome.
+                        // WARN, not ERROR: this reply is the perfectly ordinary ABSENT when it
+                        // names the path as missing -- which is how gnome-keyring, the primary
+                        // provider, reports every deleted item. At ERROR, a caller sweeping a
+                        // collection with exists() would produce one ERROR line per absent item
+                        // for a non-error outcome.
                         logParameterised(error, parameters, Level.WARN);
-                        return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
+                        // UnknownMethod means the CALL was unrecognised -- true in general, and why
+                        // it is UNAVAILABLE otherwise. gnome-keyring answers every call to an
+                        // object that does not exist with it, a property read and GetSecret
+                        // alike:
+                        //
+                        //   org.freedesktop.DBus.Error.UnknownMethod: Object does not exist at
+                        //   path "/org/freedesktop/secrets/collection/login/1"
+                        //
+                        // Narrowed to that exact shape: the message must name THIS path as
+                        // non-existent. Reading any UnknownMethod as ABSENT would let a provider
+                        // that lacks a method report a live object as gone -- and a caller's
+                        // "then delete it" branch runs against real data. Being too strict
+                        // instead leaves the outcome UNAVAILABLE, which is the fail-closed
+                        // direction and merely loses a distinction rather than destroying
+                        // something.
+                        return Reply.failed(namesPathAsMissing(errorText, path) ? Outcome.ABSENT : Outcome.UNAVAILABLE,
+                                error, errorText);
                     case "org.freedesktop.DBus.Error.NoReply":
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
                     case "org.freedesktop.DBus.Error.InvalidArgs":
@@ -297,30 +312,11 @@ public class MessageHandler {
      * "this object is gone" from "I could not reach it". See {@link Outcome}.
      */
     public Reply getPropertyChecked(String service, String path, String iface, String property) {
-        Reply reply = sendChecked(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
-                "Get", "ss", iface, property);
-        // UnknownMethod means the CALL was unrecognised -- true in general, and why sendChecked maps
-        // it to UNAVAILABLE. It is not true for THIS call: every object on the bus implements
-        // org.freedesktop.DBus.Properties, so the method cannot be missing from an object that
-        // exists. gnome-keyring says exactly this for a deleted item:
-        //
-        //   org.freedesktop.DBus.Error.UnknownMethod: Object does not exist at path "/.../999999"
-        //
-        // Without this, ABSENT is unreachable on the library's primary provider and every caller
-        // that distinguishes "gone" from "cannot tell" degrades to the fail-closed branch forever.
-        //
-        // Narrowed to that exact shape: the message must name THIS path as non-existent. Every
-        // object on the bus implementing Properties is a convention, not a guarantee, and reading
-        // any UnknownMethod as ABSENT means a provider that answers it for a property it does not
-        // expose reports a live object as gone -- and a caller's "then delete it" branch runs
-        // against real data. Being too strict instead leaves the outcome UNAVAILABLE, which is the
-        // fail-closed direction and merely loses a distinction rather than destroying something.
-        if (reply.outcome() == Outcome.UNAVAILABLE
-                && "org.freedesktop.DBus.Error.UnknownMethod".equals(reply.errorName())
-                && namesPathAsMissing(reply.errorMessage(), path)) {
-            return Reply.failed(Outcome.ABSENT, reply.errorName(), reply.errorMessage());
-        }
-        return reply;
+        // gnome-keyring answers a property read of a deleted item with UnknownMethod, which
+        // sendChecked reads as ABSENT when it names the path as missing. Without that, ABSENT is
+        // unreachable on the library's primary provider and every caller that distinguishes "gone"
+        // from "cannot tell" degrades to the fail-closed branch forever.
+        return sendChecked(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES, "Get", "ss", iface, property);
     }
 
     /**

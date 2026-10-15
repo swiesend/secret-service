@@ -25,10 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The case that needs a real daemon: the generic mapping treats
  * {@code DBus.Error.UnknownMethod} as "says nothing about existence" -- correct in general, and
- * wrong for a property read, because every object that exists implements
- * {@code org.freedesktop.DBus.Properties}. gnome-keyring answers precisely that for a deleted item,
- * so without the property-read reinterpretation {@code ABSENT} would be unreachable on the
- * library's primary provider.</p>
+ * wrong when its text names the called path as missing. gnome-keyring answers every call to a
+ * deleted item so, a property read and {@code GetSecret} alike, so without reading that text
+ * {@code ABSENT} would be unreachable on the library's primary provider.</p>
  *
  * <p>Uses its own throwaway collection and deletes it; never touches the default keyring.</p>
  */
@@ -65,8 +64,8 @@ class ItemExistenceTest {
     @Test
     void aDeletedItemIsReportedAbsentNotUnreachable() {
         // gnome-keyring reports a deleted item with DBus.Error.UnknownMethod ("Object does not
-        // exist at path ..."), which the generic mapping sends to UNAVAILABLE. Without the
-        // property-read reinterpretation this assertion fails with Optional.empty(), and every
+        // exist at path ..."), which the generic mapping sends to UNAVAILABLE. Without reading the
+        // text that names the path this assertion fails with Optional.empty(), and every
         // caller that skips a vanished item instead fails closed forever -- the outage the
         // distinction exists to prevent.
         String path = collection.createItem("existence-probe", "s3cr3t").orElse(null);
@@ -79,6 +78,24 @@ class ItemExistenceTest {
 
         assertEquals(Optional.of(false), collection.itemExists(path),
                 "a deleted item must be reported PROVABLY ABSENT, not merely unreadable");
+    }
+
+    @Test
+    void theSecretOfADeletedItemIsAbsentNotUnreachable() {
+        // GetSecret, not a property read: gnome-keyring answers it with the same UnknownMethod
+        // ("Object does not exist at path ..."), and a read that fails on a vanished item is the
+        // commonest way to meet one.
+        String path = collection.createItem("secret-probe", "s3cr3t").orElse(null);
+        assertNotNull(path, "createItem returned empty");
+        assertTrue(collection.deleteItem(path), "could not delete the item");
+
+        MessageHandler.Reply reply = service.getService().getMessageHandler().sendChecked(
+                de.swiesend.secretservice.Static.Service.SECRETS, path,
+                de.swiesend.secretservice.Static.Interfaces.ITEM, "GetSecret", "o",
+                session.getSession().getPath());
+
+        assertEquals(MessageHandler.Outcome.ABSENT, reply.outcome(),
+                "the error " + reply.errorName() + " names the deleted item's path as missing");
     }
 
     @Test

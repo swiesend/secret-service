@@ -66,7 +66,7 @@ On the low-level API, `MessageHandler.sendChecked` and `getPropertyChecked` answ
 
 | The reply | Reason |
 |---|---|
-| `org.freedesktop.Secret.Error.NoSuchObject`, `org.freedesktop.DBus.Error.UnknownObject` (`org.freedesktop.dbus.errors.UnknownObject` from a peer on dbus-java), and gnome-keyring's `UnknownMethod` for a property of a path that does not exist (the outcome `ABSENT`) | `NOT_FOUND` |
+| `org.freedesktop.Secret.Error.NoSuchObject`, `org.freedesktop.DBus.Error.UnknownObject` (`org.freedesktop.dbus.errors.UnknownObject` from a peer on dbus-java), and gnome-keyring's `UnknownMethod` for any call to a path that does not exist (the outcome `ABSENT`) | `NOT_FOUND` |
 | `org.freedesktop.Secret.Error.IsLocked` | `LOCKED` |
 | `org.gnome.keyring.Error.Denied`, `org.freedesktop.DBus.Error.AccessDenied` | `DENIED` |
 | `org.freedesktop.DBus.Error.ServiceUnknown`, `org.freedesktop.DBus.Error.NameHasNoOwner`, and the bus's `org.freedesktop.DBus.Error.Spawn.*` for a provider that a service file names but that did not start | `NO_PROVIDER` |
