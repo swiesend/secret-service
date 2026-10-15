@@ -2,6 +2,7 @@ package de.swiesend.secretservice.handlers;
 
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.interfaces.DBusSigHandler;
 import org.freedesktop.dbus.messages.DBusSignal;
 import de.swiesend.secretservice.interfaces.Collection;
@@ -20,10 +21,14 @@ import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 public class SignalHandler implements DBusSigHandler {
 
     private final static int bufferSize = 1024;
+    /** How often an await asks who owns the provider's name: every tenth of its ticks, once a second. */
+    private static final int OWNER_CHECK_TICKS = 10;
     // Named for the declaring class, not getClass(); see MessageHandler for why.
     private static final Logger log = LoggerFactory.getLogger(SignalHandler.class);
     private DBusConnection connection = null;
     private String sourcePath = null;
+    /** The bus name of the provider whose signals {@link #await} waits for, or null for any sender. */
+    private String provider = null;
     private List<AutoCloseable> registrations = new ArrayList<>();
     private DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
@@ -40,10 +45,22 @@ public class SignalHandler implements DBusSigHandler {
      *                   or {@code null}/{@code "/"} for global (unscoped) registration
      */
     public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath) {
+        connect(connection, signals, sourcePath, null);
+    }
+
+    /**
+     * As {@link #connect(DBusConnection, List, String)}, for the signals of {@code provider}, a bus
+     * name such as {@code org.freedesktop.secrets}. {@link #await} then takes a signal only from the
+     * unique name that owns {@code provider} when the wait begins, and ends the wait when another
+     * name or none owns it.
+     */
+    public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath,
+                        String provider) {
         if (this.connection == null) {
             this.connection = connection;
         }
         this.sourcePath = sourcePath;
+        this.provider = provider;
         if (signals != null) {
             try {
                 for (Class sc : signals) {
@@ -81,6 +98,7 @@ public class SignalHandler implements DBusSigHandler {
         }
         connection = null;
         sourcePath = null;
+        provider = null;
     }
 
     @Override
@@ -191,6 +209,11 @@ public class SignalHandler implements DBusSigHandler {
 
     public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
         final int init = count;
+        // Only the provider answers its prompt. Any client on the bus can send a Completed signal
+        // for the prompt's path, a refusal or a consent, and createItem takes the new item's path
+        // from a signal. The provider's unique name is read before the prompt is shown; where it
+        // cannot be read, any sender counts, as before.
+        final String owner = ownerOf(provider);
 
         Optional<Prompt> maybePrompt = Optional.empty();
         try {
@@ -224,8 +247,10 @@ public class SignalHandler implements DBusSigHandler {
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
                 current = getCount();
                 if (current != last) {
-                    signals = getHandledSignals(signal, path);
-                    if (signals != null && !signals.isEmpty()) {
+                    signals = getHandledSignals(signal, path).stream()
+                            .filter(received -> owner == null || owner.equals(received.getSource()))
+                            .collect(Collectors.toList());
+                    if (!signals.isEmpty()) {
                         return signals.get(0);
                     }
                     last = current;
@@ -236,12 +261,23 @@ public class SignalHandler implements DBusSigHandler {
         try {
             long start = System.nanoTime();
             long nanos = timeout.toNanos();
+            int ticks = 0;
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {
                     return handler.get();
                 } else if (now - start > nanos) {
                     throw new TimeoutException();
+                }
+                // Nothing answers once the connection has closed or the provider has left the bus,
+                // and there is no prompt left to dismiss.
+                if (connection == null || !connection.isConnected()) {
+                    log.warn("Stopped waiting for the prompt ({}): the connection closed.", path);
+                    return null;
+                }
+                if (owner != null && ++ticks % OWNER_CHECK_TICKS == 0 && !owner.equals(ownerOf(provider))) {
+                    log.warn("Stopped waiting for the prompt ({}): the provider left the bus.", path);
+                    return null;
                 }
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
             }
@@ -263,6 +299,21 @@ public class SignalHandler implements DBusSigHandler {
         }
 
         return null;
+    }
+
+    /**
+     * The unique name that owns {@code name} on the bus now, or null when no one does or it cannot
+     * be read. GetNameOwner answers NameHasNoOwner for a name that no one owns.
+     */
+    private String ownerOf(String name) {
+        DBusConnection c = connection;
+        if (name == null || c == null) return null;
+        try {
+            DBus bus = c.getRemoteObject("org.freedesktop.DBus", "/org/freedesktop/DBus", DBus.class);
+            return bus.GetNameOwner(name);
+        } catch (DBusException | RuntimeException e) {
+            return null;
+        }
     }
 
 }
