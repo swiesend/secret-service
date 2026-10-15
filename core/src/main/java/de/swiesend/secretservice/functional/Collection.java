@@ -62,6 +62,9 @@ public class Collection implements CollectionInterface {
 
     /**
      * Open the default collection with an optional existing session.
+     * <p>
+     * A provider that names no default collection is logged as a warning. The collection is then
+     * the default alias's path, where reading and creating items fail.
      *
      * @param maybeSession an existing session to reuse, or empty to create a new one
      * @return the default collection, or empty if the service is unavailable
@@ -78,7 +81,16 @@ public class Collection implements CollectionInterface {
         // The collection the alias points to, not the alias: getId() names it then, and the
         // signals the provider emits from the collection's own path reach it. The alias itself
         // where the provider names no default collection.
-        c.path = c.defaultCollectionPath()
+        Optional<DBusPath> alias = c.service.getService().readAlias("default");
+        if (alias.isPresent() && "/".equals(alias.get().getPath())) {
+            // "/" for no such alias. Nothing can be read from or created in the alias's path then,
+            // and the failures come later, without a word on why: a fresh account where nothing
+            // has created the login keyring yet, or a provider set up without a default.
+            log.warn("The provider names no default collection; items of the default collection can be "
+                    + "neither read nor created. Open a collection by its label instead, or set the "
+                    + "provider's default.");
+        }
+        c.path = namedCollection(alias)
                 .orElseGet(() -> Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION));
         c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
         c.label = c.collection.getLabel();
@@ -363,8 +375,12 @@ public class Collection implements CollectionInterface {
 
     /** The collection that the "default" alias points to, unless the provider names none. */
     private Optional<DBusPath> defaultCollectionPath() {
-        return service.getService().readAlias("default")
-                .filter(path -> path.getPath() != null && !"/".equals(path.getPath()));
+        return namedCollection(service.getService().readAlias("default"));
+    }
+
+    /** The collection that ReadAlias answered with, unless it answered "/", for none. */
+    private static Optional<DBusPath> namedCollection(Optional<DBusPath> alias) {
+        return alias.filter(path -> path.getPath() != null && !"/".equals(path.getPath()));
     }
 
     private Optional<DBusPath> performPrompt(DBusPath path) {
