@@ -84,9 +84,39 @@ public interface ServiceInterface extends AutoCloseable {
      */
     de.swiesend.secretservice.ProviderDetector.Provider detectProvider();
 
+    /** How long the library waits for the user to answer a prompt; see {@link #setTimeout}. */
     Duration getTimeout();
 
+    /**
+     * Sets how long the library waits for the user to answer a prompt, 120 seconds by default. The
+     * wait for the reply to a call is set apart, with {@link #setReplyTimeout}.
+     */
     void setTimeout(Duration timeout);
+
+    /** How long a call waits for the provider's reply; see {@link #setReplyTimeout}. */
+    default Duration getReplyTimeout() {
+        return getService().getMessageHandler().getReplyTimeout();
+    }
+
+    /**
+     * Sets how long a call waits for the provider's reply: every call of this service, of its
+     * sessions, and of the collections and items opened with them, also those open already. A
+     * call without a reply by then fails as one to a provider that is not there.
+     *
+     * <p>2 seconds by default. A provider that waits for the user before it answers needs
+     * longer: KeePassXC answers a call on a locked database only once the user has unlocked it.
+     * libsecret waits 25 seconds. A call ends earlier when the connection closes or the provider
+     * quits.</p>
+     *
+     * @param timeout at least a millisecond. A duration too long for a count of milliseconds
+     *                waits without end.
+     * @throws NullPointerException     if {@code timeout} is null
+     * @throws IllegalArgumentException if {@code timeout} is shorter than a millisecond
+     * @see de.swiesend.secretservice.handlers.MessageHandler#setReplyTimeout
+     */
+    default void setReplyTimeout(Duration timeout) {
+        getService().getMessageHandler().setReplyTimeout(timeout);
+    }
 
     de.swiesend.secretservice.Service getService();
 

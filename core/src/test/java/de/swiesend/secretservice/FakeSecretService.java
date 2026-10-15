@@ -29,6 +29,7 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -77,6 +78,9 @@ public final class FakeSecretService implements AutoCloseable {
 
     /** What the fake item holds. */
     public static final String SECRET_VALUE = "the-locked-secret";
+
+    /** How long a stalled read takes: 1.5 seconds past the client's default reply timeout. */
+    public static final Duration STALL = Static.DEFAULT_REPLY_TIMEOUT.plusMillis(1500);
 
     private static final String COLLECTION_PREFIX = Static.ObjectPaths.COLLECTION + "/";
     private static final String ALIAS_PREFIX = Static.ObjectPaths.ALIASES + "/";
@@ -234,6 +238,7 @@ public final class FakeSecretService implements AutoCloseable {
     private volatile boolean requirePromptForItemLock;
     private volatile boolean requirePromptForDelete;
     private volatile boolean stallItemProperties;
+    private volatile boolean stallCollectionProperties;
 
     // Signals go out on a thread of their own, in the order they were raised, so a slow send never
     // holds up the call that raised them.
@@ -413,12 +418,26 @@ public final class FakeSecretService implements AutoCloseable {
     }
 
     /**
-     * Makes the item's property reads hang past {@code Static.DBus.MAX_DELAY_MILLIS}, so the
-     * client's getReply times out. A provider that is merely slow is the commonest failure there
-     * is, and the one the OK/ABSENT/UNAVAILABLE distinction most needs to get right.
+     * Makes the item's property reads answer only after {@link #STALL}, past
+     * {@code Static.DEFAULT_REPLY_TIMEOUT}, so the client's getReply times out. A provider that is
+     * merely slow is the commonest failure there is, and the one the OK/ABSENT/UNAVAILABLE
+     * distinction most needs to get right.
      */
     public void setStallItemProperties(boolean stall) {
         this.stallItemProperties = stall;
+    }
+
+    /** As {@link #setStallItemProperties}, for the property reads of a collection. */
+    public void setStallCollectionProperties(boolean stall) {
+        this.stallCollectionProperties = stall;
+    }
+
+    private static void stall() {
+        try {
+            Thread.sleep(STALL.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // ---- implementations -------------------------------------------------------------------
@@ -787,6 +806,7 @@ public final class FakeSecretService implements AutoCloseable {
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             record("Properties.Get", path + " " + property);
+            if (stallCollectionProperties) stall();
             return (A) all(iface).get(property);
         }
 
@@ -893,14 +913,8 @@ public final class FakeSecretService implements AutoCloseable {
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             record("Properties.Get", state.path + " " + property);
-            if (stallItemProperties) {
-                // Outlast the client's reply timeout without ever answering.
-                try {
-                    Thread.sleep(Static.DBus.MAX_DELAY_MILLIS + 1500L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
+            // Outlast the client's default reply timeout.
+            if (stallItemProperties) stall();
             return (A) all(iface).get(property);
         }
 

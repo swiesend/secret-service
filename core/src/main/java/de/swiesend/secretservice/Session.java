@@ -8,12 +8,12 @@ public class Session extends Messaging implements de.swiesend.secretservice.inte
 
 
     public Session(DBusPath path, Service service) {
-        super(service.getConnection(), null,
+        super(service.getMessageHandler(), null,
                 Static.Service.SECRETS, path.getPath(), Static.Interfaces.SESSION);
     }
 
     public Session(String session_id, Service service) {
-        super(service.getConnection(), null,
+        super(service.getMessageHandler(), null,
                 Static.Service.SECRETS, Static.ObjectPaths.session(session_id), Static.Interfaces.SESSION);
     }
 

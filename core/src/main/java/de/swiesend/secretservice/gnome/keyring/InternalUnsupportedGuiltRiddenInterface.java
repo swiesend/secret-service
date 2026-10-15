@@ -14,7 +14,7 @@ public class InternalUnsupportedGuiltRiddenInterface extends Messaging implement
         de.swiesend.secretservice.gnome.keyring.interfaces.InternalUnsupportedGuiltRiddenInterface {
 
     public InternalUnsupportedGuiltRiddenInterface(Service service) {
-        super(service.getConnection(), null,
+        super(service.getMessageHandler(), null,
                 Static.Service.SECRETS,
                 Static.ObjectPaths.SECRETS,
                 INTERNAL_UNSUPPORTED_GUILT_RIDDEN_INTERFACE);
