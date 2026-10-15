@@ -80,7 +80,7 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
         c.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-        c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
+        c.collection = new de.swiesend.secretservice.Collection(c.path, c.service.getService());
         c.label = c.collection.getLabel();
         c.id = c.collection.getId();
         return Optional.of(c);
@@ -165,7 +165,7 @@ public class Collection implements CollectionInterface {
 
         // construct object path from id and wrap low-level collection
         try {
-            c.collection = new de.swiesend.secretservice.Collection(id, c.connection);
+            c.collection = new de.swiesend.secretservice.Collection(id, c.service.getService());
             c.path = c.collection.getPath();
             c.label = c.collection.getLabel();
             c.id = id;
@@ -331,7 +331,7 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
 
-        collection = new de.swiesend.secretservice.Collection(path, connection);
+        collection = new de.swiesend.secretservice.Collection(path, service.getService());
         return Optional.of(collection);
     }
 
@@ -1245,7 +1245,7 @@ public class Collection implements CollectionInterface {
 
         Map<DBusPath, String> labels = new HashMap<>();
         for (DBusPath path : maybeCollections.get()) {
-            de.swiesend.secretservice.Collection c = new de.swiesend.secretservice.Collection(path, connection, null);
+            de.swiesend.secretservice.Collection c = new de.swiesend.secretservice.Collection(path, service.getService(), null);
             c.getLabel().ifPresent(l -> labels.put(path, l));
         }
 

@@ -20,7 +20,7 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
     private static final Logger log = LoggerFactory.getLogger(Prompt.class);
 
     public Prompt(Service service) {
-        super(service.getConnection(), signals,
+        super(service.getMessageHandler(), signals,
                 Static.Service.SECRETS,
                 "/",
                 Static.Interfaces.PROMPT);

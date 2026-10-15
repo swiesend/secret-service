@@ -9,10 +9,12 @@ import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Optional;
 
-import static de.swiesend.secretservice.Static.DBus.MAX_DELAY_MILLIS;
+import static de.swiesend.secretservice.Static.DEFAULT_REPLY_TIMEOUT;
 
 public class MessageHandler {
 
@@ -24,6 +26,8 @@ public class MessageHandler {
 
     private DBusConnection connection;
     private boolean fireAndForget = true;
+    // Volatile: the objects of a service share its handler, and any thread may set the timeout.
+    private volatile Duration replyTimeout = DEFAULT_REPLY_TIMEOUT;
 
     public MessageHandler(DBusConnection connection) {
         this.connection = connection;
@@ -32,6 +36,49 @@ public class MessageHandler {
     public MessageHandler(DBusConnection connection, boolean fireAndForget) {
         this.connection = connection;
         this.fireAndForget = fireAndForget;
+    }
+
+    /** The connection that this handler sends its calls on. */
+    public DBusConnection getConnection() {
+        return connection;
+    }
+
+    /** How long a call waits for the provider's reply; see {@link #setReplyTimeout}. */
+    public Duration getReplyTimeout() {
+        return replyTimeout;
+    }
+
+    /**
+     * Sets how long a call waits for the provider's reply. A call without a reply by then yields
+     * nothing, with the outcome {@link Outcome#UNAVAILABLE}.
+     *
+     * <p>{@link de.swiesend.secretservice.Static#DEFAULT_REPLY_TIMEOUT 2 seconds} by default. A
+     * provider that waits for the user before it answers needs longer: KeePassXC answers a call on
+     * a locked database only once the user has unlocked it. libsecret waits 25 seconds, the
+     * default of GDBus. A call ends earlier when the connection closes or the provider quits: the
+     * connection or the bus then answers it with an error.</p>
+     *
+     * @param timeout at least a millisecond. A duration too long for a count of milliseconds
+     *                waits without end.
+     * @throws NullPointerException     if {@code timeout} is null
+     * @throws IllegalArgumentException if {@code timeout} is shorter than a millisecond
+     */
+    public void setReplyTimeout(Duration timeout) {
+        Objects.requireNonNull(timeout, "timeout must not be null");
+        // getReply waits whole milliseconds, and without end for none.
+        if (timeout.compareTo(Duration.ofMillis(1)) < 0) {
+            throw new IllegalArgumentException("The reply timeout must be at least a millisecond: " + timeout);
+        }
+        this.replyTimeout = timeout;
+    }
+
+    /** The timeout in milliseconds, as getReply takes it: Long.MAX_VALUE for a longer one. */
+    private static long millisOf(Duration timeout) {
+        try {
+            return timeout.toMillis();
+        } catch (ArithmeticException tooLong) {
+            return Long.MAX_VALUE;
+        }
     }
 
     /**
@@ -108,7 +155,8 @@ public class MessageHandler {
 
             connection.sendMessage(message);
 
-            org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(MAX_DELAY_MILLIS);
+            long timeoutMillis = millisOf(replyTimeout);
+            org.freedesktop.dbus.messages.Message response = ((MethodCall) message).getReply(timeoutMillis);
             if (log.isTraceEnabled()) log.trace("Response: " + response);
 
             Object[] parameters = null;
@@ -119,14 +167,14 @@ public class MessageHandler {
             }
 
             if (response == null) {
-                // getReply times out after MAX_DELAY_MILLIS and answers null. Without this the
+                // getReply times out after the reply timeout and answers null. Without this the
                 // null falls past the Error check into Reply.ok(null): the value is empty, so
                 // send() is unaffected, but the OUTCOME says OK -- and exists() reads the outcome,
                 // so a keyring merely slower than the timeout would be reported as proof the item
                 // is there. That is the fail-open this whole distinction exists to prevent, on the
                 // most likely failure of all.
                 log.warn("No reply within {}ms for {}/{}; cannot tell whether the object exists.",
-                        MAX_DELAY_MILLIS, iface, method);
+                        timeoutMillis, iface, method);
                 return Reply.failed(Outcome.UNAVAILABLE, null);
             }
 

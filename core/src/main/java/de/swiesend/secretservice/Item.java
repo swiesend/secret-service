@@ -12,7 +12,7 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
     private String id;
 
     public Item(String collectionID, String itemID, Service service) {
-        super(service.getConnection(), null,
+        super(service.getMessageHandler(), null,
                 Static.Service.SECRETS,
                 Static.ObjectPaths.item(collectionID, itemID),
                 Static.Interfaces.ITEM);
@@ -20,7 +20,7 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
     }
 
     public Item(DBusPath item, Service service) {
-        super(service.getConnection(), null,
+        super(service.getMessageHandler(), null,
                 Static.Service.SECRETS,
                 item.getPath(),
                 Static.Interfaces.ITEM);

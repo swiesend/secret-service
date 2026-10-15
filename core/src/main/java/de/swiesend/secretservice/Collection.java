@@ -43,6 +43,34 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
     }
 
     /**
+     * As {@link #Collection(DBusPath, DBusConnection)}, on the service's connection. The collection
+     * shares the service's message handler, and with it the reply timeout; with a connection
+     * alone, it has a handler of its own.
+     */
+    public Collection(DBusPath path, Service service) {
+        this(path, service, signals);
+    }
+
+    /** As {@link #Collection(DBusPath, Service)}, registering for the given signals. */
+    public Collection(DBusPath path, Service service, List<Class<? extends DBusSignal>> signals) {
+        super(service.getMessageHandler(), signals,
+                Static.Service.SECRETS,
+                path.getPath(),
+                Static.Interfaces.COLLECTION);
+        String[] split = path.getPath().split("/");
+        this.id = split[split.length - 1];
+    }
+
+    /** As {@link #Collection(DBusPath, Service)}, for the collection with this id. */
+    public Collection(String id, Service service) {
+        super(service.getMessageHandler(), signals,
+                Static.Service.SECRETS,
+                Static.ObjectPaths.collection(id),
+                Static.Interfaces.COLLECTION);
+        this.id = id;
+    }
+
+    /**
      * Create propterties for a new collection.
      *
      * @param label The displayable label of this collection.
