@@ -5,7 +5,8 @@ name: Workflow Audit
 # a pull request controls inside a shell command. It fails on any finding.
 on:
   push:
-    branches: [main, develop-2.x.x]
+    # develop-3.x.x: the 3.x line, once 4.0 is on main.
+    branches: [main, develop-2.x.x, develop-3.x.x]
     paths:
       - .github/**
   # A path filter, not a branch filter: a pull request stacked on another one is audited too.
