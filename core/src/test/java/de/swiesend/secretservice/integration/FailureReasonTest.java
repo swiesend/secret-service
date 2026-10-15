@@ -3,6 +3,7 @@ package de.swiesend.secretservice.integration;
 import de.swiesend.secretservice.Failure;
 import de.swiesend.secretservice.Failure.Reason;
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.Item;
 import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.Static;
 import de.swiesend.secretservice.handlers.MessageHandler;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -61,11 +63,23 @@ class FailureReasonTest {
     }
 
     @Test
+    void anItemThatDoesNotExistIsNotFound() throws Exception {
+        harness.start(false);
+        String missing = FakeSecretService.COLLECTION_PATH + "/999";
+
+        // Nothing exports the path, and dbus-java, on which the fake runs, answers with an error
+        // named after its own exception class: org.freedesktop.dbus.errors.UnknownObject.
+        Failure failure = failureOf(readLabel(harness.rawService().getMessageHandler(), missing));
+
+        assertEquals(Reason.NOT_FOUND, failure.reason(), "error " + failure.errorName());
+        assertEquals(Optional.of(false), new Item(Static.Convert.toObjectPath(missing), harness.rawService()).exists());
+    }
+
+    @Test
     void aCollectionThatDoesNotExistIsNotFound() throws Exception {
         harness.start(false);
 
-        // The fake names it with NoSuchObject, as a provider does. An object path that nothing
-        // exports, dbus-java answers with an error named after its own exception class instead.
+        // The fake names it with NoSuchObject, as a provider does.
         Reply reply = harness.rawService().getMessageHandler().sendChecked(Static.Service.SECRETS,
                 Static.ObjectPaths.SECRETS, Static.Interfaces.SERVICE, "ChangeLock", "o",
                 new DBusPath(Static.ObjectPaths.collection("missing")));

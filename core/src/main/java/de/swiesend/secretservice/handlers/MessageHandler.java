@@ -200,7 +200,9 @@ public class MessageHandler {
                         logParameterised(error, parameters, Level.WARN);
                         return Reply.failed(Outcome.ABSENT, error, errorText);
                     case "org.freedesktop.DBus.Error.UnknownObject":
-                        // Likewise from the bus itself: there is no object at that path.
+                    case "org.freedesktop.dbus.errors.UnknownObject":
+                        // Likewise from the bus itself: there is no object at that path. A peer
+                        // on dbus-java names the error after dbus-java's exception class.
                         logParameterised(error, parameters, Level.ERROR);
                         return Reply.failed(Outcome.ABSENT, error, errorText);
                     case "org.freedesktop.Secret.Error.NoSession":
