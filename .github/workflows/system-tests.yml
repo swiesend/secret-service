@@ -2,8 +2,9 @@ name: System Tests
 
 # Runs the provider-agnostic system test suite (@Tag("system-test")) against each
 # supported Secret Service provider. gnome-keyring is the reliable, blocking leg.
-# KeePassXC's headless bring-up is fragile, and KWallet's has yet to prove itself on
-# the runners, so those legs are non-blocking (continue-on-error) and informative.
+# KeePassXC's headless bring-up is fragile, and KWallet's and oo7's have yet to prove
+# themselves on the runners, so those legs are non-blocking (continue-on-error) and
+# informative.
 
 on:
   push:
@@ -31,8 +32,11 @@ jobs:
       # collection: the id of the container's throwaway collection. ProviderSystemTest uses
       # that one and no other, so on a developer's desktop it cannot reach a real wallet.
       # lockable: whether that collection unlocks again without a dialog, so that the tests may
-      # lock it. The KWallet containers' wallet does; KeePassXC's database would need the user.
+      # lock it. The KWallet containers' wallet does, and oo7's login keyring, whose password
+      # the container's prompter gives; KeePassXC's database would need the user.
       # gnome-keyring's needs no flag: the tests create it, with a password.
+      # docker-options: for the provider's container. oo7-daemon keeps CAP_IPC_LOCK, to lock
+      # its memory, and exits where it cannot.
       matrix:
         include:
           - provider: gnome-keyring
@@ -49,6 +53,11 @@ jobs:
           - provider: keepassxc
             experimental: true
             collection: test
+          - provider: oo7
+            experimental: true
+            collection: login
+            lockable: true
+            docker-options: --cap-add IPC_LOCK
     name: system-tests (${{ matrix.provider }})
     continue-on-error: ${{ matrix.experimental }}
     # Each leg normally takes about two minutes. The bound is generous enough that a slow
@@ -77,7 +86,7 @@ jobs:
 
       - name: Run system tests against ${{ matrix.provider }}
         run: |
-          docker run --rm \
+          docker run --rm ${{ matrix.docker-options }} \
             -v "${{ github.workspace }}":/workspace \
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-${{ matrix.provider }} \
@@ -86,8 +95,8 @@ jobs:
 
       # The container runs --rm, so anything it left in /tmp is gone by the time the job
       # is read. Surefire reports are collected for every provider; the daemon logs for
-      # keepassxc and kwallet, which write them under the mounted workspace. gnome-keyring's
-      # daemon writes to the job's output.
+      # keepassxc, kwallet and oo7, which write them under the mounted workspace.
+      # gnome-keyring's daemon writes to the job's output.
       - name: Collect provider diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
