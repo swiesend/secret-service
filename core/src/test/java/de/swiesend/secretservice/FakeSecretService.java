@@ -251,6 +251,13 @@ public final class FakeSecretService {
 
     private final List<String> createItemCalls = Collections.synchronizedList(new ArrayList<>());
 
+    /** The names of the properties that each {@code CreateItem} call was given, in call order. */
+    public List<java.util.Set<String>> createItemPropertyNames() {
+        return List.copyOf(createItemPropertyNames);
+    }
+
+    private final List<java.util.Set<String>> createItemPropertyNames = Collections.synchronizedList(new ArrayList<>());
+
     /** Whether a Lock prompt is outstanding, so a test can wait for it instead of racing it. */
     public boolean hasPendingPrompt() { return pendingApproval != null; }
 
@@ -563,6 +570,7 @@ public final class FakeSecretService {
         public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, WireSecret secret, boolean replace) {
             Variant<?> label = properties.get(Item.LABEL);
             createItemCalls.add(label == null ? "" : String.valueOf(label.getValue()));
+            createItemPropertyNames.add(java.util.Set.copyOf(properties.keySet()));
             sentContentTypes.add(secret.contentType());
             // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
             // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
