@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -83,6 +84,19 @@ public class SecretTest {
         assertEquals("text/plain; charset=us-ascii", contentType);
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), contentType);
         assertEquals("text/plain; charset=us-ascii", secret.getContentType());
+    }
+
+    @Test
+    public void aCharsetIsNamedAlikeInEveryLocale() {
+        // Lower-cased in a Turkish locale, the I of ISO-8859-1 and US-ASCII becomes a dotless i.
+        Locale before = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            assertEquals("text/plain; charset=iso-8859-1", Secret.createContentType(StandardCharsets.ISO_8859_1));
+            assertEquals("text/plain; charset=us-ascii", Secret.createContentType("text/plain", StandardCharsets.US_ASCII));
+        } finally {
+            Locale.setDefault(before);
+        }
     }
 
     @Test

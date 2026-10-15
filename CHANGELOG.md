@@ -20,6 +20,7 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
     - `unlockItem` now checks the prompt result. It previously ignored dismissal and could throw a `NullPointerException` out of a `boolean` method when the prompt timed out.
     - Covered by `PerItemUnlockTest`, which drives a fake Secret Service that locks one item — no provider in CI reproduces the condition otherwise.
   - Tolerate gnome-keyring's asynchronously-injected `xdg:schema` attribute in the functional attribute tests: `createItemWithAttribute` compares by containment, and `getAttributes` compares only user-defined keys — the latter's strict assertion previously raced and flaked (~1 run in 10) [#68](https://github.com/swiesend/secret-service/pull/68).
+  - `Secret.createContentType` names a charset alike in every locale. It lower-cased the charset's name in the default locale, and under a Turkish or Azerbaijani one `ISO-8859-1` became `ıso-8859-1`, with a dotless i, which names no charset: a secret that a caller encrypted in ISO-8859-1 or US-ASCII went out under a content type that no provider could read. The functional API encrypts in UTF-8, whose name has no I.
 
 ## [3.0.0-alpha] - 2026-06-11
 
