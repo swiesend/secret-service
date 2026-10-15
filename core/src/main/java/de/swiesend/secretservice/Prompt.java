@@ -3,27 +3,25 @@ package de.swiesend.secretservice;
 import de.swiesend.secretservice.handlers.Messaging;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.messages.DBusSignal;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
-import static de.swiesend.secretservice.Static.ObjectPaths.PROMPT;
 
 public class Prompt extends Messaging implements de.swiesend.secretservice.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
 
-    private static final Logger log = LoggerFactory.getLogger(Prompt.class);
+    private final Service service;
 
     public Prompt(Service service) {
         super(service.getMessageHandler(), signals,
                 Static.Service.SECRETS,
                 "/",
                 Static.Interfaces.PROMPT);
+        this.service = service;
     }
 
     @Override
@@ -35,22 +33,9 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
     @Override
     public boolean prompt(DBusPath prompt) {
         objectPath = prompt.getPath();
-
-        String windowID = "";
-
-        if (objectPath.startsWith(PROMPT + "/")) {
-            try {
-                // NOTE: If the windowID starts with the prefix 'p' or 'u' followed by numerics only,
-                //       then it comes from the gnome-keyring. KeePassXC generates random alphanumeric ids.
-                windowID = objectPath.substring(objectPath.lastIndexOf("/") + 1);
-            } catch (IndexOutOfBoundsException | NullPointerException e) {
-                log.warn("No proper window ID. Continuing with window ID: {}", windowID);
-            }
-        } else {
-            log.warn("No proper prompt path. Continuing with window ID: {}", windowID);
-        }
-
-        return send("Prompt", "s", windowID).isPresent();
+        // The window_id names the caller's window, over which the provider shows its dialog: the
+        // service's window handle, empty for none.
+        return send("Prompt", "s", service.getWindowHandle()).isPresent();
     }
 
     /**
