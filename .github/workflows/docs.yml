@@ -1,7 +1,9 @@
 name: Docs
 
-# Builds the MkDocs Material site from docs/ and deploys it to GitHub Pages.
-# - On pull requests touching the docs: build only (strict link/anchor validation).
+# Builds the MkDocs Material site from docs/ and deploys it to GitHub Pages, after
+# the documented snippets compile and the javadoc builds without a warning.
+# - On pull requests touching the docs, the sources or a POM: build only (strict
+#   link/anchor validation).
 # - On push to main (and manual dispatch): build and deploy.
 # The first deploy auto-enables Pages via actions/configure-pages (enablement: true).
 
@@ -9,11 +11,11 @@ on:
   push:
     branches: [main]
     paths: [docs/**, mkdocs.yml, CHANGELOG.md, .github/workflows/docs.yml,
-            .github/scripts/check_doc_snippets.py,
+            .github/scripts/check_doc_snippets.py, "**/pom.xml",
             core/src/main/**, hardened/src/main/**, hardened-tpm2/src/main/**]
   pull_request:
     paths: [docs/**, mkdocs.yml, CHANGELOG.md, .github/workflows/docs.yml,
-            .github/scripts/check_doc_snippets.py,
+            .github/scripts/check_doc_snippets.py, "**/pom.xml",
             core/src/main/**, hardened/src/main/**, hardened-tpm2/src/main/**]
   workflow_dispatch:
 
@@ -58,6 +60,12 @@ jobs:
           mvn -q -B -pl core,hardened,hardened-tpm2 -am dependency:build-classpath \
               -Dmdep.outputFile="$PWD/target/docs-cp.txt" -Dmdep.regenerateFile=true
           python3 .github/scripts/check_doc_snippets.py
+
+      # A javadoc warning fails here, before a release meets it: the release builds the
+      # javadoc jars under the same doclint (all checks but "missing", see pom.xml). Not
+      # quiet, so the log shows each warning and not only that there was one.
+      - name: Build javadoc (fails on a warning)
+        run: mvn -B -ntp -pl core,hardened,hardened-tpm2 javadoc:jar
 
       - name: Install MkDocs Material
         run: pip install mkdocs-material==9.*

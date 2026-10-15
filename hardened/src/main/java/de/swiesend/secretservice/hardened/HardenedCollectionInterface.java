@@ -13,7 +13,7 @@ import java.util.function.Function;
  * tells you whether the configured {@link KeyMaterialProvider} actually defends against
  * a malicious same-UID process (CVE-2018-19358); most do not.</p>
  *
- * <h3>Choosing the right read method</h3>
+ * <h2>Choosing the right read method</h2>
  * <ul>
  *   <li><b>Comparing against a candidate value</b> (password check, token check):
  *       use {@link #matchesSecret(String, char[])}. The plaintext never leaves the

@@ -41,14 +41,14 @@ import java.util.function.Function;
  * and passed to the caller's {@code withSecret} callback. The plaintext {@code char[]} is
  * zeroed in a finally block whether the callback returns or throws.</p>
  *
- * <h3>Non-destructive guarantee</h3>
+ * <h2>Non-destructive guarantee</h2>
  * <p>The decorator never reads or modifies pre-existing non-hardened items. An item without
  * the {@code hardened.version} attribute (or without the {@code SSv1} magic in its body) is
  * treated as foreign: {@code withSecret} returns empty and logs a warning; {@code deleteItem}
  * refuses. This protects shared collections — especially the default collection — from
  * accidental data loss.</p>
  *
- * <h3>KEM and forward secrecy</h3>
+ * <h2>KEM and forward secrecy</h2>
  * <ul>
  *   <li>Every write uses a KEM against a per-epoch keypair held by the {@link EpochKeystore}:
  *       classical X25519 ({@code kem_id=KEM_ID_X25519}) by default, or X25519+ML-KEM-768
@@ -67,7 +67,7 @@ import java.util.function.Function;
  *       configured (see {@link Builder#generationAnchor}).</li>
  * </ul>
  *
- * <h3>Thread-safety</h3>
+ * <h2>Thread-safety</h2>
  * <p>Concurrent {@link #createItem}, {@link #withSecret}, {@link #withSecrets}, and
  * {@link #matchesSecret} calls on a single instance are safe <em>as long as the wrapped
  * {@link CollectionInterface} is thread-safe</em>: the epoch keystore's mutating methods are
@@ -920,14 +920,14 @@ public final class HardenedCollection implements HardenedCollectionInterface {
      * matches {@code selector}, write it as a hardened envelope under this collection's
      * configuration, then delete the plain original. Returns a structured report.
      *
-     * <h3>Dual-gate</h3>
+     * <h4>Dual-gate</h4>
      * <p>This method is the only one in the library that mutates items the layer didn't
      * write. It is dual-gated: <b>both</b> {@link Builder#allowMigration(boolean)} and the
      * environment variable {@code SECRET_SERVICE_HARDENED_ALLOW_MIGRATION=1} must be set.
      * One requires a code change (visible in PR review); the other requires an explicit
      * operator action at deploy time. Either alone is insufficient.</p>
      *
-     * <h3>Failure handling</h3>
+     * <h4>Failure handling</h4>
      * <p>Per-item failures are recorded in the report and do <b>not</b> abort the batch.
      * On any failure for a given item: the plain original is left intact (we delete only
      * after a successful hardened write), and a {@code Failure} entry is added. Operators
