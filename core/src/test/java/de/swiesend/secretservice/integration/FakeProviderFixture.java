@@ -61,6 +61,23 @@ final class FakeProviderFixture {
     }
 
     /**
+     * A connection of its own to the bus, as another application has one. Unshared, so that it is
+     * a client of its own; {@link #stop()} closes it.
+     */
+    DBusConnection connectAnother() throws Exception {
+        DBusConnection other = DBusConnectionBuilder.forAddress("unix:path=" + socket).withShared(false).build();
+        otherConnections.add(other);
+        return other;
+    }
+
+    private final java.util.List<DBusConnection> otherConnections = new java.util.ArrayList<>();
+
+    /** Takes the fake off the bus, as a provider that quits: no one owns its name afterwards. */
+    void releaseProviderName() throws Exception {
+        providerConnection.releaseBusName(FakeSecretService.BUS_NAME);
+    }
+
+    /**
      * Starts the bus and the fake provider, and opens the fake collection through the library.
      *
      * @param itemLocked whether the fake's single item starts out individually locked
@@ -126,6 +143,10 @@ final class FakeProviderFixture {
         try { if (service != null) service.close(); } catch (Exception ignored) { }
         try { if (clientConnection != null) clientConnection.disconnect(); } catch (Exception ignored) { }
         try { if (providerConnection != null) providerConnection.disconnect(); } catch (Exception ignored) { }
+        for (DBusConnection other : otherConnections) {
+            try { other.disconnect(); } catch (Exception ignored) { }
+        }
+        otherConnections.clear();
         if (bus != null) {
             bus.destroy();
             try {

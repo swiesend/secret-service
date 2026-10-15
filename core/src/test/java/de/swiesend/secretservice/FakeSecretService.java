@@ -227,6 +227,7 @@ public final class FakeSecretService implements AutoCloseable {
     private final List<String> promptCalls = Collections.synchronizedList(new ArrayList<>());
 
     private volatile boolean dismissPrompts;
+    private volatile boolean leavePromptsOpen;
     private volatile boolean refuseCollectionUnlock;
     private volatile boolean requirePromptForCollectionUnlock;
     private volatile boolean requirePromptForCollectionLock;
@@ -356,6 +357,14 @@ public final class FakeSecretService implements AutoCloseable {
     /** Makes the prompt come back dismissed, as if the user had refused it. */
     public void setDismissPrompts(boolean dismiss) {
         this.dismissPrompts = dismiss;
+    }
+
+    /**
+     * Leaves a prompt open once the client has shown it, as a user who answers no dialog. A
+     * Dismiss still ends it.
+     */
+    public void setLeavePromptsOpen(boolean open) {
+        this.leavePromptsOpen = open;
     }
 
     /** Locks the collection, as a provider does when the keyring times out or the user locks it. */
@@ -978,7 +987,7 @@ public final class FakeSecretService implements AutoCloseable {
                 p.shown = true;
                 promptCalls.add(path);
                 // The user answers the dialog they are shown, and only that one.
-                complete(p, dismissPrompts);
+                if (!leavePromptsOpen) complete(p, dismissPrompts);
             }
         }
 
