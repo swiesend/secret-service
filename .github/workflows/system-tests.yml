@@ -37,6 +37,9 @@ jobs:
       # gnome-keyring's needs no flag: the tests create it, with a password.
       # docker-options: for the provider's container. oo7-daemon keeps CAP_IPC_LOCK, to lock
       # its memory, and exits where it cannot.
+      # image: the directory under .github/providers/, where it is not the provider's name.
+      # dialogs-answered: whether the container answers the provider's dialogs, which the
+      # tests with a second client need.
       matrix:
         include:
           - provider: gnome-keyring
@@ -53,6 +56,14 @@ jobs:
           - provider: keepassxc
             experimental: true
             collection: test
+          # KeePassXC as it is set up by default: it asks the user before it gives a client
+          # access to an item. The container answers its dialogs through xdotool.
+          - provider: keepassxc-confirm
+            image: keepassxc
+            experimental: true
+            collection: test
+            dialogs-answered: true
+            docker-options: -e KPXC_CONFIRM_ACCESS_ITEM=true -e KPXC_ANSWER_ACCESS_REQUESTS=true
           - provider: oo7
             experimental: true
             collection: login
@@ -82,7 +93,7 @@ jobs:
             ${{ runner.os }}-maven-
 
       - name: Build ${{ matrix.provider }} container
-        run: docker build -f .github/providers/${{ matrix.provider }}/Dockerfile -t secret-service-${{ matrix.provider }} .
+        run: docker build -f .github/providers/${{ matrix.image || matrix.provider }}/Dockerfile -t secret-service-${{ matrix.provider }} .
 
       - name: Run system tests against ${{ matrix.provider }}
         run: |
@@ -91,7 +102,8 @@ jobs:
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-${{ matrix.provider }} \
             mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }} \
-              -Dsecret-service.system-test.lockable=${{ matrix.lockable || false }}
+              -Dsecret-service.system-test.lockable=${{ matrix.lockable || false }} \
+              -Dsecret-service.system-test.dialogs-answered=${{ matrix.dialogs-answered || false }}
 
       # The container runs --rm, so anything it left in /tmp is gone by the time the job
       # is read. Surefire reports are collected for every provider; the daemon logs for
