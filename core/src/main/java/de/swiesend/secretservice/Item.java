@@ -75,9 +75,9 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
     public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
         Map<String, Variant> properties = new HashMap<>();
         properties.put(LABEL, new Variant(label));
-        if (attributes != null) {
-            properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));
-        }
+        // Always, empty when there are none: oo7 takes an item to have attributes, and its CreateItem
+        // fails without an answer when the property is missing.
+        properties.put(ATTRIBUTES, new Variant(attributes == null ? new HashMap<String, String>() : attributes, "a{ss}"));
         return properties;
     }
 
