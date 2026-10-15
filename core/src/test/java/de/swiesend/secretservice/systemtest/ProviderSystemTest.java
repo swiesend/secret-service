@@ -374,6 +374,34 @@ public class ProviderSystemTest {
         }
     }
 
+    @Test
+    @DisplayName("another client reads the items, through one dialog of the provider where it needs one")
+    void anotherClientReadsTheItems() throws Exception {
+        assumeDialogsAnswered();
+        String first = collection.createItem("provider-system-other-read-1", "s3cr3t-read-1").orElse(null);
+        String second = collection.createItem("provider-system-other-read-2", "s3cr3t-read-2").orElse(null);
+        try {
+            assertNotNull(first, "createItem returned empty");
+            assertNotNull(second, "createItem returned empty");
+            Map<String, String> read;
+            try (Client other = new Client()) {
+                // KeePassXC shows one dialog for all the items of one Unlock call.
+                read = other.collection.withSecrets(secrets -> {
+                    Map<String, String> copy = new java.util.HashMap<>();
+                    for (String path : List.of(first, second)) {
+                        char[] secret = secrets.get(path);
+                        if (secret != null) copy.put(path, new String(secret));
+                    }
+                    return copy;
+                }).orElse(Map.of());
+            }
+            assertEquals(Map.of(first, "s3cr3t-read-1", second, "s3cr3t-read-2"), read);
+        } finally {
+            if (first != null) collection.deleteItem(first);
+            if (second != null) collection.deleteItem(second);
+        }
+    }
+
     private void assumeLockable() {
         Assumptions.assumeTrue(ownsCollection || LOCKABLE,
                 "the collection may not unlock again without a dialog; "
