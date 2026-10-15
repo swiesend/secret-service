@@ -20,7 +20,10 @@ import static java.util.Objects.requireNonNull;
 
 public final class Secret extends Struct implements AutoCloseable {
 
-    // NOTE: the specification defines the default content_type differently with "text/plain; charset=utf8"
+    // A secret in UTF-8 has the content type "text/plain". libsecret stores a password under it and
+    // reads one only under it, oo7 0.6 refuses any other text type, and every provider reads it as
+    // UTF-8. A secret under "text/plain; charset=utf-8", or the specification's example
+    // "text/plain; charset=utf8", is read as UTF-8 too.
     //  see: https://specifications.freedesktop.org/secret-service/0.2/types.html
     public static final String TEXT_PLAIN_CHARSET_UTF_8 = "text/plain; charset=utf-8";
     public static final String TEXT_PLAIN = "text/plain";
@@ -41,7 +44,7 @@ public final class Secret extends Struct implements AutoCloseable {
         this.session = session;
         this.parameters = "".getBytes();
         this.value = value;
-        this.contentType = TEXT_PLAIN_CHARSET_UTF_8;
+        this.contentType = TEXT_PLAIN;
         this.mimeType = TEXT_PLAIN;
         this.charset = StandardCharsets.UTF_8;
     }
@@ -54,7 +57,7 @@ public final class Secret extends Struct implements AutoCloseable {
             this.parameters = parameters;
         }
         this.value = value;
-        this.contentType = TEXT_PLAIN_CHARSET_UTF_8;
+        this.contentType = TEXT_PLAIN;
         this.mimeType = TEXT_PLAIN;
         this.charset = StandardCharsets.UTF_8;
     }
@@ -68,7 +71,7 @@ public final class Secret extends Struct implements AutoCloseable {
         }
         this.value = requireNonNull(value);
         if (contentType == null || contentType.isEmpty()) {
-            this.contentType = TEXT_PLAIN_CHARSET_UTF_8;
+            this.contentType = TEXT_PLAIN;
             this.mimeType = TEXT_PLAIN;
             this.charset = StandardCharsets.UTF_8;
         } else {
@@ -90,14 +93,18 @@ public final class Secret extends Struct implements AutoCloseable {
         }
         this.value = requireNonNull(value);
         this.contentType = createContentType(charset);
-        parseContentType(this.contentType);
+        // Not parsed back: for UTF-8 the content type names no charset.
+        this.mimeType = TEXT_PLAIN;
+        this.charset = charset;
     }
 
     static public String createContentType(String mimeType, Charset charset) {
         return mimeType + "; " + CHARSET + charset.name().toLowerCase();
     }
 
+    /** The content type of text in {@code charset}: "text/plain" for UTF-8, with the charset otherwise. */
     static public String createContentType(Charset charset) {
+        if (StandardCharsets.UTF_8.equals(charset)) return TEXT_PLAIN;
         return TEXT_PLAIN + "; " + CHARSET + charset.name().toLowerCase();
     }
 

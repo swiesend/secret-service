@@ -66,10 +66,11 @@ public class SecretTest {
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), "text/plain;\t; ;;; charset=utf-8  ; ,,,");
         assertEquals("text/plain; charset=utf-8", secret.getContentType());
 
+        // libsecret reads a password only under "text/plain", and oo7 0.6 refuses any other text type.
         contentType = Secret.createContentType(StandardCharsets.UTF_8);
-        assertEquals("text/plain; charset=utf-8", contentType);
+        assertEquals("text/plain", contentType);
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), contentType);
-        assertEquals("text/plain; charset=utf-8", secret.getContentType());
+        assertEquals("text/plain", secret.getContentType());
 
         contentType = Secret.createContentType(StandardCharsets.UTF_16);
         assertEquals("text/plain; charset=utf-16", contentType);
@@ -103,13 +104,16 @@ public class SecretTest {
     @Test
     public void getContentType() {
         Secret secret = new Secret(session, parameters.getBytes(), value.getBytes());
-        assertEquals("text/plain; charset=utf-8", secret.getContentType());
+        assertEquals("text/plain", secret.getContentType());
 
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), (String) null);
-        assertEquals("text/plain; charset=utf-8", secret.getContentType());
+        assertEquals("text/plain", secret.getContentType());
 
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), "");
-        assertEquals("text/plain; charset=utf-8", secret.getContentType());
+        assertEquals("text/plain", secret.getContentType());
+
+        secret = new Secret(session, parameters.getBytes(), value.getBytes(), StandardCharsets.UTF_8);
+        assertEquals("text/plain", secret.getContentType());
 
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), StandardCharsets.UTF_16);
         assertEquals("text/plain; charset=utf-16", secret.getContentType());
@@ -137,6 +141,10 @@ public class SecretTest {
         Secret secret;
 
         secret = new Secret(session, parameters.getBytes(), value.getBytes());
+        assertEquals(StandardCharsets.UTF_8, secret.getCharset());
+
+        // Although its content type, "text/plain", names no charset.
+        secret = new Secret(session, parameters.getBytes(), value.getBytes(), StandardCharsets.UTF_8);
         assertEquals(StandardCharsets.UTF_8, secret.getCharset());
 
         secret = new Secret(session, parameters.getBytes(), value.getBytes(), StandardCharsets.UTF_16);
