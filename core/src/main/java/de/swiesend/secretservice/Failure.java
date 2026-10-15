@@ -116,7 +116,8 @@ public record Failure(Reason reason, String message, String errorName, Throwable
             case "org.freedesktop.DBus.Error.Timeout",
                  "org.freedesktop.DBus.Error.TimedOut" -> Reason.TIMED_OUT;
             case "org.freedesktop.DBus.Error.AccessDenied" -> Reason.DENIED;
-            default -> Reason.OTHER;
+            // From the bus: a service file names a provider, and the provider did not start.
+            default -> name.startsWith("org.freedesktop.DBus.Error.Spawn.") ? Reason.NO_PROVIDER : Reason.OTHER;
         };
     }
 

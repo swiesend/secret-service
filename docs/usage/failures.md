@@ -18,9 +18,38 @@ The functional API answers `Optional.empty()` or `false` when a call fails, and 
 
 A later release may add reasons, so a `switch` over them needs a `default` branch.
 
+## Methods
+
+| Method | Answers with | In place of |
+|---|---|---|
+| `SecretService.createChecked()`, `createChecked(system)` | the service; `NO_PROVIDER`, or the failure of the session that the availability check opens | `create()`, `create(system)` |
+
+On the low-level API: `System.connectChecked()`, `ServiceInterface.isAvailableChecked(system, available)`, `Service.openSessionChecked(algorithm, input)` and `TransportEncryption.InitializedSession.openSessionChecked()`.
+
 ## `Result` and `Failure`
 
-A `Result` holds a value or a `Failure`: `isOk()`, `value()` and `failure()` say which. `value()` answers what the plain method answers: empty for a failure, and also for a success without a value. `reason()` is a shortcut for the failure's reason. `map` and `flatMap` pass a failure on unchanged. A `Result` prints whether the call succeeded and its failure, never its value, which can be a secret.
+A `Result` holds a value or a `Failure`: `isOk()`, `value()` and `failure()` say which.
+
+```java
+import de.swiesend.secretservice.Failure;
+import de.swiesend.secretservice.Result;
+
+Result<ServiceInterface> created = SecretService.createChecked();
+if (created.isOk()) {
+    try (ServiceInterface service = created.value().orElseThrow()) {
+        // ...
+    }
+} else {
+    Failure failure = created.failure().orElseThrow();
+    switch (failure.reason()) {
+        case NO_PROVIDER -> useAnotherStore();
+        case TIMED_OUT, DISCONNECTED -> tryAgainLater();
+        default -> log.warn("No Secret Service: {}", failure);
+    }
+}
+```
+
+`value()` answers what the plain method answers: empty for a failure, and also for a success without a value. `reason()` is a shortcut for the failure's reason. `map` and `flatMap` pass a failure on unchanged. A `Result` prints whether the call succeeded and its failure, never its value, which can be a secret.
 
 A `Failure` is a record of four parts:
 
@@ -40,7 +69,7 @@ On the low-level API, `MessageHandler.sendChecked` and `getPropertyChecked` answ
 | `org.freedesktop.Secret.Error.NoSuchObject`, `org.freedesktop.DBus.Error.UnknownObject`, and gnome-keyring's `UnknownMethod` for a property of a path that does not exist (the outcome `ABSENT`) | `NOT_FOUND` |
 | `org.freedesktop.Secret.Error.IsLocked` | `LOCKED` |
 | `org.gnome.keyring.Error.Denied`, `org.freedesktop.DBus.Error.AccessDenied` | `DENIED` |
-| `org.freedesktop.DBus.Error.ServiceUnknown`, `org.freedesktop.DBus.Error.NameHasNoOwner` | `NO_PROVIDER` |
+| `org.freedesktop.DBus.Error.ServiceUnknown`, `org.freedesktop.DBus.Error.NameHasNoOwner`, and the bus's `org.freedesktop.DBus.Error.Spawn.*` for a provider that a service file names but that did not start | `NO_PROVIDER` |
 | `org.freedesktop.DBus.Local.Disconnected`, `org.freedesktop.DBus.Error.Disconnected`, `org.freedesktop.Secret.Error.NoSession`, and `java.io.IOException`, the error that dbus-java answers a call with when its connection closes; dbus-java's `NotConnected` and `FatalDBusException` | `DISCONNECTED` |
 | The bus's `org.freedesktop.DBus.Error.NoReply` | `DISCONNECTED` when its text says that the provider disconnected, otherwise `TIMED_OUT` |
 | No reply within the reply timeout; `org.freedesktop.DBus.Error.Timeout`, `org.freedesktop.DBus.Error.TimedOut` | `TIMED_OUT` |

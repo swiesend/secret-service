@@ -171,7 +171,7 @@ not equality.
 |---|---|
 | `new SimpleCollection()` | `SecretService.create()`, then `service.openSession()` and `session.defaultCollection()` |
 | `new SimpleCollection(label, password)` | `session.collection(label, Optional.of(password))` |
-| `SimpleCollection.isAvailable()` | `SecretService.create().isPresent()` |
+| `SimpleCollection.isAvailable()` | `SecretService.create().isPresent()`, or `SecretService.createChecked()`, which says why not |
 | `SimpleCollection.isGnomeKeyringAvailable()` | `service.isGnomeKeyringAvailable()` |
 | `createItem(label, secret, attributes)` returning the path | `createItem(label, secret, attributes)` returning `Optional<String>` |
 | `getSecret(path)` returning `char[]` | `withSecret(path, callback)`, which zeroes the secret afterwards; or `getSecret(path)` returning `Optional<char[]>` |

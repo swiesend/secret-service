@@ -49,6 +49,11 @@ public abstract class Messaging {
         return msg.send(serviceName, objectPath, interfaceName, method, signature, arguments);
     }
 
+    /** As {@link #send(String, String, Object...)}, but reporting why the call yielded nothing. */
+    protected MessageHandler.Reply sendChecked(String method, String signature, Object... arguments) {
+        return msg.sendChecked(serviceName, objectPath, interfaceName, method, signature, arguments);
+    }
+
     protected Optional<Variant> getProperty(String property) {
         return msg.getProperty(serviceName, objectPath, interfaceName, property);
     }

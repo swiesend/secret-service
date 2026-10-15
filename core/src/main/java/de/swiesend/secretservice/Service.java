@@ -4,6 +4,7 @@ import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
+import de.swiesend.secretservice.handlers.MessageHandler;
 import de.swiesend.secretservice.handlers.Messaging;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,13 +49,27 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
 
     @Override
     public Optional<Pair<Variant<byte[]>, DBusPath>> openSession(String algorithm, Variant input) {
-        return send("OpenSession", "sv", algorithm, input)
+        return openSessionChecked(algorithm, input).value();
+    }
+
+    /**
+     * As {@link #openSession(String, Variant)}, but answering why no session opened.
+     *
+     * @since 4.0.0
+     */
+    public Result<Pair<Variant<byte[]>, DBusPath>> openSessionChecked(String algorithm, Variant input) {
+        MessageHandler.Reply reply = sendChecked("OpenSession", "sv", algorithm, input);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider opened no session"));
+        }
+        return reply.value()
                 .filter(response -> !Static.Utils.isNullOrEmpty(response) && response.length == 2)
-                .flatMap(response -> Optional.of(new Pair<>((Variant<byte[]>) response[0], (DBusPath) response[1])))
+                .map(response -> new Pair<>((Variant<byte[]>) response[0], (DBusPath) response[1]))
                 .map(pair -> {
                     log.debug("Got session: " + pair.b.getPath());
-                    return pair;
-                });
+                    return Result.ok(pair);
+                })
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "The provider answered OpenSession without a session"));
     }
 
     @Override

@@ -1,5 +1,7 @@
 package de.swiesend.secretservice.functional.interfaces;
 
+import de.swiesend.secretservice.Failure;
+import de.swiesend.secretservice.Result;
 import de.swiesend.secretservice.TransportEncryption;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.slf4j.Logger;
@@ -22,45 +24,57 @@ public interface ServiceInterface extends AutoCloseable {
      * @return true if the secret service is available, otherwise false and will log an error message.
      */
     static boolean isAvailable(SystemInterface system, AvailableServices available) {
+        return isAvailableChecked(system, available).isOk();
+    }
+
+    /**
+     * As {@link #isAvailable}, but answering why the secret service is not available:
+     * {@code NO_PROVIDER} when nothing on the bus provides {@code org.freedesktop.secrets}, or the
+     * failure of the session that the check opens, with its D-Bus error.
+     *
+     * @return {@code true}, or the failure
+     * @since 4.0.0
+     */
+    static Result<Boolean> isAvailableChecked(SystemInterface system, AvailableServices available) {
         if (system == null || available == null) {
             log.error("Cannot check availability: system and available must not be null.");
-            return false;
+            return Result.failed(Failure.Reason.INVALID_ARGUMENT, "No system or no list of its services to check");
         }
         DBusConnection connection = system.getConnection();
-        if (connection.isConnected()) {
-            try {
-                if (!available.services.contains(Activatable.DBUS)) {
-                    log.error("Missing required D-Bus service: " + Activatable.DBUS.name);
-                    return false;
-                }
-                if (!available.services.contains(Activatable.SECRETS)) {
-                    log.error("Missing required D-Bus service: " + Activatable.SECRETS.name);
-                    return false;
-                }
-                if (!available.services.contains(Activatable.GNOME_KEYRING)) {
-                    log.warn("Proceeding without optional D-Bus service: " + Activatable.GNOME_KEYRING.name);
-                }
-
-                // The following calls intent to open a session without actually generating a full session.
-                // Necessary in order to check if the provided 'secret service' supports the expected transport
-                // encryption algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
-                // "org.freedesktop.DBus.Error.ServiceUnknown <: org.freedesktop.dbus.exceptions.DBusException"
-                TransportEncryption transport = new TransportEncryption(connection);
-                boolean isSessionSupported = transport
-                        .initialize()
-                        .flatMap(TransportEncryption.InitializedSession::openSession)
-                        .isPresent();
-                transport.close();
-
-                return isSessionSupported;
-            } catch (ExceptionInInitializerError e) {
-                log.warn("The secret service is not available. " +
-                        "You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
-                return false;
-            }
-        } else {
+        if (!connection.isConnected()) {
             log.error("No D-Bus connection: Cannot check if all needed services are available.");
-            return false;
+            return Result.failed(Failure.Reason.DISCONNECTED, "The D-Bus connection is closed");
+        }
+        try {
+            if (!available.services.contains(Activatable.DBUS)) {
+                log.error("Missing required D-Bus service: " + Activatable.DBUS.name);
+                return Result.failed(Failure.Reason.OTHER, "The bus did not list the names on it");
+            }
+            if (!available.services.contains(Activatable.SECRETS)) {
+                log.error("Missing required D-Bus service: " + Activatable.SECRETS.name);
+                return Result.failed(Failure.Reason.NO_PROVIDER,
+                        "Nothing on the bus provides org.freedesktop.secrets, and no service file starts a provider");
+            }
+            if (!available.services.contains(Activatable.GNOME_KEYRING)) {
+                log.warn("Proceeding without optional D-Bus service: " + Activatable.GNOME_KEYRING.name);
+            }
+
+            // The following calls intent to open a session without actually generating a full session.
+            // Necessary in order to check if the provided 'secret service' supports the expected transport
+            // encryption algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
+            // "org.freedesktop.DBus.Error.ServiceUnknown <: org.freedesktop.dbus.exceptions.DBusException"
+            TransportEncryption transport = new TransportEncryption(connection);
+            try {
+                return transport.initialize()
+                        .map(initialized -> initialized.openSessionChecked().map(opened -> true))
+                        .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "No key pair for the session check"));
+            } finally {
+                transport.close();
+            }
+        } catch (ExceptionInInitializerError e) {
+            log.warn("The secret service is not available. " +
+                    "You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
+            return Result.failed(Failure.of(Failure.Reason.OTHER, "The secret service could not be initialized", e));
         }
     }
 

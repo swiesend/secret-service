@@ -235,6 +235,7 @@ public final class FakeSecretService implements AutoCloseable {
     private volatile boolean dismissPrompts;
     private volatile boolean leavePromptsOpen;
     private volatile boolean refuseCollectionUnlock;
+    private volatile boolean refuseEncryptedSessions;
     private volatile boolean requirePromptForCollectionUnlock;
     private volatile boolean requirePromptForCollectionLock;
     private volatile boolean requirePromptForItemLock;
@@ -395,6 +396,11 @@ public final class FakeSecretService implements AutoCloseable {
         this.refuseCollectionUnlock = refuse;
     }
 
+    /** Makes OpenSession refuse every algorithm but plain, as a provider without transport encryption. */
+    public void setRefuseEncryptedSessions(boolean refuse) {
+        this.refuseEncryptedSessions = refuse;
+    }
+
     /** Makes a collection unlock ask the user first, as gnome-keyring does. Off: it unlocks at once. */
     public void setRequirePromptForCollectionUnlock(boolean require) {
         this.requirePromptForCollectionUnlock = require;
@@ -456,6 +462,9 @@ public final class FakeSecretService implements AutoCloseable {
             record("Service.OpenSession", SERVICE_PATH);
             byte[] key;
             Variant<?> output;
+            if (refuseEncryptedSessions && !Static.Algorithm.PLAIN.equals(algorithm)) {
+                throw new NotSupported("fake: no transport encryption");
+            }
             if (Static.Algorithm.PLAIN.equals(algorithm)) {
                 key = null;
                 output = new Variant<>("");

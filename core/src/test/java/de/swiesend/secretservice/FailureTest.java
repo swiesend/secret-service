@@ -58,6 +58,12 @@ class FailureTest {
     }
 
     @Test
+    void aProviderThatDidNotStartIsNoProvider() {
+        assertEquals(Reason.NO_PROVIDER, reasonOf(error(Outcome.UNAVAILABLE, "org.freedesktop.DBus.Error.Spawn.ChildExited")));
+        assertEquals(Reason.NO_PROVIDER, reasonOf(error(Outcome.UNAVAILABLE, "org.freedesktop.DBus.Error.Spawn.ExecFailed")));
+    }
+
+    @Test
     void aClosedConnectionOrALostSessionIsDisconnected() {
         assertEquals(Reason.DISCONNECTED, reasonOf(error(Outcome.UNAVAILABLE, "org.freedesktop.DBus.Local.Disconnected")));
         assertEquals(Reason.DISCONNECTED, reasonOf(error(Outcome.UNAVAILABLE, "org.freedesktop.Secret.Error.NoSession")));
