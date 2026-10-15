@@ -147,6 +147,10 @@ public interface CollectionInterface extends AutoCloseable {
      * lingering in heap memory. Prefer {@link #withSecrets(Function)} which handles
      * cleanup automatically. Requires user permission to unlock the collection.</p>
      *
+     * <p>Items that are locked on their own, as KeePassXC keeps them for a client until the user
+     * confirms its access, are unlocked together, through one dialog. An item that stays locked is
+     * left out.</p>
+     *
      * @return a map of item object paths to their decrypted secrets, or empty if unavailable
      */
     Optional<Map<String, char[]>> getSecrets();
