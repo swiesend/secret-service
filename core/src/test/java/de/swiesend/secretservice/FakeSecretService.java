@@ -229,6 +229,8 @@ public final class FakeSecretService implements AutoCloseable {
     private final List<String> unlockCalls = Collections.synchronizedList(new ArrayList<>());
     /** Every prompt the client showed with Prompt(), in order. */
     private final List<String> promptCalls = Collections.synchronizedList(new ArrayList<>());
+    /** The window_id that the client showed each of them with. */
+    private final List<String> promptWindowIds = Collections.synchronizedList(new ArrayList<>());
 
     private volatile boolean dismissPrompts;
     private volatile boolean leavePromptsOpen;
@@ -314,6 +316,11 @@ public final class FakeSecretService implements AutoCloseable {
     /** The prompts that the client showed with {@code Prompt()}: the dialogs a user would have seen. */
     public List<String> promptCalls() {
         return List.copyOf(promptCalls);
+    }
+
+    /** The window_id of each prompt in {@link #promptCalls()}: the window its dialog belongs to. */
+    public List<String> promptWindowIds() {
+        return List.copyOf(promptWindowIds);
     }
 
     /** Whether {@link #ITEM_PATH} is locked on its own. Its collection's lock does not count. */
@@ -1000,6 +1007,7 @@ public final class FakeSecretService implements AutoCloseable {
                 if (p == null || p.shown) return;
                 p.shown = true;
                 promptCalls.add(path);
+                promptWindowIds.add(windowId);
                 // The user answers the dialog they are shown, and only that one.
                 if (!leavePromptsOpen) complete(p, dismissPrompts);
             }

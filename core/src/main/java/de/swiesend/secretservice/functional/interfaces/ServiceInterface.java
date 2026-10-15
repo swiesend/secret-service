@@ -118,6 +118,25 @@ public interface ServiceInterface extends AutoCloseable {
         getService().getMessageHandler().setReplyTimeout(timeout);
     }
 
+    /** The window that the prompts of this service are shown over; see {@link #setWindowHandle}. */
+    default String getWindowHandle() {
+        return getService().getWindowHandle();
+    }
+
+    /**
+     * Sets the window that the prompts of this service are shown over, so that the provider places
+     * its dialog on the application's window. Empty by default, for no window. Its form is the
+     * provider's: KeePassXC reads the number of an X11 window; oo7 reads {@code x11:} and an X11
+     * window's number in hex, or {@code wayland:} and a handle exported with xdg-foreign.
+     *
+     * @param handle the window handle, or {@code ""} for none
+     * @throws NullPointerException if {@code handle} is null
+     * @see de.swiesend.secretservice.Service#setWindowHandle
+     */
+    default void setWindowHandle(String handle) {
+        getService().setWindowHandle(handle);
+    }
+
     de.swiesend.secretservice.Service getService();
 
     boolean isGnomeKeyringAvailable();
