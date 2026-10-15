@@ -1,0 +1,42 @@
+name: Workflow Audit
+
+# zizmor checks the workflows for what makes a CI attackable: an action on a tag that can be moved,
+# a token with more rights than the job needs, a credential left in the checkout, an expression that
+# a pull request controls inside a shell command. It fails on any finding.
+on:
+  push:
+    branches: [main, develop-2.x.x]
+    paths:
+      - .github/**
+  # A path filter, not a branch filter: a pull request stacked on another one is audited too.
+  pull_request:
+    paths:
+      - .github/**
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # The findings go to the job's log and annotations. GitHub's code scanning would need the
+      # token to write security events.
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@f9597c869b2e67095f9b527070297a13a6efe928 # v0.7.0
+        with:
+          inputs: .github/workflows
+          advanced-security: false
+          annotations: true
+          version: 1.31.0
