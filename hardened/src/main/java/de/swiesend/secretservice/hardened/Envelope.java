@@ -23,7 +23,7 @@ import java.util.Objects;
  * via {@link #associatedData()}, so a tampered version/flags/suite-selector/item-id or a relocated
  * ciphertext fails authentication rather than being silently trusted.</p>
  *
- * <h3>Crypto agility via {@code aead_id} / {@code kdf_id} / {@code kem_id}</h3>
+ * <h2>Crypto agility via {@code aead_id} / {@code kdf_id} / {@code kem_id}</h2>
  * <p>Each primitive is named by a wire byte, so a new AEAD, KDF, or KEM lands without a format
  * migration. Today's values: {@code aead_id} {@link #AEAD_ID_AES256_GCM} / {@link #AEAD_ID_CHACHA20_POLY1305};
  * {@code kdf_id} {@link #KDF_ID_HKDF_SHA256}; {@code kem_id} {@link #KEM_ID_X25519} /
@@ -31,7 +31,7 @@ import java.util.Objects;
  * are inspectable); the reader rejects an id it cannot execute at decrypt time. The redundant
  * {@link #FLAG_PQ_HYBRID} bit is preserved for quick inspection but {@code kem_id} is authoritative.</p>
  *
- * <h3>Version 3 only — the frozen wire format</h3>
+ * <h2>Version 3 only — the frozen wire format</h2>
  * <p>{@link #fromBytes(byte[])} accepts only {@link #VERSION_3}. The earlier alpha {@code VERSION_1}
  * (unauthenticated attributes) and {@code VERSION_2} (TOTP fields, no suite selectors) formats are
  * rejected; they were never released, so there is nothing to migrate.</p>

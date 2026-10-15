@@ -83,6 +83,18 @@
                     </archive>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <!-- Everything on the class path, as the module runs: javadoc cannot put
+                         TSS.Java on the module path, as it has a class in the unnamed package. -->
+                    <legacyMode>true</legacyMode>
+                    <!-- No links to the docs of core and hardened, which javadoc warns about from
+                         the unnamed module, as they document named modules. -->
+                    <detectOfflineLinks>false</detectOfflineLinks>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
     <!--

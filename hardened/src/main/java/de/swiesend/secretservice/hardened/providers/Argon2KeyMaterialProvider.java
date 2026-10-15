@@ -21,7 +21,7 @@ import java.util.Objects;
  * pepper -- the per-attempt cost rises from "a few HKDF hashes" to "tens of milliseconds
  * + tens of MB of memory".
  *
- * <h3>What this provider does NOT do</h3>
+ * <h2>What this provider does NOT do</h2>
  * <ul>
  *   <li><b>Class A (same-UID live process)</b>: unchanged. Argon2 doesn't help against an
  *       attacker who can ptrace the JVM and read the post-Argon pepper directly.</li>
@@ -32,7 +32,7 @@ import java.util.Objects;
  * It bumps the underlying provider's class-C rating one notch (or affirms it at REAL when
  * already there) and otherwise passes the rating through verbatim.
  *
- * <h3>Caching</h3>
+ * <h2>Caching</h2>
  * <p>Argon2 is intentionally slow (default ~64 MB / 3 iterations / 4-way parallelism),
  * so this provider runs it <b>once</b> at first {@link #getPepper()} call and caches the
  * result for the JVM lifetime. The cache is a {@code byte[]} (base64 ASCII so it round-trips
@@ -40,21 +40,21 @@ import java.util.Objects;
  * it. {@link #close()} zeros the cache; it closes the inner provider only when constructed with
  * {@code ownsInner = true} -- by default the caller owns (and closes) what it constructed.</p>
  *
- * <h3>Salt</h3>
+ * <h2>Salt</h2>
  * <p>Argon2 needs a salt. We use a caller-supplied byte[] (typically a fixed deployment
  * identifier such as the application name + install id). The salt is intentionally NOT
  * derived from the pepper -- that would be circular and remove the cost separation. A
  * fixed deployment-wide salt is fine for class-C defense (the attacker has to do Argon2
  * per pepper guess, not per item).</p>
  *
- * <h3>Dependency: BouncyCastle (reflective)</h3>
+ * <h2>Dependency: BouncyCastle (reflective)</h2>
  * <p>This provider uses BouncyCastle's {@code Argon2BytesGenerator} reflectively so the
  * hardened module class-loads without {@code bcprov-jdk18on} on the classpath. Consumers
  * who use this provider must add bcprov-jdk18on 1.78+ to their runtime classpath
  * (same opt-in pattern as {@code PqProviderBootstrap}). The constructor probes for
  * BouncyCastle availability and fails closed with a clear diagnostic when absent.</p>
  *
- * <h3>Sample usage</h3>
+ * <h2>Sample usage</h2>
  * <pre>
  * KeyMaterialProvider stretched = new Argon2KeyMaterialProvider(
  *         new EnvVarKeyMaterialProvider(),               // weak inner pepper
