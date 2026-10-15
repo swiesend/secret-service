@@ -324,6 +324,12 @@
                     <artifactId>maven-gpg-plugin</artifactId>
                     <version>3.2.7</version>
                 </plugin>
+                <plugin>
+                    <!-- The Release workflow reads the project version with help:evaluate. -->
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-help-plugin</artifactId>
+                    <version>3.5.2</version>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
