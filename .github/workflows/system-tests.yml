@@ -2,12 +2,14 @@ name: System Tests
 
 # Runs the provider-agnostic system test suite (@Tag("system-test")) against each
 # supported Secret Service provider. gnome-keyring is the reliable, blocking leg.
-# KeePassXC's headless bring-up is fragile, and KWallet's has yet to prove itself on
-# the runners, so those legs are non-blocking (continue-on-error) and informative.
+# KeePassXC's headless bring-up is fragile, and KWallet's and oo7's have yet to prove
+# themselves on the runners, so those legs are non-blocking (continue-on-error) and
+# informative.
 
 on:
   push:
-    branches: [main, develop-2.x.x]
+    # develop-3.x.x: the 3.x line, once 4.0 is on main.
+    branches: [main, develop-2.x.x, develop-3.x.x]
   # Unfiltered on purpose: a base-branch filter skips the whole suite, without reporting
   # anything, for a pull request stacked on another pull request.
   pull_request:
@@ -17,6 +19,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Read-only: the jobs check out the code and test it, and write nothing to the repository. The
+# artifact upload needs no permission of the token.
+permissions:
+  contents: read
+
 jobs:
   system-tests:
     runs-on: ubuntu-latest
@@ -25,8 +32,14 @@ jobs:
       # collection: the id of the container's throwaway collection. ProviderSystemTest uses
       # that one and no other, so on a developer's desktop it cannot reach a real wallet.
       # lockable: whether that collection unlocks again without a dialog, so that the tests may
-      # lock it. The KWallet containers' wallet does; KeePassXC's database would need the user.
+      # lock it. The KWallet containers' wallet does, and oo7's login keyring, whose password
+      # the container's prompter gives; KeePassXC's database would need the user.
       # gnome-keyring's needs no flag: the tests create it, with a password.
+      # docker-options: for the provider's container. oo7-daemon keeps CAP_IPC_LOCK, to lock
+      # its memory, and exits where it cannot.
+      # image: the directory under .github/providers/, where it is not the provider's name.
+      # dialogs-answered: whether the container answers the provider's dialogs, which the
+      # tests with a second client need.
       matrix:
         include:
           - provider: gnome-keyring
@@ -43,6 +56,19 @@ jobs:
           - provider: keepassxc
             experimental: true
             collection: test
+          # KeePassXC as it is set up by default: it asks the user before it gives a client
+          # access to an item. The container answers its dialogs through xdotool.
+          - provider: keepassxc-confirm
+            image: keepassxc
+            experimental: true
+            collection: test
+            dialogs-answered: true
+            docker-options: -e KPXC_CONFIRM_ACCESS_ITEM=true -e KPXC_ANSWER_ACCESS_REQUESTS=true
+          - provider: oo7
+            experimental: true
+            collection: login
+            lockable: true
+            docker-options: --cap-add IPC_LOCK
     name: system-tests (${{ matrix.provider }})
     continue-on-error: ${{ matrix.experimental }}
     # Each leg normally takes about two minutes. The bound is generous enough that a slow
@@ -50,11 +76,16 @@ jobs:
     # before GitHub's six-hour default.
     timeout-minutes: 20
     steps:
+      # Each action is pinned to the commit of a release, which the comment names: a tag can be
+      # moved to other code, a commit cannot.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The token stays out of .git/config, where the tests that run next could read it.
+          persist-credentials: false
 
       - name: Cache Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -62,24 +93,25 @@ jobs:
             ${{ runner.os }}-maven-
 
       - name: Build ${{ matrix.provider }} container
-        run: docker build -f .github/providers/${{ matrix.provider }}/Dockerfile -t secret-service-${{ matrix.provider }} .
+        run: docker build -f .github/providers/${{ matrix.image || matrix.provider }}/Dockerfile -t secret-service-${{ matrix.provider }} .
 
       - name: Run system tests against ${{ matrix.provider }}
         run: |
-          docker run --rm \
+          docker run --rm ${{ matrix.docker-options }} \
             -v "${{ github.workspace }}":/workspace \
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-${{ matrix.provider }} \
             mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }} \
-              -Dsecret-service.system-test.lockable=${{ matrix.lockable || false }}
+              -Dsecret-service.system-test.lockable=${{ matrix.lockable || false }} \
+              -Dsecret-service.system-test.dialogs-answered=${{ matrix.dialogs-answered || false }}
 
       # The container runs --rm, so anything it left in /tmp is gone by the time the job
       # is read. Surefire reports are collected for every provider; the daemon logs for
-      # keepassxc and kwallet, which write them under the mounted workspace. gnome-keyring's
-      # daemon writes to the job's output.
+      # keepassxc, kwallet and oo7, which write them under the mounted workspace.
+      # gnome-keyring's daemon writes to the job's output.
       - name: Collect provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: provider-logs-${{ matrix.provider }}
           path: |

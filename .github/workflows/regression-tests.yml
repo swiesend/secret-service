@@ -2,7 +2,8 @@ name: Regression Tests
 
 on:
   push:
-    branches: [main, develop-2.x.x]
+    # develop-3.x.x: the 3.x line, once 4.0 is on main.
+    branches: [main, develop-2.x.x, develop-3.x.x]
   # Unfiltered on purpose: a base-branch filter skips the whole suite, without reporting
   # anything, for a pull request stacked on another pull request.
   pull_request:
@@ -10,6 +11,10 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+# Read-only: the job checks out the code and tests it, and writes nothing to the repository.
+permissions:
+  contents: read
 
 jobs:
   regression-tests:
@@ -19,11 +24,16 @@ jobs:
     # six-hour default.
     timeout-minutes: 15
     steps:
+      # Each action is pinned to the commit of a release, which the comment names: a tag can be
+      # moved to other code, a commit cannot.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The token stays out of .git/config, where the tests that run next could read it.
+          persist-credentials: false
 
       - name: Cache Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -39,3 +49,33 @@ jobs:
             -v "${{ github.workspace }}":/workspace \
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-test
+
+  # The same suite on JDK 25, the newest LTS: an application can run the library on any JDK from
+  # 17 on, and the JDK 17 job above sees none of the newer ones. A job of its own, not a matrix,
+  # because main's ruleset requires the check "regression-tests" by that name.
+  regression-tests-jdk25:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Cache Maven repository
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build test container
+        run: docker build --build-arg JDK=25 -f .github/providers/gnome-keyring/Dockerfile -t secret-service-test-jdk25 .
+
+      - name: Run regression tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/workspace \
+            -v "$HOME/.m2/repository":/root/.m2/repository \
+            secret-service-test-jdk25
