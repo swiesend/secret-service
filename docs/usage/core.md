@@ -165,7 +165,7 @@ not equality.
 
 ## Migrating from `SimpleCollection`
 
-`SimpleCollection` was removed in 4.0. It threw checked exceptions; the functional API answers `Optional.empty()` or `false` instead and logs the reason. Its static connection, closed by a JVM shutdown hook, becomes an ordinary `try`-with-resources scope.
+`SimpleCollection` was removed in 4.0. It threw checked exceptions; the functional API answers `Optional.empty()` or `false` instead and logs the reason. A [`Failure`](failures.md) holds the reason itself. Its static connection, closed by a JVM shutdown hook, becomes an ordinary `try`-with-resources scope.
 
 | `SimpleCollection` (3.x) | Functional API (4.0) |
 |---|---|
