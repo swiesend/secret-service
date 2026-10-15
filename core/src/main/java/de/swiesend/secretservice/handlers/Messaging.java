@@ -20,8 +20,18 @@ public abstract class Messaging {
 
     public Messaging(DBusConnection connection, List<Class<? extends DBusSignal>> signals,
                      String serviceName, String objectPath, String interfaceName) {
-        this.connection = connection;
-        this.msg = new MessageHandler(connection, true);
+        this(new MessageHandler(connection, true), signals, serviceName, objectPath, interfaceName);
+    }
+
+    /**
+     * As the other constructor, with a message handler that this object shares, and calls on its
+     * connection. The objects made with a {@link de.swiesend.secretservice.Service} share its
+     * handler, and with it the {@link MessageHandler#setReplyTimeout reply timeout}.
+     */
+    public Messaging(MessageHandler msg, List<Class<? extends DBusSignal>> signals,
+                     String serviceName, String objectPath, String interfaceName) {
+        this.connection = msg.getConnection();
+        this.msg = msg;
         if (signals != null) {
             // The provider's signals only: see SignalHandler.await.
             this.sh.connect(connection, signals, objectPath, serviceName);

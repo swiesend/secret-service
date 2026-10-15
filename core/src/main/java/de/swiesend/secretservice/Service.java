@@ -16,11 +16,34 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
             CollectionCreated.class, CollectionChanged.class, CollectionDeleted.class);
     private static final Logger log = LoggerFactory.getLogger(Service.class);
 
+    // Volatile: a prompt reads it on the thread that shows it.
+    private volatile String windowHandle = "";
+
     public Service(DBusConnection connection) {
         super(connection, signals,
                 Static.Service.SECRETS,
                 Static.ObjectPaths.SECRETS,
                 Static.Interfaces.SERVICE);
+    }
+
+    /** The window that the prompts of this service are shown over; see {@link #setWindowHandle}. */
+    public String getWindowHandle() {
+        return windowHandle;
+    }
+
+    /**
+     * Sets the window that the prompts of this service are shown over: the provider places its
+     * dialog on it. The handle is the {@code window_id} of {@code Prompt.Prompt}, empty by default,
+     * for no window. Its form is the provider's: KeePassXC reads the number of an X11 window, in
+     * decimal or after {@code 0x} in hex; oo7 reads a window identifier of the desktop portals,
+     * {@code x11:} and an X11 window's number in hex, or {@code wayland:} and a handle exported
+     * with xdg-foreign. Both show the dialog on no window when they cannot read the handle.
+     *
+     * @param handle the window handle, or {@code ""} for none
+     * @throws NullPointerException if {@code handle} is null
+     */
+    public void setWindowHandle(String handle) {
+        this.windowHandle = Objects.requireNonNull(handle, "handle must not be null");
     }
 
     @Override
