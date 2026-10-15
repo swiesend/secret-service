@@ -73,6 +73,8 @@ STUBS = """
     static char[] candidate = new char[0];
     static void grantAccess() {}
     static void showLoginError() {}
+    static void useAnotherStore() {}
+    static void tryAgainLater() {}
     static boolean askTheUser(Object request) { return true; }
     static de.swiesend.secretservice.hardened.tpm2.Tpm2GenerationAnchor anchor = null;
     static de.swiesend.secretservice.hardened.tpm2.Tpm2KeyMaterialProvider tpm = null;
