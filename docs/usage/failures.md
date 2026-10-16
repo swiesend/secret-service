@@ -11,6 +11,7 @@ The functional API answers `Optional.empty()` or `false` when a call fails, and 
 | `DISCONNECTED` | The connection closed, or the provider quit or forgot the session, before it answered. | Create a new service. |
 | `TIMED_OUT` | No reply came within the reply timeout, or no answer to a prompt within its timeout. | Try again, or wait longer: `setReplyTimeout`, `setTimeout`. |
 | `NOT_FOUND` | The item or the collection does not exist. | Create it. |
+| `AMBIGUOUS` | The attributes name more than one item, where the call needs one. | Name the item with more attributes, or delete the items in excess. |
 | `LOCKED` | It stays locked: prompting is disabled, or the provider kept it locked. | Enable prompting and try again. |
 | `DISMISSED` | The user dismissed the provider's dialog. | Not ask again at once. |
 | `DENIED` | Access was refused, by the consent policy or by the provider. | Tell the user. |
@@ -27,12 +28,13 @@ A later release may add reasons, so a `switch` over them needs a `default` branc
 | `CollectionInterface.withSecretChecked(path, callback)` | the callback's result; `INVALID_ARGUMENT`, `DENIED`, `LOCKED`, `DISMISSED`, `TIMED_OUT`, `NOT_FOUND`, or the failure of the read | `withSecret(path, callback)` |
 | `SessionInterface.defaultCollectionChecked()`, `Collection.openDefaultChecked(session)` | the default collection; `NO_DEFAULT_COLLECTION`, or the failure of reading the alias | `defaultCollection()`, `openDefault(session)`, which answer a collection on the alias's path, where every read fails |
 | `SessionInterface.createDefaultCollection(label)`, `Collection.createDefault(label, session)` | the default collection, created with the label where the provider names none; `DISMISSED` or `TIMED_OUT` for the provider's dialog, or the failure of a call | — (new) |
+| `CollectionInterface.storeItem(label, secret, attributes)` | the path of the item stored: the one with the attributes, updated, or a new one where none has them; `AMBIGUOUS` where several have them, or the failure of the search, of `CreateItem` or of `SetSecret` | — (new) |
 
-On the low-level API: `System.connectChecked()`, `ServiceInterface.isAvailableChecked(system, available)`, `Service.openSessionChecked(algorithm, input)`, `Service.unlockChecked(objects)`, `Service.readAliasChecked(name)`, `Service.createCollectionChecked(properties, alias)`, `TransportEncryption.InitializedSession.openSessionChecked()` and `Item.getSecretChecked(session)`.
+On the low-level API: `System.connectChecked()`, `ServiceInterface.isAvailableChecked(system, available)`, `Service.openSessionChecked(algorithm, input)`, `Service.unlockChecked(objects)`, `Service.readAliasChecked(name)`, `Service.createCollectionChecked(properties, alias)`, `TransportEncryption.InitializedSession.openSessionChecked()`, `Collection.searchItemsChecked(attributes)`, `Collection.createItemChecked(properties, secret, replace)`, `Item.getSecretChecked(session)` and `Item.setSecretChecked(secret)`.
 
 `createDefaultCollection` never takes another collection in the default's place. gnome-keyring's collection `session`, for one, keeps its secrets only until the user logs out; the Rust crate secret-service-rs falls back to it in `get_any_collection`.
 
-`withSecretChecked` and `defaultCollectionChecked` have a default body, for another implementation of their interface: it answers `OTHER` for every failure of the plain method, as it cannot say why.
+`withSecretChecked`, `defaultCollectionChecked` and `storeItem` have a default body, for another implementation of their interface: it answers `OTHER` for every failure of the plain methods it calls, as it cannot say why.
 
 ## `Result` and `Failure`
 

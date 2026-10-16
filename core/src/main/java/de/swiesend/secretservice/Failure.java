@@ -45,6 +45,8 @@ public record Failure(Reason reason, String message, String errorName, Throwable
         TIMED_OUT,
         /** The item or the collection does not exist. */
         NOT_FOUND,
+        /** The attributes name more than one item, where the call needs one. */
+        AMBIGUOUS,
         /** It stays locked: prompting is disabled, or the provider kept it locked. */
         LOCKED,
         /** The user dismissed the provider's dialog. */
