@@ -1,5 +1,6 @@
 package de.swiesend.secretservice.functional;
 
+import de.swiesend.secretservice.Result;
 import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.TransportEncryption;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
@@ -93,6 +94,15 @@ public class Session implements SessionInterface {
     @Override
     public Optional<CollectionInterface> defaultCollection() {
         return Collection.openDefault(Optional.of(this))
+                .map(collection -> {
+                    this.collections.add(collection);
+                    return collection;
+                });
+    }
+
+    @Override
+    public Result<CollectionInterface> defaultCollectionChecked() {
+        return Collection.openDefaultChecked(Optional.of(this))
                 .map(collection -> {
                     this.collections.add(collection);
                     return collection;

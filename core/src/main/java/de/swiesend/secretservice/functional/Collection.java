@@ -79,11 +79,54 @@ public class Collection implements CollectionInterface {
         if (!c.init(maybeSession)) {
             return Optional.empty();
         }
-        c.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-        c.collection = new de.swiesend.secretservice.Collection(c.path, c.service.getService());
-        c.label = c.collection.getLabel();
-        c.id = c.collection.getId();
+        c.bindToDefault();
         return Optional.of(c);
+    }
+
+    /**
+     * As {@link #openDefault(Optional)}, but answering why there is no default collection to open:
+     * {@code NO_DEFAULT_COLLECTION} when the provider's alias {@code default} names none, where
+     * {@code openDefault} answers a collection on which every read and {@code CreateItem} fails.
+     * Otherwise the failure of creating the service, when no session is given, or of reading the
+     * alias.
+     *
+     * @param maybeSession an existing session to reuse, or empty to create a new one
+     * @return the default collection, or why there is none
+     * @since 4.0.0
+     */
+    public static Result<CollectionInterface> openDefaultChecked(Optional<SessionInterface> maybeSession) {
+        Objects.requireNonNull(maybeSession, "maybeSession must not be null; use Optional.empty() instead");
+        Collection c = new Collection();
+        if (maybeSession.isEmpty()) {
+            c.clearSessionAtClose = true;
+        }
+        Optional<Failure> notReady = c.initChecked(maybeSession);
+        if (notReady.isPresent()) {
+            return Result.failed(notReady.get());
+        }
+        Result<DBusPath> alias = c.service.getService().readAliasChecked("default");
+        Optional<Failure> none = alias.isOk()
+                ? alias.value().filter(path -> "/".equals(path.getPath())).map(path -> Failure.of(
+                        Failure.Reason.NO_DEFAULT_COLLECTION, "The provider names no default collection"))
+                : alias.failure();
+        if (none.isPresent()) {
+            try {
+                c.close();
+            } catch (Exception e) {
+                log.warn("Failed to close the service after the default collection was not found.", e);
+            }
+            return Result.failed(none.get());
+        }
+        c.bindToDefault();
+        return Result.ok(c);
+    }
+
+    /** Binds this collection to the provider's default collection, through its alias. */
+    private void bindToDefault() {
+        path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
+        collection = new de.swiesend.secretservice.Collection(path, service.getService());
+        label = collection.getLabel();
+        id = collection.getId();
     }
 
     /**
@@ -177,6 +220,11 @@ public class Collection implements CollectionInterface {
     }
 
     private boolean init(Optional<SessionInterface> maybeSession) {
+        return initChecked(maybeSession).isEmpty();
+    }
+
+    /** As {@link #init}, answering why it failed: empty when it succeeded. */
+    private Optional<Failure> initChecked(Optional<SessionInterface> maybeSession) {
         if (maybeSession.isEmpty()) {
             this.clearSessionAtClose = true;
         }
@@ -184,12 +232,12 @@ public class Collection implements CollectionInterface {
         if (maybeSession.isPresent()) {
             resolved = maybeSession;
         } else {
-            Optional<ServiceInterface> maybeService = SecretService.create();
-            if (maybeService.isEmpty()) {
+            Result<ServiceInterface> maybeService = SecretService.createChecked();
+            if (!maybeService.isOk()) {
                 log.error("Could not create the secret service.");
-                return false;
+                return maybeService.failure();
             }
-            ServiceInterface createdService = maybeService.get();
+            ServiceInterface createdService = maybeService.value().orElseThrow();
             resolved = createdService.openSession();
             if (resolved.isEmpty()) {
                 log.error("Could not open a session.");
@@ -198,7 +246,7 @@ public class Collection implements CollectionInterface {
                 } catch (Exception e) {
                     log.warn("Failed to close service after session failure.", e);
                 }
-                return false;
+                return Optional.of(Failure.of(Failure.Reason.OTHER, "Could not open a session"));
             }
         }
         this.session = resolved.get();
@@ -208,7 +256,7 @@ public class Collection implements CollectionInterface {
         if (service.isGnomeKeyringAvailable()) {
             this.withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(session.getService().getService());
         }
-        return true;
+        return Optional.empty();
     }
 
     private Optional<de.swiesend.secretservice.Collection> getOrCreateCollection(String label) {

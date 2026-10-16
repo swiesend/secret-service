@@ -34,6 +34,11 @@ public record Failure(Reason reason, String message, String errorName, Throwable
          * {@code org.freedesktop.secrets}.
          */
         NO_PROVIDER,
+        /**
+         * The provider names no default collection: its alias {@code default} points to none, as on
+         * an account where nothing has created the login keyring yet.
+         */
+        NO_DEFAULT_COLLECTION,
         /** The connection closed, or the provider quit or forgot the session, before it answered. */
         DISCONNECTED,
         /** No reply came within the reply timeout, or no answer to a prompt within its timeout. */
