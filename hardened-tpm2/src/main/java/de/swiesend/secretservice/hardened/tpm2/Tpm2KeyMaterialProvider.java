@@ -54,7 +54,7 @@ import java.util.function.Supplier;
  * are expected to zero their copy (the {@code HardenedCollection} finally
  * block does this). {@link #close()} zeroes the internal cache.</p>
  *
- * <h3>Threat coverage (honest)</h3>
+ * <h2>Threat coverage (honest)</h2>
  * <p>This provider reports {@code sameUid=PARTIAL} in its
  * {@link ThreatCoverage}. The TPM authenticates possession of a secret (the
  * password) and platform state (PCR), not the identity of the caller: a
