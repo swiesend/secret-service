@@ -143,8 +143,24 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
 
     @Override
     public Optional<DBusPath> readAlias(String name) {
-        return send("ReadAlias", "s", name).flatMap(response ->
-                Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((DBusPath) response[0]));
+        return readAliasChecked(name).value();
+    }
+
+    /**
+     * As {@link #readAlias(String)}, but answering why the alias could not be read. A provider that
+     * knows no such alias answers {@code "/"}, and that is a success.
+     *
+     * @since 4.0.0
+     */
+    public Result<DBusPath> readAliasChecked(String name) {
+        MessageHandler.Reply reply = sendChecked("ReadAlias", "s", name);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider did not read the alias " + name));
+        }
+        return reply.value()
+                .filter(response -> !Static.Utils.isNullOrEmpty(response) && response[0] instanceof DBusPath)
+                .map(response -> Result.ok((DBusPath) response[0]))
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "The provider answered ReadAlias without a path"));
     }
 
     @Override
