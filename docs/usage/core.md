@@ -90,6 +90,15 @@ boolean gone = collection.deleteItem(path);
 boolean allGone = collection.deleteItems(List.of(path));
 ```
 
+To store a secret under attributes without first asking which item has them, use `storeItem`. The item that has the attributes gets the label and the secret, and where none has them, an item is created. Where several have them, nothing changes, and the reason is `AMBIGUOUS` (see [Why a call failed](failures.md)).
+
+```java
+import de.swiesend.secretservice.Result;
+
+Result<String> stored = collection.storeItem("github-token", "ghp_zzzzzzzzzzzzzzzz",
+        Map.of("application", "myapp", "account", "octocat"));
+```
+
 `deleteItems` returns the AND over each item — it does not stop at the first failure and does not tell
 you *which* item failed. It also returns `false` for a null or empty list, i.e. a no-op reports as a
 failure.

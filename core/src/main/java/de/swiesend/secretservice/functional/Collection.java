@@ -529,17 +529,53 @@ public class Collection implements CollectionInterface {
 
     @Override
     public Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes) {
+        return createItemChecked(label, secret, attributes).value();
+    }
+
+    @Override
+    public Result<String> storeItem(String label, CharSequence secret, Map<String, String> attributes) {
+        if (label == null || label.isBlank()) throw new IllegalArgumentException("label must not be null or blank");
+        if (secret == null || secret.isEmpty()) throw new IllegalArgumentException("secret must not be null or empty");
+        Objects.requireNonNull(attributes, "attributes must not be null");
+        if (attributes.isEmpty()) throw new IllegalArgumentException("attributes must name the item");
+        if (collection == null) {
+            return Result.failed(Failure.Reason.OTHER, "No collection");
+        }
+
+        unlock();
+        Result<List<DBusPath>> found = collection.searchItemsChecked(attributes);
+        if (!found.isOk()) {
+            return Result.failed(found.failure().orElseThrow());
+        }
+        List<DBusPath> items = found.value().orElse(List.of());
+        if (items.size() > 1) {
+            log.info("Not storing the item: {} items of collection {} have its attributes.",
+                    items.size(), collection.getObjectPath());
+            return Result.failed(Failure.Reason.AMBIGUOUS, items.size() + " items have these attributes");
+        }
+        if (items.isEmpty()) {
+            return createItemChecked(label, secret, attributes);
+        }
+        String path = items.get(0).getPath();
+        // The item has the attributes already: only its label and its secret change.
+        return updateItemChecked(path, label, secret, null)
+                .map(Result::<String>failed)
+                .orElseGet(() -> Result.ok(path));
+    }
+
+    /** The path of the item created, or why none was. */
+    private Result<String> createItemChecked(String label, CharSequence secret, Map<String, String> attributes) {
         if (Static.Utils.isNullOrEmpty(secret)) {
             log.error("The secret may not be null or empty.");
-            return Optional.empty();
+            return Result.failed(Failure.Reason.INVALID_ARGUMENT, "No secret");
         }
         if (label == null) {
             log.error("The label of the item may not be null.");
-            return Optional.empty();
+            return Result.failed(Failure.Reason.INVALID_ARGUMENT, "No label");
         }
         if (collection == null || session.getEncryptedSession() == null) {
             log.error("No collection or session.");
-            return Optional.empty();
+            return Result.failed(Failure.Reason.OTHER, "No collection or session");
         }
 
         unlock();
@@ -547,33 +583,37 @@ public class Collection implements CollectionInterface {
         Secret encrypted = session.getEncryptedSession().encrypt(secret).orElse(null);
         if (encrypted == null) {
             log.error("Could not encrypt secret for item {}.", LogPolicy.label(label));
-            return Optional.empty();
+            return Result.failed(Failure.Reason.OTHER, "Could not encrypt the secret");
         }
 
         try (encrypted) {
             Map<String, Variant> properties = Item.createProperties(label, attributes);
-            Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
+            Result<Pair<DBusPath, DBusPath>> created = collection.createItemChecked(properties, encrypted, false);
+            Pair<DBusPath, DBusPath> pair = created.value().orElse(null);
             if (pair == null || pair.a == null) {
                 log.error("createItem D-Bus call returned no result for item {}.", LogPolicy.label(label));
-                return Optional.empty();
+                return Result.failed(created.failure()
+                        .orElseGet(() -> Failure.of(Failure.Reason.OTHER, "The provider answered CreateItem without a path")));
             }
 
             // No prompt needed — item was created directly
             if (!"/".equals(pair.a.getPath())) {
-                return Optional.of(pair.a.getPath());
+                return Result.ok(pair.a.getPath());
             }
 
             // Prompt required (e.g. KeePassXC per-item unlock)
             de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(pair.b);
             if (completed == null || completed.dismissed) {
                 log.warn("Prompt was dismissed or timed out for item {}.", LogPolicy.label(label));
-                return Optional.empty();
+                return completed == null
+                        ? Result.failed(Failure.Reason.TIMED_OUT, "No answer to the dialog that creates the item in time")
+                        : Result.failed(Failure.Reason.DISMISSED, "The user dismissed the dialog that creates the item");
             }
 
             // KeePassXC returns the new item path directly in the prompt result
             String fromResult = extractItemPathFromPromptResult(completed);
             if (fromResult != null) {
-                return Optional.of(fromResult);
+                return Result.ok(fromResult);
             }
 
             // Fallback: wait for the ItemCreated signal scoped to this collection (gnome-keyring)
@@ -582,11 +622,11 @@ public class Collection implements CollectionInterface {
                     .await(de.swiesend.secretservice.Collection.ItemCreated.class,
                             collection.getObjectPath(), () -> null, Duration.ofSeconds(5));
             if (sig != null && sig.item != null) {
-                return Optional.of(sig.item.getPath());
+                return Result.ok(sig.item.getPath());
             }
 
             log.warn("Did not observe ItemCreated signal for collection {} after prompt.", collection.getObjectPath());
-            return Optional.empty();
+            return Result.failed(Failure.Reason.OTHER, "The provider named no item that it created");
         }
     }
 
@@ -1357,22 +1397,29 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) {
+        return updateItemChecked(objectPath, label, password, attributes).isEmpty();
+    }
+
+    /** As {@link #updateItem}, answering why the item was not updated: empty when it was. */
+    private Optional<Failure> updateItemChecked(String objectPath, String label, CharSequence password,
+                                                Map<String, String> attributes) {
 
         if (Static.Utils.isNullOrEmpty(objectPath)) {
             log.error("The object path of the item may not be null or empty.");
-            return false;
+            return Optional.of(Failure.of(Failure.Reason.INVALID_ARGUMENT, "No item path"));
         }
 
         if (Static.Utils.isNullOrEmpty(password)) {
             log.error("The password may not be null or empty.");
-            return false;
+            return Optional.of(Failure.of(Failure.Reason.INVALID_ARGUMENT, "No secret"));
         }
         if (!ownsPath(objectPath)) {
             log.warn("Refusing to update: {} is not an item of this collection.", objectPath);
-            return false;
+            return Optional.of(Failure.of(Failure.Reason.INVALID_ARGUMENT, objectPath + " is not an item of this collection"));
         }
-        if (!consent(ConsentPolicy.Operation.WRITE, List.of(objectPath))) {
-            return false;
+        Optional<Failure> refused = consentRefusal(ConsentPolicy.Operation.WRITE, List.of(objectPath));
+        if (refused.isPresent()) {
+            return refused;
         }
 
         unlock();
@@ -1380,7 +1427,7 @@ public class Collection implements CollectionInterface {
         Optional<Item> maybeItem = getItem(objectPath);
         if (maybeItem.isEmpty()) {
             log.error("Item not found: {}", objectPath);
-            return false;
+            return Optional.of(Failure.of(Failure.Reason.NOT_FOUND, "No item at " + objectPath));
         }
         Item item = maybeItem.get();
 
@@ -1392,13 +1439,13 @@ public class Collection implements CollectionInterface {
             item.setAttributes(attributes);
         }
 
-        return session.getEncryptedSession().encrypt(password)
-                .map(secret -> {
-                    try (secret) { // auto-close
-                        return item.setSecret(secret); // side-effect
-                    }
-                })
-                .orElse(false);
+        Optional<Secret> encrypted = session.getEncryptedSession().encrypt(password);
+        if (encrypted.isEmpty()) {
+            return Optional.of(Failure.of(Failure.Reason.OTHER, "Could not encrypt the secret"));
+        }
+        try (Secret secret = encrypted.get()) { // auto-close
+            return item.setSecretChecked(secret).failure(); // side-effect
+        }
     }
 
     @Override
