@@ -609,7 +609,22 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
         unlock();
-        return getItem(objectPath).flatMap(item -> item.getAttributes());
+        return getItem(objectPath).flatMap(item -> item.getAttributes()).filter(attributes -> {
+            if (!hashedAttributes(attributes)) return true;
+            log.debug("The attributes of {} are hidden while it is locked: the provider shows only their hashes.",
+                    objectPath);
+            return false;
+        });
+    }
+
+    // gnome-keyring, for an item of a keyring that it loaded locked, shows each attribute under this
+    // prefix with the MD5 of its value, and an empty label: the real ones are encrypted with the
+    // secrets (keyring-rs #204). xdg:schema stays as it is.
+    private static final String HASHED_ATTRIBUTE_PREFIX = "gkr:compat:hashed:";
+
+    /** Whether these are gnome-keyring's hashes of a locked item's attributes, not its attributes. */
+    static boolean hashedAttributes(Map<String, String> attributes) {
+        return attributes.keySet().stream().anyMatch(key -> key.startsWith(HASHED_ATTRIBUTE_PREFIX));
     }
 
     @Override
@@ -737,8 +752,13 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
         unlock();
-        return getItem(objectPath)
-                .flatMap(item -> item.getLabel());
+        return getItem(objectPath).flatMap(item -> item.getLabel().filter(label -> {
+            // A locked item that shows an empty label shows none of its own: gnome-keyring hides a
+            // locked keyring's labels so. A locked item of KeePassXC keeps its label, which stays.
+            if (!label.isEmpty() || !item.isLocked()) return true;
+            log.debug("The label of {} is hidden while it is locked.", objectPath);
+            return false;
+        }));
     }
 
     @Override
