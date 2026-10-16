@@ -242,6 +242,7 @@ public final class FakeSecretService implements AutoCloseable {
     private volatile boolean requirePromptForDelete;
     private volatile boolean stallItemProperties;
     private volatile boolean stallCollectionProperties;
+    private volatile boolean stallSecrets;
 
     // Signals go out on a thread of their own, in the order they were raised, so a slow send never
     // holds up the call that raised them.
@@ -443,6 +444,11 @@ public final class FakeSecretService implements AutoCloseable {
     /** As {@link #setStallItemProperties}, for the property reads of a collection. */
     public void setStallCollectionProperties(boolean stall) {
         this.stallCollectionProperties = stall;
+    }
+
+    /** As {@link #setStallItemProperties}, for an item's GetSecret. */
+    public void setStallSecrets(boolean stall) {
+        this.stallSecrets = stall;
     }
 
     private static void stall() {
@@ -902,6 +908,7 @@ public final class FakeSecretService implements AutoCloseable {
         @Override
         public Secret GetSecret(DBusPath session) {
             record("Item.GetSecret", state.path);
+            if (stallSecrets) stall();
             synchronized (lock) {
                 requireExists(state);
                 SessionState s = session(session);

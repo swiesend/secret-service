@@ -23,8 +23,11 @@ A later release may add reasons, so a `switch` over them needs a `default` branc
 | Method | Answers with | In place of |
 |---|---|---|
 | `SecretService.createChecked()`, `createChecked(system)` | the service; `NO_PROVIDER`, or the failure of the session that the availability check opens | `create()`, `create(system)` |
+| `CollectionInterface.withSecretChecked(path, callback)` | the callback's result; `INVALID_ARGUMENT`, `DENIED`, `LOCKED`, `DISMISSED`, `TIMED_OUT`, `NOT_FOUND`, or the failure of the read | `withSecret(path, callback)` |
 
-On the low-level API: `System.connectChecked()`, `ServiceInterface.isAvailableChecked(system, available)`, `Service.openSessionChecked(algorithm, input)` and `TransportEncryption.InitializedSession.openSessionChecked()`.
+On the low-level API: `System.connectChecked()`, `ServiceInterface.isAvailableChecked(system, available)`, `Service.openSessionChecked(algorithm, input)`, `Service.unlockChecked(objects)`, `TransportEncryption.InitializedSession.openSessionChecked()` and `Item.getSecretChecked(session)`.
+
+`withSecretChecked` has a default body, for another implementation of `CollectionInterface`: it answers `OTHER` for every failure of `withSecret`, as it cannot say why.
 
 ## `Result` and `Failure`
 

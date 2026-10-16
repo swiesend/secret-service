@@ -96,10 +96,24 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
 
     @Override
     public Optional<Pair<List<DBusPath>, DBusPath>> unlock(List<DBusPath> objects) {
-        return send("Unlock", "ao", objects).flatMap(response ->
-                (Static.Utils.isNullOrEmpty(response) || response.length != 2) ?
-                        Optional.empty() :
-                        Optional.of(new Pair<List<DBusPath>, DBusPath>((List<DBusPath>) response[0], (DBusPath) response[1])));
+        return unlockChecked(objects).value();
+    }
+
+    /**
+     * As {@link #unlock(List)}, but answering why the call failed.
+     *
+     * @since 4.0.0
+     */
+    public Result<Pair<List<DBusPath>, DBusPath>> unlockChecked(List<DBusPath> objects) {
+        MessageHandler.Reply reply = sendChecked("Unlock", "ao", objects);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider did not unlock " + objects));
+        }
+        return reply.value()
+                .filter(response -> !Static.Utils.isNullOrEmpty(response) && response.length == 2)
+                .map(response -> Result.ok(
+                        new Pair<List<DBusPath>, DBusPath>((List<DBusPath>) response[0], (DBusPath) response[1])))
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "The provider answered Unlock without its two results"));
     }
 
     @Override
