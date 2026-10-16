@@ -1,9 +1,12 @@
 package de.swiesend.secretservice.functional;
 
+import de.swiesend.secretservice.Failure;
+import de.swiesend.secretservice.Result;
 import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,14 +35,28 @@ public class System implements SystemInterface {
      * @return a new SystemInterface or {@code Optional.empty()}
      */
     public static Optional<SystemInterface> connect() {
+        return connectChecked().value();
+    }
+
+    /**
+     * As {@link #connect()}, but answering why no connection was made: {@code NO_PROVIDER} when
+     * there is no session bus to connect to, with the exception of dbus-java as the cause.
+     *
+     * @return the system, or the failure
+     * @since 4.0.0
+     */
+    public static Result<SystemInterface> connectChecked() {
         try {
             DBusConnection dbus = DBusConnectionBuilder.forSessionBus().build();
-            return Optional.of(new System(dbus, true));
-        } catch (DBusException e) {
+            return Result.ok(new System(dbus, true));
+        } catch (DBusException | DBusExecutionException | IllegalStateException | IllegalArgumentException e) {
+            // Unchecked ones too. Without a session bus address, as over ssh, from cron or in a
+            // container, the builder throws AddressResolvingException; for a malformed address,
+            // InvalidBusAddressException, an IllegalStateException.
             log.warn("Could not communicate properly with the D-Bus: [{}]: {}",
                     e.getClass().getSimpleName(), e.getMessage());
+            return Result.failed(Failure.of(Failure.Reason.NO_PROVIDER, "Could not connect to the session bus", e));
         }
-        return Optional.empty();
     }
 
     /**

@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.TimeoutException;
 
 import static de.swiesend.secretservice.Static.DEFAULT_REPLY_TIMEOUT;
 
@@ -107,21 +108,31 @@ public class MessageHandler {
      * A reply, the reason it carried no value, and the D-Bus error name behind it.
      *
      * <p>{@code errorName} is null on success. It is kept because the same error means different
-     * things depending on the call: see {@link #getPropertyChecked}, where
-     * {@code DBus.Error.UnknownMethod} proves the object is gone rather than that the method is
-     * missing.</p>
+     * things depending on its text: {@code DBus.Error.UnknownMethod} that names the called path as
+     * missing proves the object is gone rather than that the method is missing.</p>
      *
      * @param errorMessage the D-Bus error's human-readable text, when there was one. Two providers
      *                     can raise the same error name for different reasons, and only the text
-     *                     separates them; {@link #getPropertyChecked} relies on it.
+     *                     separates them; {@link #sendChecked} relies on it.
+     * @param cause        what ended a call that got no D-Bus answer: a {@link TimeoutException}
+     *                     when no reply came within the {@link #setReplyTimeout reply timeout}, or the
+     *                     exception of the connection. Null when an answer came.
      */
-    public record Reply(Optional<Object[]> value, Outcome outcome, String errorName, String errorMessage) {
+    public record Reply(Optional<Object[]> value, Outcome outcome, String errorName, String errorMessage,
+                        Throwable cause) {
+        /** A reply that came as a D-Bus answer, without a cause. */
+        public Reply(Optional<Object[]> value, Outcome outcome, String errorName, String errorMessage) {
+            this(value, outcome, errorName, errorMessage, null);
+        }
         static Reply ok(Object[] v) { return new Reply(Optional.ofNullable(v), Outcome.OK, null, null); }
         static Reply failed(Outcome o, String errorName) {
             return new Reply(Optional.empty(), o, errorName, null);
         }
         static Reply failed(Outcome o, String errorName, String errorMessage) {
             return new Reply(Optional.empty(), o, errorName, errorMessage);
+        }
+        static Reply unanswered(Throwable cause) {
+            return new Reply(Optional.empty(), Outcome.UNAVAILABLE, null, null, cause);
         }
     }
 
@@ -175,7 +186,7 @@ public class MessageHandler {
                 // most likely failure of all.
                 log.warn("No reply within {}ms for {}/{}; cannot tell whether the object exists.",
                         timeoutMillis, iface, method);
-                return Reply.failed(Outcome.UNAVAILABLE, null);
+                return Reply.unanswered(new TimeoutException("No reply within " + timeoutMillis + "ms"));
             }
 
             if (response instanceof org.freedesktop.dbus.messages.Error) {
@@ -188,7 +199,9 @@ public class MessageHandler {
                         logParameterised(error, parameters, Level.WARN);
                         return Reply.failed(Outcome.ABSENT, error, errorText);
                     case "org.freedesktop.DBus.Error.UnknownObject":
-                        // Likewise from the bus itself: there is no object at that path.
+                    case "org.freedesktop.dbus.errors.UnknownObject":
+                        // Likewise from the bus itself: there is no object at that path. A peer
+                        // on dbus-java names the error after dbus-java's exception class.
                         logParameterised(error, parameters, Level.ERROR);
                         return Reply.failed(Outcome.ABSENT, error, errorText);
                     case "org.freedesktop.Secret.Error.NoSession":
@@ -201,13 +214,29 @@ public class MessageHandler {
                         logParameterised(error, parameters, Level.INFO);
                         return Reply.failed(Outcome.DENIED, error, errorText);
                     case "org.freedesktop.DBus.Error.UnknownMethod":
-                        // WARN, not ERROR: getPropertyChecked reinterprets this reply as the
-                        // perfectly ordinary ABSENT when it names the path as missing -- which is
-                        // how gnome-keyring, the primary provider, reports every deleted item. At
-                        // ERROR, a caller sweeping a collection with exists() would produce one
-                        // ERROR line per absent item for a non-error outcome.
+                        // WARN, not ERROR: this reply is the perfectly ordinary ABSENT when it
+                        // names the path as missing -- which is how gnome-keyring, the primary
+                        // provider, reports every deleted item. At ERROR, a caller sweeping a
+                        // collection with exists() would produce one ERROR line per absent item
+                        // for a non-error outcome.
                         logParameterised(error, parameters, Level.WARN);
-                        return Reply.failed(Outcome.UNAVAILABLE, error, errorText);
+                        // UnknownMethod means the CALL was unrecognised -- true in general, and why
+                        // it is UNAVAILABLE otherwise. gnome-keyring answers every call to an
+                        // object that does not exist with it, a property read and GetSecret
+                        // alike:
+                        //
+                        //   org.freedesktop.DBus.Error.UnknownMethod: Object does not exist at
+                        //   path "/org/freedesktop/secrets/collection/login/1"
+                        //
+                        // Narrowed to that exact shape: the message must name THIS path as
+                        // non-existent. Reading any UnknownMethod as ABSENT would let a provider
+                        // that lacks a method report a live object as gone -- and a caller's
+                        // "then delete it" branch runs against real data. Being too strict
+                        // instead leaves the outcome UNAVAILABLE, which is the fail-closed
+                        // direction and merely loses a distinction rather than destroying
+                        // something.
+                        return Reply.failed(namesPathAsMissing(errorText, path) ? Outcome.ABSENT : Outcome.UNAVAILABLE,
+                                error, errorText);
                     case "org.freedesktop.DBus.Error.NoReply":
                     case "org.freedesktop.DBus.Error.ServiceUnknown":
                     case "org.freedesktop.DBus.Error.InvalidArgs":
@@ -232,16 +261,21 @@ public class MessageHandler {
                 }
             }
         } catch (org.freedesktop.dbus.exceptions.FatalDBusException e) {
+            // Transport-level failures, here and below: no answer came, so nothing may be inferred.
+            // The exception stays with the reply, for a caller that tells a closed connection from
+            // a slow provider.
             if (log.isDebugEnabled()) log.debug(e.getClass().getName(), e);
+            return Reply.unanswered(e);
         } catch (DBusException e) {
             log.error("Unexpected D-Bus response: ", e);
+            return Reply.unanswered(e);
         } catch (org.freedesktop.dbus.exceptions.NotConnected e) {
             if (log.isDebugEnabled()) log.debug(e.getClass().getName(), e);
+            return Reply.unanswered(e);
         } catch (RuntimeException e) {
             log.error("Unexpected: ", e);
+            return Reply.unanswered(e);
         }
-        // Transport-level failure: we never got an answer, so nothing may be inferred.
-        return Reply.failed(Outcome.UNAVAILABLE, null);
     }
 
     private enum Level { INFO, WARN, ERROR }
@@ -278,30 +312,11 @@ public class MessageHandler {
      * "this object is gone" from "I could not reach it". See {@link Outcome}.
      */
     public Reply getPropertyChecked(String service, String path, String iface, String property) {
-        Reply reply = sendChecked(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
-                "Get", "ss", iface, property);
-        // UnknownMethod means the CALL was unrecognised -- true in general, and why sendChecked maps
-        // it to UNAVAILABLE. It is not true for THIS call: every object on the bus implements
-        // org.freedesktop.DBus.Properties, so the method cannot be missing from an object that
-        // exists. gnome-keyring says exactly this for a deleted item:
-        //
-        //   org.freedesktop.DBus.Error.UnknownMethod: Object does not exist at path "/.../999999"
-        //
-        // Without this, ABSENT is unreachable on the library's primary provider and every caller
-        // that distinguishes "gone" from "cannot tell" degrades to the fail-closed branch forever.
-        //
-        // Narrowed to that exact shape: the message must name THIS path as non-existent. Every
-        // object on the bus implementing Properties is a convention, not a guarantee, and reading
-        // any UnknownMethod as ABSENT means a provider that answers it for a property it does not
-        // expose reports a live object as gone -- and a caller's "then delete it" branch runs
-        // against real data. Being too strict instead leaves the outcome UNAVAILABLE, which is the
-        // fail-closed direction and merely loses a distinction rather than destroying something.
-        if (reply.outcome() == Outcome.UNAVAILABLE
-                && "org.freedesktop.DBus.Error.UnknownMethod".equals(reply.errorName())
-                && namesPathAsMissing(reply.errorMessage(), path)) {
-            return Reply.failed(Outcome.ABSENT, reply.errorName(), reply.errorMessage());
-        }
-        return reply;
+        // gnome-keyring answers a property read of a deleted item with UnknownMethod, which
+        // sendChecked reads as ABSENT when it names the path as missing. Without that, ABSENT is
+        // unreachable on the library's primary provider and every caller that distinguishes "gone"
+        // from "cannot tell" degrades to the fail-closed branch forever.
+        return sendChecked(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES, "Get", "ss", iface, property);
     }
 
     /**

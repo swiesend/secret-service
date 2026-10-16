@@ -110,6 +110,15 @@ public class TransportEncryption implements AutoCloseable {
     public class InitializedSession {
 
         public Optional<OpenedSession> openSession() {
+            return openSessionChecked().value();
+        }
+
+        /**
+         * As {@link #openSession()}, but answering why no session opened.
+         *
+         * @since 4.0.0
+         */
+        public Result<OpenedSession> openSessionChecked() {
             if (keypair == null) {
                 throw new IllegalStateException("Missing own keypair. Call TransportEncryption.initialize() first.");
             }
@@ -118,16 +127,16 @@ public class TransportEncryption implements AutoCloseable {
             BigInteger ya = ((DHPublicKey) publicKey).getY();
 
             // open session with "Client DH pub key as an array of bytes" without prime or generator
-            return service.openSession(
+            return service.openSessionChecked(
                     Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7,
                     new Variant<>(ya.toByteArray())
-            ).flatMap(pair -> {
+            ).map(pair -> {
                 // transform peer's raw Y to a public key
                 yb = Static.Utils.toByteArray(pair.a.getValue());
 
                 DBusPath sessionPath = pair.b;
                 session = new Session(sessionPath, service);
-                return Optional.of(new OpenedSession());
+                return new OpenedSession();
             });
         }
     }

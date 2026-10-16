@@ -837,8 +837,18 @@ public class Collection implements CollectionInterface {
             log.warn("Refusing to unlock: {} is not an item of this collection.", itemPath);
             return false;
         }
+        return unlockOwnItem(itemPath).isEmpty();
+    }
 
+    /**
+     * Unlocks an item of this collection when it is locked.
+     *
+     * @return empty when the item can be read: it was not locked, or the unlock succeeded.
+     *         Otherwise why it stays locked.
+     */
+    private Optional<Failure> unlockOwnItem(String itemPath) {
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
+        boolean unanswered = false;
         if (item.isLocked()) {
             // Before the call, not after. Unlocking a locked item essentially always needs a
             // prompt, and issuing Unlock only to refuse the prompt leaves the provider holding a
@@ -846,14 +856,15 @@ public class Collection implements CollectionInterface {
             // the connection, on a process that reads locked items with prompting disabled.
             if (!isPrompting) {
                 log.debug("Unlocking item {} would need a prompt, and prompting is disabled.", itemPath);
-                return false;
+                return Optional.of(Failure.of(Failure.Reason.LOCKED,
+                        "Unlocking " + itemPath + " needs a prompt, and prompting is disabled"));
             }
-            Optional<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlock(List.of(item.getPath()));
-            if (maybeUnlock.isEmpty()) {
+            Result<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlockChecked(List.of(item.getPath()));
+            if (!maybeUnlock.isOk()) {
                 log.error("Could not unlock item: {}", itemPath);
-                return false;
+                return maybeUnlock.failure();
             }
-            Pair<List<DBusPath>, DBusPath> unlock = maybeUnlock.get();
+            Pair<List<DBusPath>, DBusPath> unlock = maybeUnlock.value().orElseThrow();
             log.debug("unlock item: {}", unlock);
             // requiresPrompt(), matching lockItem: an empty unlock.a with a "/" path means the
             // provider refused without offering a prompt, and awaiting on "/" falls through to
@@ -875,6 +886,7 @@ public class Collection implements CollectionInterface {
                     // no Completed was ever handled, and it can hand back a stale Completed from an
                     // earlier prompt. Fall through and ask the provider.
                     log.warn("No prompt result for item {}; asking the provider directly.", itemPath);
+                    unanswered = true;
                 } else if (completed.dismissed) {
                     // Trustworthy because the enclosing requiresPrompt(unlock.b) guarantees a real
                     // prompt path, for which SignalHandler.await filters the Completed signal by
@@ -882,60 +894,73 @@ public class Collection implements CollectionInterface {
                     // getLastHandledSignal(Completed.class), which filters by class only and could
                     // return a dismissal from an unrelated earlier prompt.
                     log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
-                    return false;
+                    return Optional.of(Failure.of(Failure.Reason.DISMISSED,
+                            "The user dismissed the unlock dialog for " + itemPath));
                 }
             }
         }
         // Authoritative: ask the provider again rather than trusting the prompt result.
-        return !item.isLocked();
+        if (!item.isLocked()) return Optional.empty();
+        return Optional.of(unanswered
+                ? Failure.of(Failure.Reason.TIMED_OUT, "No answer to the unlock dialog for " + itemPath + " in time")
+                : Failure.of(Failure.Reason.LOCKED, "The provider keeps " + itemPath + " locked"));
     }
 
     @Override
     public Optional<char[]> getSecret(String objectPath) {
-        return getSecret(objectPath, true);
+        return readSecret(objectPath, true).value();
     }
 
     /**
+     * The secret, or why it could not be read.
+     *
      * @param allowItemUnlock whether a locked item may be unlocked first, which can raise a prompt.
      *                        False for the bulk readers: they iterate the whole collection, and one
      *                        prompt per item is not a reasonable thing to do to a user. For the same
      *                        reason only a single read asks for {@code READ_ONE}: a bulk read asked
      *                        once, for {@code READ_ALL}.
      */
-    private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
-        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+    private Result<char[]> readSecret(String objectPath, boolean allowItemUnlock) {
+        if (Static.Utils.isNullOrEmpty(objectPath)) {
+            return Result.failed(Failure.Reason.INVALID_ARGUMENT, "No item path");
+        }
         if (!ownsPath(objectPath)) {
             log.warn("Refusing to read the secret: {} is not an item of this collection.", objectPath);
-            return Optional.empty();
+            return Result.failed(Failure.Reason.INVALID_ARGUMENT, objectPath + " is not an item of this collection");
         }
-        if (allowItemUnlock && !consent(ConsentPolicy.Operation.READ_ONE, List.of(objectPath))) {
-            return Optional.empty();
+        if (allowItemUnlock) {
+            Optional<Failure> refused = consentRefusal(ConsentPolicy.Operation.READ_ONE, List.of(objectPath));
+            if (refused.isPresent()) return Result.failed(refused.get());
         }
         unlock();
-        if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
+        if (allowItemUnlock) {
+            Optional<Failure> stillLocked = unlockItemIfLocked(objectPath);
+            if (stillLocked.isPresent()) return Result.failed(stillLocked.get());
+        }
 
-        return getItem(objectPath)
-                .flatMap(item -> {
-                    DBusPath sessionPath = session.getSession().getPath();
-                    return item.getSecret(sessionPath);
-                })
-                .flatMap(secret -> {
-                    try (secret) {
-                        return session.getEncryptedSession().decrypt(secret);
-                    }
-                });
+        Item item = getItem(objectPath).orElseThrow();
+        Result<Secret> fetched = item.getSecretChecked(session.getSession().getPath());
+        if (!fetched.isOk()) return Result.failed(fetched.failure().orElseThrow());
+        try (Secret secret = fetched.value().orElseThrow()) {
+            return session.getEncryptedSession().decrypt(secret)
+                    .map(Result::ok)
+                    .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "Could not decrypt the secret of " + objectPath));
+        }
     }
 
     @Override
     public <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback) {
+        return withSecretChecked(objectPath, callback).value();
+    }
+
+    @Override
+    public <R> Result<R> withSecretChecked(String objectPath, Function<char[], R> callback) {
         Objects.requireNonNull(callback, "callback must not be null");
-        Optional<char[]> maybeSecret = getSecret(objectPath);
-        if (maybeSecret.isEmpty()) {
-            return Optional.empty();
-        }
-        char[] secret = maybeSecret.get();
+        Result<char[]> read = readSecret(objectPath, true);
+        if (!read.isOk()) return Result.failed(read.failure().orElseThrow());
+        char[] secret = read.value().orElseThrow();
         try {
-            return Optional.ofNullable(callback.apply(secret));
+            return Result.ok(callback.apply(secret));
         } finally {
             Arrays.fill(secret, '\0');
         }
@@ -961,7 +986,7 @@ public class Collection implements CollectionInterface {
         Map<String, char[]> passwords = new HashMap<>();
         for (DBusPath item : items) {
             String path = item.getPath();
-            getSecret(path, false).ifPresent(secret -> passwords.put(path, secret));
+            readSecret(path, false).value().ifPresent(secret -> passwords.put(path, secret));
         }
 
         return Optional.of(passwords);
@@ -1083,31 +1108,41 @@ public class Collection implements CollectionInterface {
      * @return whether the operation may run
      */
     private boolean consent(ConsentPolicy.Operation operation, List<String> itemPaths) {
+        return consentRefusal(operation, itemPaths).isEmpty();
+    }
+
+    /**
+     * As {@link #consent}, answering why the operation may not run: empty when it may.
+     */
+    private Optional<Failure> consentRefusal(ConsentPolicy.Operation operation, List<String> itemPaths) {
         ConsentPolicy policy = consentPolicy;
         ConsentPolicy.Requirement requirement = policy.requirement(operation);
         if (requirement == ConsentPolicy.Requirement.NONE || isConsented(operation)) {
-            return true;
+            return Optional.empty();
         }
         boolean byHandler = requirement == ConsentPolicy.Requirement.CALLBACK;
         Answer answer = byHandler ? askHandler(policy, operation, itemPaths) : askProvider();
         switch (answer) {
             case GRANTED:
                 remember(policy, operation);
-                return true;
+                return Optional.empty();
             case UNAVAILABLE:
                 String why = byHandler ? "no consent handler is set" : "the provider cannot show the unlock dialog";
                 if (policy.whenUnavailable(operation) == ConsentPolicy.WhenUnavailable.PROCEED) {
                     log.debug("For collection {}, {}; {} goes ahead, as the consent policy allows.",
                             collection.getObjectPath(), why, operation);
-                    return true;
+                    return Optional.empty();
                 }
                 log.info("Refusing {}: for collection {}, {}, and the consent policy requires it.",
                         operation, collection.getObjectPath(), why);
-                return false;
+                return Optional.of(Failure.of(Failure.Reason.DENIED,
+                        "Refusing " + operation + ": " + why + ", and the consent policy requires it"));
             default:
+                String asked = byHandler ? "the consent handler" : "the unlock dialog";
                 log.info("Refusing {}: {} for collection {} did not approve it.", operation,
-                        byHandler ? "the consent handler" : "the unlock dialog", collection.getObjectPath());
-                return false;
+                        asked, collection.getObjectPath());
+                return Optional.of(Failure.of(Failure.Reason.DENIED,
+                        "Refusing " + operation + ": " + asked + " did not approve it"));
         }
     }
 
@@ -1345,14 +1380,14 @@ public class Collection implements CollectionInterface {
      *
      * <p>Not applied to {@code getSecrets}/{@code withSecrets}, which iterate the whole collection:
      * one prompt per item is not a reasonable thing to do to a user. They call the private
-     * {@code getSecret(path, false)} overload for that reason -- an earlier version of this comment
+     * {@code readSecret(path, false)} for that reason -- an earlier version of this comment
      * claimed the exemption while {@code getSecrets} in fact looped through the public
      * {@code getSecret}, so a bulk read on KeePassXC would have raised N prompts.
      *
-     * @return true when the item can be read: it was already unlocked, or the unlock succeeded.
-     *         False when the item stayed locked, which includes the user dismissing the prompt.
+     * @return empty when the item can be read: it was already unlocked, or the unlock succeeded.
+     *         Otherwise why the item stayed locked, which includes the user dismissing the prompt.
      */
-    private boolean unlockItemIfLocked(String objectPath) {
+    private Optional<Failure> unlockItemIfLocked(String objectPath) {
         // The collection must already be unlocked. gnome-keyring reports EVERY item as locked while
         // its collection is locked -- verified against a live daemon -- so without this guard the
         // branch below is reachable there, not only on a provider that locks items individually.
@@ -1360,25 +1395,26 @@ public class Collection implements CollectionInterface {
         // prompt, or the stored password is wrong, or disablePrompt() is set. Asking for a per-item
         // unlock then raises a SECOND prompt for the keyring they just refused. Collection unlocked
         // but item locked is the genuine per-item condition, and it is the only one we act on.
-        if (connection == null || !connection.isConnected() || collection == null) return true;
+        if (connection == null || !connection.isConnected() || collection == null) return Optional.empty();
 
         // The item first: on every provider that does not lock items, this is the only read this
         // method performs, and the method returns here.
         Optional<de.swiesend.secretservice.Item> maybeItem = getItem(objectPath);
-        if (maybeItem.isEmpty()) return true; // getItem is empty only for a null path, rejected above
-        if (!maybeItem.get().isLocked()) return true;
+        if (maybeItem.isEmpty()) return Optional.empty(); // getItem is empty only for a null path, rejected above
+        if (!maybeItem.get().isLocked()) return Optional.empty();
 
-        // No isPrompting check here: unlockItem itself now refuses to raise a prompt the caller
-        // opted out of, so the guarantee holds for direct callers of the public method too, and
-        // stating it twice would let the two copies drift.
+        // No isPrompting check here: unlockOwnItem itself refuses to raise a prompt the caller
+        // opted out of, so the guarantee holds for direct callers of the public unlockItem too,
+        // and stating it twice would let the two copies drift.
 
         Optional<Boolean> collectionLocked = collection.lockedState();
         // Empty means the read failed. Treating that as "unlocked" would re-enable the double
         // prompt on any transient D-Bus error, so unknown skips just like locked does.
-        if (collectionLocked.isEmpty() || collectionLocked.get()) return true;
+        if (collectionLocked.isEmpty() || collectionLocked.get()) return Optional.empty();
 
         log.debug("Item is locked; asking the provider to unlock it: {}", objectPath);
-        if (unlockItem(objectPath)) return true;
+        Optional<Failure> stillLocked = unlockOwnItem(objectPath);
+        if (stillLocked.isEmpty()) return Optional.empty();
 
         // Do not fall through to GetSecret. It cannot succeed on a locked item, and the failure it
         // produces would be reported as a missing or unreadable secret rather than as the refusal
@@ -1392,7 +1428,7 @@ public class Collection implements CollectionInterface {
         } else {
             log.debug("Item {} stayed locked because prompting is disabled; not read.", objectPath);
         }
-        return false;
+        return stillLocked;
     }
 
     /**

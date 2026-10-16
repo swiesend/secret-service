@@ -3,6 +3,7 @@ package de.swiesend.secretservice;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
+import de.swiesend.secretservice.handlers.MessageHandler;
 import de.swiesend.secretservice.handlers.Messaging;
 
 import java.util.*;
@@ -95,8 +96,24 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
 
     @Override
     public Optional<Secret> getSecret(DBusPath session) {
-        Object[] response = send("GetSecret", "o", session).orElse(null);
-        if (Static.Utils.isNullOrEmpty(response)) return Optional.empty();
+        return getSecretChecked(session).value();
+    }
+
+    /**
+     * As {@link #getSecret(DBusPath)}, but answering why no secret came: the item is locked or
+     * gone, the provider did not answer, or its answer had no secret in it.
+     *
+     * @since 4.0.0
+     */
+    public Result<Secret> getSecretChecked(DBusPath session) {
+        MessageHandler.Reply reply = sendChecked("GetSecret", "o", session);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider sent no secret for " + objectPath));
+        }
+        Object[] response = reply.value().orElse(null);
+        if (Static.Utils.isNullOrEmpty(response)) {
+            return Result.failed(Failure.Reason.OTHER, "The provider answered GetSecret for " + objectPath + " without a secret");
+        }
         try {
             Object[] inner = (Object[]) response[0];
 
@@ -114,9 +131,10 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
                 secret = new Secret(session_path, parameters, value, contentType);
             }
 
-            return Optional.of(secret);
+            return Result.ok(secret);
         } catch (ClassCastException | IndexOutOfBoundsException e) {
-            return Optional.empty();
+            return Result.failed(Failure.of(Failure.Reason.OTHER,
+                    "The provider's answer to GetSecret for " + objectPath + " is not a secret", e));
         }
     }
 

@@ -165,13 +165,13 @@ not equality.
 
 ## Migrating from `SimpleCollection`
 
-`SimpleCollection` was removed in 4.0. It threw checked exceptions; the functional API answers `Optional.empty()` or `false` instead and logs the reason. Its static connection, closed by a JVM shutdown hook, becomes an ordinary `try`-with-resources scope.
+`SimpleCollection` was removed in 4.0. It threw checked exceptions; the functional API answers `Optional.empty()` or `false` instead and logs the reason. A [`Failure`](failures.md) holds the reason itself. Its static connection, closed by a JVM shutdown hook, becomes an ordinary `try`-with-resources scope.
 
 | `SimpleCollection` (3.x) | Functional API (4.0) |
 |---|---|
 | `new SimpleCollection()` | `SecretService.create()`, then `service.openSession()` and `session.defaultCollection()` |
 | `new SimpleCollection(label, password)` | `session.collection(label, Optional.of(password))` |
-| `SimpleCollection.isAvailable()` | `SecretService.create().isPresent()` |
+| `SimpleCollection.isAvailable()` | `SecretService.create().isPresent()`, or `SecretService.createChecked()`, which says why not |
 | `SimpleCollection.isGnomeKeyringAvailable()` | `service.isGnomeKeyringAvailable()` |
 | `createItem(label, secret, attributes)` returning the path | `createItem(label, secret, attributes)` returning `Optional<String>` |
 | `getSecret(path)` returning `char[]` | `withSecret(path, callback)`, which zeroes the secret afterwards; or `getSecret(path)` returning `Optional<char[]>` |

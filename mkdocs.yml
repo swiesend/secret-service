@@ -68,6 +68,7 @@ nav:
       - Hardened: usage/hardened.md
       - TPM 2.0: usage/tpm2.md
       - Logging: usage/logging.md
+      - Why a call failed: usage/failures.md
   - Architecture:
       - Overview: architecture/index.md
       - Envelope encryption: architecture/envelope-encryption.md
