@@ -99,6 +99,18 @@ class ItemExistenceTest {
     }
 
     @Test
+    void theSecretOfADeletedItemIsNotFound() {
+        // What a caller of withSecretChecked sees of the reply above: the reason to create the item
+        // again, rather than to try again later.
+        String path = collection.createItem("not-found-probe", "s3cr3t").orElse(null);
+        assertNotNull(path, "createItem returned empty");
+        assertTrue(collection.deleteItem(path), "could not delete the item");
+
+        assertEquals(Optional.of(de.swiesend.secretservice.Failure.Reason.NOT_FOUND),
+                collection.withSecretChecked(path, String::new).reason());
+    }
+
+    @Test
     void aPathThatWasNeverAnItemIsAbsent() {
         // A path UNDER this collection: a path under a different collection is answered absent
         // by the scope check alone, so it would not show that the daemon was asked.

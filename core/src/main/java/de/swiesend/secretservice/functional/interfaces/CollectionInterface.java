@@ -1,5 +1,7 @@
 package de.swiesend.secretservice.functional.interfaces;
 
+import de.swiesend.secretservice.Failure;
+import de.swiesend.secretservice.Result;
 import de.swiesend.secretservice.functional.ConsentPolicy;
 import de.swiesend.secretservice.functional.SearchMode;
 import java.util.List;
@@ -187,6 +189,27 @@ public interface CollectionInterface extends AutoCloseable {
      *         retrieved <b>or</b> the callback returned {@code null}
      */
     <R> Optional<R> withSecret(String objectPath, Function<char[], R> callback);
+
+    /**
+     * As {@link #withSecret(String, Function)}, but answering why the secret could not be read:
+     * {@code INVALID_ARGUMENT} for an empty path or an item of another collection, {@code DENIED}
+     * when the consent policy refused the read, {@code LOCKED}, {@code DISMISSED} or
+     * {@code TIMED_OUT} when the item stayed locked, {@code NOT_FOUND} when it is gone, and the
+     * other reasons of a failed call. A callback that returns null gives a success without a value.
+     *
+     * <p>The default body cannot say why. It answers {@code OTHER} for every failure of
+     * {@code withSecret}, and so for a callback that returns null too, which {@code withSecret}
+     * cannot tell from a failure. It keeps an implementation that does not declare this method
+     * compiling.</p>
+     *
+     * @since 4.0.0
+     */
+    default <R> Result<R> withSecretChecked(String objectPath, Function<char[], R> callback) {
+        return withSecret(objectPath, callback)
+                .map(Result::ok)
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER,
+                        "The secret could not be read, and this collection does not say why"));
+    }
 
     /**
      * Retrieve all decrypted secrets in this collection.
