@@ -33,6 +33,25 @@ public interface SessionInterface extends AutoCloseable {
                         "No default collection, and this session does not say why"));
     }
 
+    /**
+     * The provider's default collection, created with this label when the provider names none. The
+     * provider may ask the user first: gnome-keyring asks for the new keyring's password. Never an
+     * existing collection in place of the default, not even gnome-keyring's {@code session}, whose
+     * secrets live only until the user logs out.
+     *
+     * <p>The default body creates nothing: it answers {@code OTHER}. It keeps an implementation that
+     * does not declare this method compiling.</p>
+     *
+     * @param label the label of the collection to create, when the provider names no default
+     * @return the default collection; {@code DISMISSED} when the user dismissed the dialog,
+     *         {@code TIMED_OUT} when nobody answered it, or the failure of a call
+     * @throws IllegalArgumentException if {@code label} is null or blank
+     * @since 4.0.0
+     */
+    default Result<CollectionInterface> createDefaultCollection(String label) {
+        return Result.failed(Failure.Reason.OTHER, "This session cannot create the default collection");
+    }
+
     TransportEncryption.EncryptedSession getEncryptedSession();
 
     ServiceInterface getService();

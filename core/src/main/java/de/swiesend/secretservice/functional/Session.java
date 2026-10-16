@@ -110,6 +110,15 @@ public class Session implements SessionInterface {
     }
 
     @Override
+    public Result<CollectionInterface> createDefaultCollection(String label) {
+        return Collection.createDefault(label, this)
+                .map(collection -> {
+                    this.collections.add(collection);
+                    return collection;
+                });
+    }
+
+    @Override
     public void close() throws Exception {
         if (!isClosed) {
             for (CollectionInterface collection : this.collections) {

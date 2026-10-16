@@ -121,6 +121,83 @@ public class Collection implements CollectionInterface {
         return Result.ok(c);
     }
 
+    /**
+     * The provider's default collection, created with this label when the provider names none. The
+     * provider may ask the user first: gnome-keyring asks for the new keyring's password.
+     *
+     * <p>Never an existing collection in place of the default, not even gnome-keyring's
+     * {@code session}, whose secrets live only until the user logs out.</p>
+     *
+     * @param label   the label of the collection to create, when the provider names no default
+     * @param session the session to open or create the collection with
+     * @return the default collection; {@code DISMISSED} when the user dismissed the dialog,
+     *         {@code TIMED_OUT} when nobody answered it, or the failure of a call
+     * @throws IllegalArgumentException if {@code label} is null or blank
+     * @since 4.0.0
+     */
+    public static Result<CollectionInterface> createDefault(String label, SessionInterface session) {
+        if (label == null || label.isBlank()) {
+            throw new IllegalArgumentException("label must not be null or blank");
+        }
+        Objects.requireNonNull(session, "session must not be null");
+        Result<CollectionInterface> existing = openDefaultChecked(Optional.of(session));
+        if (existing.reason().filter(reason -> reason == Failure.Reason.NO_DEFAULT_COLLECTION).isEmpty()) {
+            return existing;
+        }
+        Collection c = new Collection();
+        Optional<Failure> notReady = c.initChecked(Optional.of(session));
+        if (notReady.isPresent()) {
+            return Result.failed(notReady.get());
+        }
+
+        // Under the alias "default", which makes the new collection the provider's default.
+        Result<DBusPath> created = c.createCollectionChecked(
+                de.swiesend.secretservice.Collection.createProperties(label), "default");
+        if (!created.isOk()) {
+            return Result.failed(created.failure().orElseThrow());
+        }
+        DBusPath path = created.value().orElseThrow();
+        // A provider that ignores the alias of CreateCollection leaves the new collection without it.
+        boolean isDefault = c.service.getService().readAliasChecked("default").value()
+                .filter(alias -> path.getPath().equals(alias.getPath())).isPresent();
+        if (!isDefault && !c.service.getService().setAlias("default", path)) {
+            log.warn("The new collection {} is not the provider's default: the provider set no alias for it.",
+                    path.getPath());
+        }
+        c.path = path;
+        c.collection = new de.swiesend.secretservice.Collection(path, c.service.getService());
+        c.label = c.collection.getLabel();
+        c.id = c.collection.getId();
+        return Result.ok(c);
+    }
+
+    /** Creates a collection, through the provider's dialog where it shows one, and answers its path. */
+    private Result<DBusPath> createCollectionChecked(Map<String, Variant> properties, String alias) {
+        Result<Pair<DBusPath, DBusPath>> response = service.getService().createCollectionChecked(properties, alias);
+        if (!response.isOk()) {
+            return Result.failed(response.failure().orElseThrow());
+        }
+        Pair<DBusPath, DBusPath> created = response.value().orElseThrow();
+        if (!"/".equals(created.a.getPath())) {
+            return Result.ok(created.a);
+        }
+        if (!requiresPrompt(created.b)) {
+            return Result.failed(Failure.Reason.OTHER, "The provider created no collection and showed no dialog");
+        }
+        de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(created.b, service.getTimeout());
+        if (completed == null) {
+            return Result.failed(Failure.Reason.TIMED_OUT, "No answer to the dialog that creates the collection in time");
+        }
+        if (completed.dismissed) {
+            return Result.failed(Failure.Reason.DISMISSED, "The user dismissed the dialog that creates the collection");
+        }
+        // The prompt's result is the new collection's path.
+        Object result = completed.result == null ? null : completed.result.getValue();
+        return result == null
+                ? Result.failed(Failure.Reason.OTHER, "The dialog that creates the collection answered no path")
+                : Result.ok(new DBusPath(result.toString()));
+    }
+
     /** Binds this collection to the provider's default collection, through its alias. */
     private void bindToDefault() {
         path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
