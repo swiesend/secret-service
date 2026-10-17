@@ -74,11 +74,26 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
 
     @Override
     public Optional<Pair<DBusPath, DBusPath>> createCollection(Map<String, Variant> properties, String alias) {
+        return createCollectionChecked(properties, alias).value();
+    }
+
+    /**
+     * As {@link #createCollection(Map, String)}, but answering why the call failed.
+     *
+     * @since 4.0.0
+     */
+    public Result<Pair<DBusPath, DBusPath>> createCollectionChecked(Map<String, Variant> properties, String alias) {
         String a = alias == null ? "" : alias;
-        return send("CreateCollection", "a{sv}s", properties, a).flatMap(response ->
-                (Static.Utils.isNullOrEmpty(response) || response.length != 2) ?
-                        Optional.empty() :
-                        Optional.of(new Pair<DBusPath, DBusPath>((DBusPath) response[0], (DBusPath) response[1])));
+        MessageHandler.Reply reply = sendChecked("CreateCollection", "a{sv}s", properties, a);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider created no collection"));
+        }
+        return reply.value()
+                .filter(response -> !Static.Utils.isNullOrEmpty(response) && response.length == 2)
+                .map(response -> Result.ok(
+                        new Pair<DBusPath, DBusPath>((DBusPath) response[0], (DBusPath) response[1])))
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER,
+                        "The provider answered CreateCollection without its two results"));
     }
 
     @Override
@@ -143,8 +158,24 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
 
     @Override
     public Optional<DBusPath> readAlias(String name) {
-        return send("ReadAlias", "s", name).flatMap(response ->
-                Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((DBusPath) response[0]));
+        return readAliasChecked(name).value();
+    }
+
+    /**
+     * As {@link #readAlias(String)}, but answering why the alias could not be read. A provider that
+     * knows no such alias answers {@code "/"}, and that is a success.
+     *
+     * @since 4.0.0
+     */
+    public Result<DBusPath> readAliasChecked(String name) {
+        MessageHandler.Reply reply = sendChecked("ReadAlias", "s", name);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider did not read the alias " + name));
+        }
+        return reply.value()
+                .filter(response -> !Static.Utils.isNullOrEmpty(response) && response[0] instanceof DBusPath)
+                .map(response -> Result.ok((DBusPath) response[0]))
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "The provider answered ReadAlias without a path"));
     }
 
     @Override

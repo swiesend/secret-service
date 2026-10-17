@@ -7,6 +7,7 @@ The functional API answers `Optional.empty()` or `false` when a call fails, and 
 | Reason | Means | A caller can |
 |---|---|---|
 | `NO_PROVIDER` | There is no session bus, or nothing on it provides `org.freedesktop.secrets`. | Fall back to another store, or ask the user to start a keyring: gnome-keyring, KeePassXC, KWallet or oo7. |
+| `NO_DEFAULT_COLLECTION` | The provider names no default collection: its alias `default` points to none, as on an account where nothing has created the login keyring yet. | Open a collection by its label, or create the default: `createDefaultCollection(label)`. |
 | `DISCONNECTED` | The connection closed, or the provider quit or forgot the session, before it answered. | Create a new service. |
 | `TIMED_OUT` | No reply came within the reply timeout, or no answer to a prompt within its timeout. | Try again, or wait longer: `setReplyTimeout`, `setTimeout`. |
 | `NOT_FOUND` | The item or the collection does not exist. | Create it. |
@@ -24,10 +25,14 @@ A later release may add reasons, so a `switch` over them needs a `default` branc
 |---|---|---|
 | `SecretService.createChecked()`, `createChecked(system)` | the service; `NO_PROVIDER`, or the failure of the session that the availability check opens | `create()`, `create(system)` |
 | `CollectionInterface.withSecretChecked(path, callback)` | the callback's result; `INVALID_ARGUMENT`, `DENIED`, `LOCKED`, `DISMISSED`, `TIMED_OUT`, `NOT_FOUND`, or the failure of the read | `withSecret(path, callback)` |
+| `SessionInterface.defaultCollectionChecked()`, `Collection.openDefaultChecked(session)` | the default collection; `NO_DEFAULT_COLLECTION`, or the failure of reading the alias | `defaultCollection()`, `openDefault(session)`, which answer a collection on the alias's path, where every read fails |
+| `SessionInterface.createDefaultCollection(label)`, `Collection.createDefault(label, session)` | the default collection, created with the label where the provider names none; `DISMISSED` or `TIMED_OUT` for the provider's dialog, or the failure of a call | — (new) |
 
-On the low-level API: `System.connectChecked()`, `ServiceInterface.isAvailableChecked(system, available)`, `Service.openSessionChecked(algorithm, input)`, `Service.unlockChecked(objects)`, `TransportEncryption.InitializedSession.openSessionChecked()` and `Item.getSecretChecked(session)`.
+On the low-level API: `System.connectChecked()`, `ServiceInterface.isAvailableChecked(system, available)`, `Service.openSessionChecked(algorithm, input)`, `Service.unlockChecked(objects)`, `Service.readAliasChecked(name)`, `Service.createCollectionChecked(properties, alias)`, `TransportEncryption.InitializedSession.openSessionChecked()` and `Item.getSecretChecked(session)`.
 
-`withSecretChecked` has a default body, for another implementation of `CollectionInterface`: it answers `OTHER` for every failure of `withSecret`, as it cannot say why.
+`createDefaultCollection` never takes another collection in the default's place. gnome-keyring's collection `session`, for one, keeps its secrets only until the user logs out; the Rust crate secret-service-rs falls back to it in `get_any_collection`.
+
+`withSecretChecked` and `defaultCollectionChecked` have a default body, for another implementation of their interface: it answers `OTHER` for every failure of the plain method, as it cannot say why.
 
 ## `Result` and `Failure`
 

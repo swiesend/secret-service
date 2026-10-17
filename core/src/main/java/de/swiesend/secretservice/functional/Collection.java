@@ -79,11 +79,131 @@ public class Collection implements CollectionInterface {
         if (!c.init(maybeSession)) {
             return Optional.empty();
         }
-        c.path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-        c.collection = new de.swiesend.secretservice.Collection(c.path, c.service.getService());
+        c.bindToDefault();
+        return Optional.of(c);
+    }
+
+    /**
+     * As {@link #openDefault(Optional)}, but answering why there is no default collection to open:
+     * {@code NO_DEFAULT_COLLECTION} when the provider's alias {@code default} names none, where
+     * {@code openDefault} answers a collection on which every read and {@code CreateItem} fails.
+     * Otherwise the failure of creating the service, when no session is given, or of reading the
+     * alias.
+     *
+     * @param maybeSession an existing session to reuse, or empty to create a new one
+     * @return the default collection, or why there is none
+     * @since 4.0.0
+     */
+    public static Result<CollectionInterface> openDefaultChecked(Optional<SessionInterface> maybeSession) {
+        Objects.requireNonNull(maybeSession, "maybeSession must not be null; use Optional.empty() instead");
+        Collection c = new Collection();
+        if (maybeSession.isEmpty()) {
+            c.clearSessionAtClose = true;
+        }
+        Optional<Failure> notReady = c.initChecked(maybeSession);
+        if (notReady.isPresent()) {
+            return Result.failed(notReady.get());
+        }
+        Result<DBusPath> alias = c.service.getService().readAliasChecked("default");
+        Optional<Failure> none = alias.isOk()
+                ? alias.value().filter(path -> "/".equals(path.getPath())).map(path -> Failure.of(
+                        Failure.Reason.NO_DEFAULT_COLLECTION, "The provider names no default collection"))
+                : alias.failure();
+        if (none.isPresent()) {
+            try {
+                c.close();
+            } catch (Exception e) {
+                log.warn("Failed to close the service after the default collection was not found.", e);
+            }
+            return Result.failed(none.get());
+        }
+        c.bindToDefault();
+        return Result.ok(c);
+    }
+
+    /**
+     * The provider's default collection, created with this label when the provider names none. The
+     * provider may ask the user first: gnome-keyring asks for the new keyring's password.
+     *
+     * <p>Never an existing collection in place of the default, not even gnome-keyring's
+     * {@code session}, whose secrets live only until the user logs out.</p>
+     *
+     * @param label   the label of the collection to create, when the provider names no default
+     * @param session the session to open or create the collection with
+     * @return the default collection; {@code DISMISSED} when the user dismissed the dialog,
+     *         {@code TIMED_OUT} when nobody answered it, or the failure of a call
+     * @throws IllegalArgumentException if {@code label} is null or blank
+     * @since 4.0.0
+     */
+    public static Result<CollectionInterface> createDefault(String label, SessionInterface session) {
+        if (label == null || label.isBlank()) {
+            throw new IllegalArgumentException("label must not be null or blank");
+        }
+        Objects.requireNonNull(session, "session must not be null");
+        Result<CollectionInterface> existing = openDefaultChecked(Optional.of(session));
+        if (existing.reason().filter(reason -> reason == Failure.Reason.NO_DEFAULT_COLLECTION).isEmpty()) {
+            return existing;
+        }
+        Collection c = new Collection();
+        Optional<Failure> notReady = c.initChecked(Optional.of(session));
+        if (notReady.isPresent()) {
+            return Result.failed(notReady.get());
+        }
+
+        // Under the alias "default", which makes the new collection the provider's default.
+        Result<DBusPath> created = c.createCollectionChecked(
+                de.swiesend.secretservice.Collection.createProperties(label), "default");
+        if (!created.isOk()) {
+            return Result.failed(created.failure().orElseThrow());
+        }
+        DBusPath path = created.value().orElseThrow();
+        // A provider that ignores the alias of CreateCollection leaves the new collection without it.
+        boolean isDefault = c.service.getService().readAliasChecked("default").value()
+                .filter(alias -> path.getPath().equals(alias.getPath())).isPresent();
+        if (!isDefault && !c.service.getService().setAlias("default", path)) {
+            log.warn("The new collection {} is not the provider's default: the provider set no alias for it.",
+                    path.getPath());
+        }
+        c.path = path;
+        c.collection = new de.swiesend.secretservice.Collection(path, c.service.getService());
         c.label = c.collection.getLabel();
         c.id = c.collection.getId();
-        return Optional.of(c);
+        return Result.ok(c);
+    }
+
+    /** Creates a collection, through the provider's dialog where it shows one, and answers its path. */
+    private Result<DBusPath> createCollectionChecked(Map<String, Variant> properties, String alias) {
+        Result<Pair<DBusPath, DBusPath>> response = service.getService().createCollectionChecked(properties, alias);
+        if (!response.isOk()) {
+            return Result.failed(response.failure().orElseThrow());
+        }
+        Pair<DBusPath, DBusPath> created = response.value().orElseThrow();
+        if (!"/".equals(created.a.getPath())) {
+            return Result.ok(created.a);
+        }
+        if (!requiresPrompt(created.b)) {
+            return Result.failed(Failure.Reason.OTHER, "The provider created no collection and showed no dialog");
+        }
+        de.swiesend.secretservice.interfaces.Prompt.Completed completed = prompt.await(created.b, service.getTimeout());
+        if (completed == null) {
+            return Result.failed(Failure.Reason.TIMED_OUT, "No answer to the dialog that creates the collection in time");
+        }
+        if (completed.dismissed) {
+            return Result.failed(Failure.Reason.DISMISSED, "The user dismissed the dialog that creates the collection");
+        }
+        // The prompt's result is the new collection's path.
+        Object result = completed.result == null ? null : completed.result.getValue();
+        return result == null
+                ? Result.failed(Failure.Reason.OTHER, "The dialog that creates the collection answered no path")
+                : Result.ok(new DBusPath(result.toString()));
+    }
+
+    /** Binds this collection to the provider's default collection, through its alias. */
+    private void bindToDefault() {
+        path = Static.Convert.toObjectPath(Static.ObjectPaths.DEFAULT_COLLECTION);
+        collection = new de.swiesend.secretservice.Collection(path, service.getService());
+        label = collection.getLabel();
+        id = collection.getId();
     }
 
     /**
@@ -177,6 +297,11 @@ public class Collection implements CollectionInterface {
     }
 
     private boolean init(Optional<SessionInterface> maybeSession) {
+        return initChecked(maybeSession).isEmpty();
+    }
+
+    /** As {@link #init}, answering why it failed: empty when it succeeded. */
+    private Optional<Failure> initChecked(Optional<SessionInterface> maybeSession) {
         if (maybeSession.isEmpty()) {
             this.clearSessionAtClose = true;
         }
@@ -184,12 +309,12 @@ public class Collection implements CollectionInterface {
         if (maybeSession.isPresent()) {
             resolved = maybeSession;
         } else {
-            Optional<ServiceInterface> maybeService = SecretService.create();
-            if (maybeService.isEmpty()) {
+            Result<ServiceInterface> maybeService = SecretService.createChecked();
+            if (!maybeService.isOk()) {
                 log.error("Could not create the secret service.");
-                return false;
+                return maybeService.failure();
             }
-            ServiceInterface createdService = maybeService.get();
+            ServiceInterface createdService = maybeService.value().orElseThrow();
             resolved = createdService.openSession();
             if (resolved.isEmpty()) {
                 log.error("Could not open a session.");
@@ -198,7 +323,7 @@ public class Collection implements CollectionInterface {
                 } catch (Exception e) {
                     log.warn("Failed to close service after session failure.", e);
                 }
-                return false;
+                return Optional.of(Failure.of(Failure.Reason.OTHER, "Could not open a session"));
             }
         }
         this.session = resolved.get();
@@ -208,7 +333,7 @@ public class Collection implements CollectionInterface {
         if (service.isGnomeKeyringAvailable()) {
             this.withoutPrompt = new InternalUnsupportedGuiltRiddenInterface(session.getService().getService());
         }
-        return true;
+        return Optional.empty();
     }
 
     private Optional<de.swiesend.secretservice.Collection> getOrCreateCollection(String label) {
@@ -609,7 +734,22 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
         unlock();
-        return getItem(objectPath).flatMap(item -> item.getAttributes());
+        return getItem(objectPath).flatMap(item -> item.getAttributes()).filter(attributes -> {
+            if (!hashedAttributes(attributes)) return true;
+            log.debug("The attributes of {} are hidden while it is locked: the provider shows only their hashes.",
+                    objectPath);
+            return false;
+        });
+    }
+
+    // gnome-keyring, for an item of a keyring that it loaded locked, shows each attribute under this
+    // prefix with the MD5 of its value, and an empty label: the real ones are encrypted with the
+    // secrets (keyring-rs #204). xdg:schema stays as it is.
+    private static final String HASHED_ATTRIBUTE_PREFIX = "gkr:compat:hashed:";
+
+    /** Whether these are gnome-keyring's hashes of a locked item's attributes, not its attributes. */
+    static boolean hashedAttributes(Map<String, String> attributes) {
+        return attributes.keySet().stream().anyMatch(key -> key.startsWith(HASHED_ATTRIBUTE_PREFIX));
     }
 
     @Override
@@ -737,8 +877,13 @@ public class Collection implements CollectionInterface {
             return Optional.empty();
         }
         unlock();
-        return getItem(objectPath)
-                .flatMap(item -> item.getLabel());
+        return getItem(objectPath).flatMap(item -> item.getLabel().filter(label -> {
+            // A locked item that shows an empty label shows none of its own: gnome-keyring hides a
+            // locked keyring's labels so. A locked item of KeePassXC keeps its label, which stays.
+            if (!label.isEmpty() || !item.isLocked()) return true;
+            log.debug("The label of {} is hidden while it is locked.", objectPath);
+            return false;
+        }));
     }
 
     @Override

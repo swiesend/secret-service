@@ -243,6 +243,7 @@ public final class FakeSecretService implements AutoCloseable {
     private volatile boolean stallItemProperties;
     private volatile boolean stallCollectionProperties;
     private volatile boolean stallSecrets;
+    private volatile boolean hashLockedMetadata;
 
     // Signals go out on a thread of their own, in the order they were raised, so a slow send never
     // holds up the call that raised them.
@@ -449,6 +450,33 @@ public final class FakeSecretService implements AutoCloseable {
     /** As {@link #setStallItemProperties}, for an item's GetSecret. */
     public void setStallSecrets(boolean stall) {
         this.stallSecrets = stall;
+    }
+
+    /**
+     * Makes a locked item show what gnome-keyring 40 shows of an item of a keyring that it loaded
+     * locked: an empty label, and each attribute as {@code gkr:compat:hashed:<name>} with the MD5
+     * of its value, but for {@code xdg:schema}, which stays as it is.
+     */
+    public void setHashLockedMetadata(boolean hash) {
+        this.hashLockedMetadata = hash;
+    }
+
+    private static Map<String, String> hashed(Map<String, String> attributes) {
+        Map<String, String> hashed = new HashMap<>();
+        try {
+            for (Map.Entry<String, String> attribute : attributes.entrySet()) {
+                if ("xdg:schema".equals(attribute.getKey())) {
+                    hashed.put(attribute.getKey(), attribute.getValue());
+                    continue;
+                }
+                byte[] digest = java.security.MessageDigest.getInstance("MD5")
+                        .digest(attribute.getValue().getBytes(StandardCharsets.UTF_8));
+                hashed.put("gkr:compat:hashed:" + attribute.getKey(), java.util.HexFormat.of().formatHex(digest));
+            }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        return hashed;
     }
 
     private static void stall() {
@@ -975,9 +1003,11 @@ public final class FakeSecretService implements AutoCloseable {
             if (!Static.Interfaces.ITEM.equals(iface)) return properties;
             synchronized (lock) {
                 requireExists(state);
+                boolean hidden = hashLockedMetadata && state.effectivelyLocked();
                 properties.put("Locked", new Variant<>(state.effectivelyLocked()));
-                properties.put("Attributes", new Variant<>(new HashMap<>(state.attributes), "a{ss}"));
-                properties.put("Label", new Variant<>(state.label));
+                properties.put("Attributes", new Variant<>(
+                        hidden ? hashed(state.attributes) : new HashMap<>(state.attributes), "a{ss}"));
+                properties.put("Label", new Variant<>(hidden ? "" : state.label));
                 properties.put("Type", new Variant<>(state.type));
                 properties.put("Created", new Variant<>(new UInt64(state.created)));
                 properties.put("Modified", new Variant<>(new UInt64(state.modified)));
