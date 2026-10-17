@@ -1,6 +1,8 @@
 package de.swiesend.secretservice.functional;
 
+import de.swiesend.secretservice.Failure;
 import de.swiesend.secretservice.Pair;
+import de.swiesend.secretservice.Result;
 import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.functional.interfaces.*;
 import org.slf4j.Logger;
@@ -36,27 +38,50 @@ public class SecretService implements ServiceInterface {
      * Create a Secret-Service instance with initialized transport encryption.
      */
     public static Optional<ServiceInterface> create() {
-        Optional<SystemInterface> system = System.connect();
-        return create(system);
+        return createChecked().value();
     }
 
     public static Optional<ServiceInterface> create(Optional<SystemInterface> maybeSystem) {
+        return createChecked(maybeSystem).value();
+    }
+
+    /**
+     * As {@link #create()}, but answering why no service was created. {@code NO_PROVIDER} means
+     * that there is no session bus, or nothing on it provides the Secret Service: the case of a
+     * container or of a session without a keyring, where a caller may want another store.
+     *
+     * @return the service, or the failure
+     * @since 4.0.0
+     */
+    public static Result<ServiceInterface> createChecked() {
+        return System.connectChecked().flatMap(system -> createChecked(Optional.of(system)));
+    }
+
+    /**
+     * As {@link #create(Optional)}, but answering why no service was created; see
+     * {@link #createChecked()}.
+     *
+     * @return the service, or the failure
+     * @since 4.0.0
+     */
+    public static Result<ServiceInterface> createChecked(Optional<SystemInterface> maybeSystem) {
         if (maybeSystem == null || maybeSystem.isEmpty()) {
-            return Optional.empty();
+            return Result.failed(Failure.Reason.INVALID_ARGUMENT, "No system to create the service on");
         }
         SystemInterface system = maybeSystem.get();
         AvailableServices available = new AvailableServices(system);
 
-        if (!ServiceInterface.isAvailable(system, available)) {
+        Result<Boolean> availability = ServiceInterface.isAvailableChecked(system, available);
+        if (!availability.isOk()) {
             try {
                 system.close();
             } catch (Exception e) {
                 log.warn("Failed to close system after availability check.", e);
             }
-            return Optional.empty();
+            return Result.failed(availability.failure().orElseThrow());
         }
 
-        return Optional.of(new SecretService(system, available, maybeSystem));
+        return Result.ok(new SecretService(system, available, maybeSystem));
     }
 
     @Override

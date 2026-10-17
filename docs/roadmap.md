@@ -20,7 +20,7 @@ Everything the 2.x plan set out to do has shipped:
 - **Provider-leg stabilization** — the KWallet and KeePassXC system-test legs are non-blocking (headless bring-up is fragile); make them reliable enough to gate merges.
 - **Per-item unlock flow** — KeePassXC requires unlocking items before retrieval ([#45](https://github.com/swiesend/secret-service/issues/45), [PR #46](https://github.com/swiesend/secret-service/pull/46)); fold this into the functional API rather than a provider-specific workaround.
 - **Connection robustness** — `EOFException` on send after connection loss ([#52](https://github.com/swiesend/secret-service/issues/52)); the functional API should surface a reconnect story instead of a dead session.
-- **Containerized consumers** — document/detect the "no Secret Service on the bus" case cleanly ([#41](https://github.com/swiesend/secret-service/issues/41)); the [CI deployment guide](security/ci-deployment.md) covers the patterns, but the library error path can be friendlier.
+- **Containerized consumers** — document/detect the "no Secret Service on the bus" case cleanly ([#41](https://github.com/swiesend/secret-service/issues/41)); the [CI deployment guide](security/ci-deployment.md) covers the patterns, and `SecretService.createChecked()` reports the case as `NO_PROVIDER` ([Why a call failed](usage/failures.md)).
 - **Possession-based factors, if ever, done honestly** — TOTP was removed because a seed-holding process gains nothing from time-binding. A real second factor would need an *oracle-shaped* SPI (e.g. `getCode(step)` served by an off-machine device) rather than `getTotpSeed()`. Explicitly out of scope until there is a design that does not co-locate the factor with the pepper.
 
 ## Design invariants (unchanged)

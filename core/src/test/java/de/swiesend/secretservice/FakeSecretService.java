@@ -235,12 +235,14 @@ public final class FakeSecretService implements AutoCloseable {
     private volatile boolean dismissPrompts;
     private volatile boolean leavePromptsOpen;
     private volatile boolean refuseCollectionUnlock;
+    private volatile boolean refuseEncryptedSessions;
     private volatile boolean requirePromptForCollectionUnlock;
     private volatile boolean requirePromptForCollectionLock;
     private volatile boolean requirePromptForItemLock;
     private volatile boolean requirePromptForDelete;
     private volatile boolean stallItemProperties;
     private volatile boolean stallCollectionProperties;
+    private volatile boolean stallSecrets;
 
     // Signals go out on a thread of their own, in the order they were raised, so a slow send never
     // holds up the call that raised them.
@@ -395,6 +397,11 @@ public final class FakeSecretService implements AutoCloseable {
         this.refuseCollectionUnlock = refuse;
     }
 
+    /** Makes OpenSession refuse every algorithm but plain, as a provider without transport encryption. */
+    public void setRefuseEncryptedSessions(boolean refuse) {
+        this.refuseEncryptedSessions = refuse;
+    }
+
     /** Makes a collection unlock ask the user first, as gnome-keyring does. Off: it unlocks at once. */
     public void setRequirePromptForCollectionUnlock(boolean require) {
         this.requirePromptForCollectionUnlock = require;
@@ -439,6 +446,11 @@ public final class FakeSecretService implements AutoCloseable {
         this.stallCollectionProperties = stall;
     }
 
+    /** As {@link #setStallItemProperties}, for an item's GetSecret. */
+    public void setStallSecrets(boolean stall) {
+        this.stallSecrets = stall;
+    }
+
     private static void stall() {
         try {
             Thread.sleep(STALL.toMillis());
@@ -456,6 +468,9 @@ public final class FakeSecretService implements AutoCloseable {
             record("Service.OpenSession", SERVICE_PATH);
             byte[] key;
             Variant<?> output;
+            if (refuseEncryptedSessions && !Static.Algorithm.PLAIN.equals(algorithm)) {
+                throw new NotSupported("fake: no transport encryption");
+            }
             if (Static.Algorithm.PLAIN.equals(algorithm)) {
                 key = null;
                 output = new Variant<>("");
@@ -893,6 +908,7 @@ public final class FakeSecretService implements AutoCloseable {
         @Override
         public Secret GetSecret(DBusPath session) {
             record("Item.GetSecret", state.path);
+            if (stallSecrets) stall();
             synchronized (lock) {
                 requireExists(state);
                 SessionState s = session(session);
