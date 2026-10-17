@@ -23,7 +23,8 @@ public abstract class Messaging {
         this.connection = connection;
         this.msg = new MessageHandler(connection, true);
         if (signals != null) {
-            this.sh.connect(connection, signals, objectPath);
+            // The provider's signals only: see SignalHandler.await.
+            this.sh.connect(connection, signals, objectPath, serviceName);
         }
         this.serviceName = serviceName;
         this.objectPath = objectPath;
