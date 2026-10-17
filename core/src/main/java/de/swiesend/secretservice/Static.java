@@ -12,6 +12,9 @@ public class Static {
 
     public static final Duration DEFAULT_PROMPT_TIMEOUT = Duration.ofSeconds(120);
 
+    /** How long a call waits for the provider's reply, until a service sets another time. */
+    public static final Duration DEFAULT_REPLY_TIMEOUT = Duration.ofSeconds(2);
+
     public static class DBus {
 
         public static final Long DEFAULT_DELAY_MILLIS = 100L;

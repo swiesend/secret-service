@@ -43,11 +43,12 @@ public interface Prompt extends DBusInterface {
     boolean prompt(String window_id);
 
     /**
-     * Perform the prompt.
-     * 
+     * Perform the prompt, over the window that the service's window handle names, or none.
+     *
      * @param prompt        Objectpath of the prompt.
-     * 
+     *
      * @see Completed
+     * @see de.swiesend.secretservice.Service#setWindowHandle
      */
     boolean prompt(DBusPath prompt);
 

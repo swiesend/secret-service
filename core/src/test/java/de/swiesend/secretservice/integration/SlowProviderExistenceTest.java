@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A provider that is merely slow must not be reported as proof that an item exists.
  *
- * <p>{@code getReply} answers {@code null} after {@link Static.DBus#MAX_DELAY_MILLIS}. That null
+ * <p>{@code getReply} answers {@code null} after {@link Static#DEFAULT_REPLY_TIMEOUT}. That null
  * is not an {@code Error}, so a handler that checks only for errors falls through to the success
  * branch: the value is empty, which leaves {@code send()} looking correct, but the
  * <em>outcome</em> says {@code OK}. {@code Item.exists()} switches on the outcome, so a
@@ -65,7 +65,7 @@ class SlowProviderExistenceTest {
         Optional<Boolean> verdict = item.exists();
         long elapsedMs = (java.lang.System.nanoTime() - start) / 1_000_000L;
 
-        assertTrue(elapsedMs >= Static.DBus.MAX_DELAY_MILLIS,
+        assertTrue(elapsedMs >= Static.DEFAULT_REPLY_TIMEOUT.toMillis(),
                 "the probe should have waited for the timeout, but returned after " + elapsedMs + "ms");
         assertEquals(Optional.empty(), verdict,
                 "a timeout means we cannot tell; reporting Optional.of(true) would let a caller "
