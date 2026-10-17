@@ -267,3 +267,5 @@ $RECYCLE.BIN/
 cursor
 # Python bytecode from the CI helper scripts
 __pycache__/
+# MkDocs build output
+site/
