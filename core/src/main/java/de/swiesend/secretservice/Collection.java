@@ -6,6 +6,7 @@ import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.UInt64;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.Static.Utils;
+import de.swiesend.secretservice.handlers.MessageHandler;
 import de.swiesend.secretservice.handlers.Messaging;
 
 import java.util.*;
@@ -112,17 +113,46 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
 
     @Override
     public Optional<List<DBusPath>> searchItems(Map<String, String> attributes) {
-        return send("SearchItems", "a{ss}", attributes).flatMap(response ->
-                Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.of((List<DBusPath>) response[0])
-        );
+        return searchItemsChecked(attributes).value();
+    }
+
+    /**
+     * As {@link #searchItems(Map)}, but answering why the search failed. An empty list is a search
+     * that found nothing.
+     *
+     * @since 4.0.0
+     */
+    public Result<List<DBusPath>> searchItemsChecked(Map<String, String> attributes) {
+        MessageHandler.Reply reply = sendChecked("SearchItems", "a{ss}", attributes);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider did not search " + objectPath));
+        }
+        return reply.value()
+                .filter(response -> !Utils.isNullOrEmpty(response) && response[0] instanceof List)
+                .map(response -> Result.ok((List<DBusPath>) response[0]))
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "The provider answered SearchItems without a list"));
     }
 
     @Override
     public Optional<Pair<DBusPath, DBusPath>> createItem(Map<String, Variant> properties, Secret secret, boolean replace) {
-        return send("CreateItem", "a{sv}(oayays)b", properties, secret, replace).flatMap(response ->
-                (Utils.isNullOrEmpty(response) || response.length != 2) ?
-                        Optional.empty() :
-                        Optional.of(new Pair<DBusPath, DBusPath>((DBusPath) response[0], (DBusPath) response[1])));
+        return createItemChecked(properties, secret, replace).value();
+    }
+
+    /**
+     * As {@link #createItem(Map, Secret, boolean)}, but answering why the call failed.
+     *
+     * @since 4.0.0
+     */
+    public Result<Pair<DBusPath, DBusPath>> createItemChecked(Map<String, Variant> properties, Secret secret, boolean replace) {
+        MessageHandler.Reply reply = sendChecked("CreateItem", "a{sv}(oayays)b", properties, secret, replace);
+        if (reply.outcome() != MessageHandler.Outcome.OK) {
+            return Result.failed(Failure.from(reply, "The provider created no item in " + objectPath));
+        }
+        return reply.value()
+                .filter(response -> !Utils.isNullOrEmpty(response) && response.length == 2)
+                .map(response -> Result.ok(
+                        new Pair<DBusPath, DBusPath>((DBusPath) response[0], (DBusPath) response[1])))
+                .orElseGet(() -> Result.failed(Failure.Reason.OTHER, "The provider answered CreateItem without its two results"));
     }
 
     @Override

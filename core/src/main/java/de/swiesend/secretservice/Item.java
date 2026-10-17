@@ -140,7 +140,21 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
 
     @Override
     public boolean setSecret(Secret secret) {
-        return send("SetSecret", "(oayays)", secret).isPresent();
+        return setSecretChecked(secret).isOk();
+    }
+
+    /**
+     * As {@link #setSecret(Secret)}, but answering why the secret was not set: the item is locked
+     * or gone, or the provider did not answer.
+     *
+     * @return {@code true}, or the failure
+     * @since 4.0.0
+     */
+    public Result<Boolean> setSecretChecked(Secret secret) {
+        MessageHandler.Reply reply = sendChecked("SetSecret", "(oayays)", secret);
+        return reply.outcome() == MessageHandler.Outcome.OK
+                ? Result.ok(true)
+                : Result.failed(Failure.from(reply, "The provider did not set the secret of " + objectPath));
     }
 
     @Override
