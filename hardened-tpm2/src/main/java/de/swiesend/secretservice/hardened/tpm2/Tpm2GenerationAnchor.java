@@ -34,7 +34,7 @@ import java.util.function.Supplier;
  * caller-supplied anchor unless the collection was built with {@code Builder.ownsAnchor(true)} --
  * otherwise close it yourself.</p>
  *
- * <h3>Threat coverage caveat</h3>
+ * <h2>Threat coverage caveat</h2>
  * <p>Like {@link Tpm2KeyMaterialProvider}, this does not mediate a same-UID attacker who opens the
  * TPM device directly: with the password (read from the same place the legitimate process reads
  * it) they can increment the counter too. What the counter does provide is that <i>nobody</i> --

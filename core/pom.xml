@@ -56,6 +56,50 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <!-- Mutation tests. No execution is bound: the Mutation tests workflow runs them
+                 on the classes that a pull request changes, with
+                 mvn -pl core test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=...
+                 Without -DtargetClasses, PIT mutates every class of the module. -->
+            <plugin>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-maven</artifactId>
+                <configuration>
+                    <!-- Only tests that need no real provider: PIT runs them again for each
+                         mutant, and a mutant must not reach a real keyring. A new test against
+                         the fake provider belongs here. ModulePathTest does not: PIT runs the
+                         tests on the class path. -->
+                    <targetTests>
+                        <!-- Against the fake provider, on a private bus of their own. -->
+                        <param>de.swiesend.secretservice.integration.ConsentGateTest*</param>
+                        <param>de.swiesend.secretservice.integration.DefaultCollectionScopingTest*</param>
+                        <param>de.swiesend.secretservice.integration.DeleteItemsScopingTest*</param>
+                        <param>de.swiesend.secretservice.integration.FakeSecretServiceTest*</param>
+                        <param>de.swiesend.secretservice.integration.PerItemUnlockTest*</param>
+                        <param>de.swiesend.secretservice.integration.PromptSuppressionTest*</param>
+                        <param>de.swiesend.secretservice.integration.SlowProviderExistenceTest*</param>
+                        <!-- Without D-Bus. -->
+                        <param>de.swiesend.secretservice.HkdfTest*</param>
+                        <param>de.swiesend.secretservice.LogPolicyTest*</param>
+                        <param>de.swiesend.secretservice.functional.CollectionLockLogicTest*</param>
+                        <param>de.swiesend.secretservice.functional.ConsentPolicyTest*</param>
+                        <param>de.swiesend.secretservice.integration.SecretTest*</param>
+                        <param>de.swiesend.secretservice.integration.StaticTest*</param>
+                    </targetTests>
+                    <outputFormats>
+                        <param>XML</param>
+                        <param>HTML</param>
+                    </outputFormats>
+                    <timestampedReports>false</timestampedReports>
+                    <!-- A changed class with nothing to mutate, such as an interface without
+                         a method body, is no failure. -->
+                    <failWhenNoMutations>false</failWhenNoMutations>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
     <!--
         No compiler configuration here on purpose. The release level is declared once, by the
         parent's <maven.compiler.release>, and inherited. Repeating release/source/target in

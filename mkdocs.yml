@@ -91,4 +91,5 @@ nav:
       - Overview: audits/index.md
       - 2026-07 hardened audit: audits/2026-07-security-audit-hardened.md
   - Roadmap: roadmap.md
+  - Releasing: release.md
   - Changelog: changelog.md

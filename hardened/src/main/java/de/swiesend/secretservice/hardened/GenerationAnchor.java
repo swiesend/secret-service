@@ -17,7 +17,7 @@ package de.swiesend.secretservice.hardened;
  * {@link #read()} as a floor: a loaded snapshot whose generation is below the floor is refused
  * (fail-closed), so a rollback is detected rather than honoured.</p>
  *
- * <h3>Contract</h3>
+ * <h2>Contract</h2>
  * <ul>
  *   <li>{@link #read()} returns the current anchored value. It must be non-decreasing across the
  *       lifetime of the backing store -- once a value has been observed, a later {@code read()}
@@ -37,7 +37,7 @@ package de.swiesend.secretservice.hardened;
  * non-anchored keystore whose small generation sits below a freshly provisioned counter will be
  * refused as a rollback -- provision a fresh counter and rotate instead.</p>
  *
- * <h3>One anchor per collection</h3>
+ * <h2>One anchor per collection</h2>
  * <p><b>An anchor must back exactly one collection.</b> The floor is global but each collection
  * keeps its own generation seeded from it, so two collections sharing an anchor ping-pong: whichever
  * persisted last sits above the floor and pushes the other below it, which is then refused as a

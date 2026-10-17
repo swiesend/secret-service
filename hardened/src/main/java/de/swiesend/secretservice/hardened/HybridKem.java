@@ -34,7 +34,7 @@ import java.util.Arrays;
  * {@link #postQuantumAvailable()} reports the truth and the {@link Envelope#FLAG_PQ_HYBRID}
  * flag is left unset on writes.</p>
  *
- * <h3>Per-envelope flow (hybrid)</h3>
+ * <h2>Per-envelope flow (hybrid)</h2>
  * <ol>
  *   <li>Generate an ephemeral X25519 keypair.</li>
  *   <li>{@code ss_x25519 = ECDH(ephemeral_priv, epoch_x25519_pub)}.</li>
