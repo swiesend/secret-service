@@ -4,10 +4,12 @@ import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import de.swiesend.secretservice.functional.SearchMode;
+import de.swiesend.secretservice.integration.test.Dialogs;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -111,13 +113,17 @@ class CollectionTest {
         assertTrue(collection.delete());
     }
 
-    // Disabled: lockService() locks the WHOLE secret service, including the user's login keyring,
-    // and nothing here re-unlocks it. On a real desktop that leaves the login keyring locked, so the
-    // next access pops an interactive "unlock keyring" prompt. It is also gnome-keyring-specific --
-    // setUp cannot even open a session on KWallet/KeePassXC -- so it must not run under
-    // -Psystem-test either. (deleteALockedCollection covers the locked-item case without the global
-    // side-effect; remove @Disabled locally to run this against a throwaway gnome-keyring.)
-    @Disabled("Locks the whole service incl. the login keyring (interactive prompt); gnome-keyring only")
+    // Only where someone answers the dialogs of a keyring of the run's own, as in CI's
+    // gnome-keyring-dialogs leg: lockService() locks the WHOLE secret service, including the login
+    // keyring, and nothing here re-unlocks it. On a real desktop that leaves the login keyring locked,
+    // so the next access pops an interactive "unlock keyring" prompt. It is also
+    // gnome-keyring-specific -- setUp cannot even open a session on KWallet/KeePassXC -- so it must not
+    // run under -Psystem-test either. (deleteALockedCollection covers the locked-item case without the
+    // global side-effect.)
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Locks the whole service incl. the login keyring (interactive prompt); gnome-keyring only")
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     @Test
     void deleteWithALockedService() {
         assertTrue(service.getService().lockService());

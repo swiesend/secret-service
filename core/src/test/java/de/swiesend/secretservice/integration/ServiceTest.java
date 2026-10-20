@@ -3,11 +3,12 @@ package de.swiesend.secretservice.integration;
 import de.swiesend.secretservice.*;
 import de.swiesend.secretservice.Collection;
 import org.freedesktop.dbus.DBusPath;
-import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.types.Variant;
 import de.swiesend.secretservice.errors.NoSuchObject;
 import de.swiesend.secretservice.integration.test.Context;
+import de.swiesend.secretservice.integration.test.Dialogs;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +89,8 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled("Creates a collection without a password, which gnome-keyring does only through its dialog")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Creates a collection without a password, which gnome-keyring does only through its dialog")
     public void createCollection() {
         context.ensureCollection();
 
@@ -107,19 +109,15 @@ public class ServiceTest {
         DBusPath createPrompt = response.b;
         if (collectionPath.getPath().equals("/")) {
             assertTrue(createPrompt.getPath().startsWith("/org/freedesktop/secrets/prompt/p"));
-            context.prompt.await(createPrompt);
+            Prompt.Completed completed = context.prompt.await(createPrompt);
+            assertNotNull(completed, "the prompt completed");
+            assertFalse(completed.dismissed, "the dialog was answered");
         } else {
             assertEquals("/", createPrompt.getPath());
         }
 
         List<DBusPath> after = context.service.getCollections().get();
-        DBusSignal[] handled = context.prompt.getSignalHandler().getHandled();
-        Prompt.Completed completed = (Prompt.Completed) handled[0];
-        if (completed.dismissed) {
-            assertEquals(before.size(), after.size());
-        } else {
-            assertEquals(before.size() + 1, after.size());
-        }
+        assertEquals(before.size() + 1, after.size());
     }
 
     @Test
@@ -139,7 +137,8 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled("Unlocks through gnome-keyring's password dialog, which needs a user")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Unlocks through gnome-keyring's password dialog, which needs a user")
     public void unlockCollections() {
 
         Pair<List<DBusPath>, DBusPath> response;
@@ -167,15 +166,14 @@ public class ServiceTest {
         assertEquals(0, unlocked.size());
         prompt = response.b;
         completed = context.prompt.await(prompt);
-        if (completed.dismissed) {
-            assertTrue(context.collection.isLocked());
-        } else {
-            assertFalse(context.collection.isLocked());
-        }
+        assertNotNull(completed, "the prompt completed");
+        assertFalse(completed.dismissed, "the dialog was answered");
+        assertFalse(context.collection.isLocked());
     }
 
     @Test
-    @Disabled("Unlocks through gnome-keyring's password dialog, which needs a user")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Unlocks through gnome-keyring's password dialog, which needs a user")
     public void unlockItems() {
         context.ensureItem();
 
@@ -198,15 +196,16 @@ public class ServiceTest {
         assertEquals(0, unlocked.size());
         prompt = response.b;
         Prompt.Completed completed = context.prompt.await(prompt);
-        if (completed.dismissed) {
-            assertTrue(context.item.isLocked());
-        } else {
-            assertFalse(context.item.isLocked());
-        }
+        assertNotNull(completed, "the prompt completed");
+        assertFalse(completed.dismissed, "the dialog was answered");
+        assertFalse(context.item.isLocked());
     }
 
     @Test
-    @Disabled("Locks the user's login keyring, which only its password dialog unlocks again")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Locks the user's login keyring, which only its password dialog unlocks again")
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void lockCommonCollections() throws InterruptedException, NoSuchObject {
         context.ensureSession();
 
@@ -235,16 +234,32 @@ public class ServiceTest {
             response = context.service.unlock(collection).get();
             prompt = response.b;
             if (!prompt.getPath().equals("/")) {
-                context.prompt.await(prompt);
+                Prompt.Completed completed = context.prompt.await(prompt);
+                assertNotNull(completed, "the prompt completed");
+                assertFalse(completed.dismissed, "the dialog was answered");
             }
+            assertFalse(new Collection(collections.get(i), context.service.getConnection()).isLocked(),
+                    collections.get(i) + " is unlocked again");
         }
     }
 
     @Test
-    @Disabled("Locks every collection, the user's login keyring included, which only its password dialog unlocks again")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Locks every collection, the user's login keyring included, which only its password dialog unlocks again")
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void lockService() {
         context.ensureSession();
-        context.service.lockService();
+        assertTrue(context.service.lockService());
+
+        Collection login = new Collection("login", context.service.getConnection());
+        assertTrue(login.isLocked(), "the login keyring is locked");
+        // Its dialog unlocks it again, so that the tests after this one find it unlocked.
+        DBusPath prompt = context.service.unlock(List.of(login.getPath())).get().b;
+        Prompt.Completed completed = context.prompt.await(prompt);
+        assertNotNull(completed, "the prompt completed");
+        assertFalse(completed.dismissed, "the dialog was answered");
+        assertFalse(login.isLocked(), "the login keyring is unlocked again");
     }
 
     @Test

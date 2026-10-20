@@ -8,7 +8,9 @@ import org.freedesktop.dbus.messages.DBusSignal;
 import de.swiesend.secretservice.handlers.SignalHandler;
 import de.swiesend.secretservice.interfaces.Prompt;
 import de.swiesend.secretservice.integration.test.Context;
+import de.swiesend.secretservice.integration.test.Dialogs;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +41,10 @@ public class PromptTest {
     }
 
     @Test
-    @Disabled("Locks the user's default collection and waits for its password dialog")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Locks the user's default collection and waits for its password dialog")
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void prompt() {
         DBusPath defaultCollection = Static.Convert.toObjectPath(DEFAULT_COLLECTION);
         ArrayList<DBusPath> cs = new ArrayList<>();
@@ -56,6 +61,8 @@ public class PromptTest {
 
         Prompt.Completed completed = context.prompt.await(prompt, DEFAULT_PROMPT_TIMEOUT);
         assertNotNull(completed);
+        assertFalse(completed.dismissed, "the dialog was answered");
+        assertFalse(new Collection(defaultCollection, context.service.getConnection()).isLocked());
     }
 
     @Test
