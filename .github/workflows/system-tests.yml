@@ -116,7 +116,8 @@ jobs:
             secret-service-${{ matrix.provider }} \
             mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }} \
               -Dsecret-service.system-test.lockable=${{ matrix.lockable || false }} \
-              -Dsecret-service.system-test.dialogs-answered=${{ matrix.dialogs-answered || false }}
+              -Dsecret-service.system-test.dialogs-answered=${{ matrix.dialogs-answered || false }} \
+              -Dsecret-service.system-test.default-collection=${{ matrix.default-collection }}
 
       # The tests of the default suite that need someone to answer the provider's dialogs, most of
       # them in a keyring of the container's own. The whole suite runs, as the regression tests
