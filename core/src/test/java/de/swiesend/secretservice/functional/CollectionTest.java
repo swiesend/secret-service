@@ -69,6 +69,14 @@ class CollectionTest {
     }
 
     @Test
+    void createItemWithANonAsciiSecret() {
+        String item = collection.createItem("item", "sécrèt").get();
+        char[] secret = collection.getSecret(item).get();
+        assertArrayEquals("sécrèt".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
+    }
+
+    @Test
     void createItemWithAttribute() {
         for (String i : Arrays.asList("a", "b", "c")) {
             Map<String, String> expectedAttributes = Map.of(i, i, i + i, i + i);
@@ -209,6 +217,13 @@ class CollectionTest {
         assertTrue(maybeItems.isPresent());
         List<String> items = maybeItems.get();
         assertEquals(2, items.size());
+    }
+
+    @Test
+    void getItemsFindsNoItem() {
+        collection.createItem("item", "secret", Map.of("key", "value")).get();
+        assertEquals(Optional.of(List.of()), collection.getItems(Map.of("key", "another value")),
+                "an empty list, which is no failure");
     }
 
     @Test
@@ -442,6 +457,63 @@ class CollectionTest {
         if (actualAttributes.containsKey("xdg:schema")) {
             assertEquals("org.freedesktop.Secret.Generic", actualAttributes.get("xdg:schema"));
         }
+    }
+
+    @Test
+    void updateItemChangesTheLabelOnly() {
+        String item = collection.createItem("item", "secret", Map.of("key", "value")).get();
+
+        // A null secret and null attributes stay as they are.
+        assertTrue(collection.updateItem(item, "renamed item", null, null));
+
+        assertEquals("renamed item", collection.getItemLabel(item).get());
+        char[] secret = collection.getSecret(item).get();
+        assertArrayEquals("secret".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
+        assertEquals("value", collection.getAttributes(item).get().get("key"));
+    }
+
+    @Test
+    void aLockedCollectionOpenedAgainWithItsPasswordUnlocksWithoutADialog() throws Exception {
+        String item = collection.createItem("item", "secret").get();
+        assertTrue(collection.lock());
+
+        // gnome-keyring takes the password through its own interface, so no dialog asks for it.
+        try (CollectionInterface again = session.collection("test-collection", Optional.of("password")).get()) {
+            char[] secret = again.getSecret(item).get();
+            assertArrayEquals("secret".toCharArray(), secret);
+            Arrays.fill(secret, '\0');
+        }
+    }
+
+    @Test
+    void aCollectionOpenedAgainReadsTheItemsOfTheFirst() throws Exception {
+        String item;
+        // Each opens and closes a connection of its own.
+        try (CollectionInterface first = Collection.open("test-collection", Optional.of("password")).get()) {
+            item = first.createItem("reopen-test", "secret-value").get();
+        }
+        try (CollectionInterface second = Collection.open("test-collection", Optional.of("password")).get()) {
+            char[] secret = second.getSecret(item).get();
+            assertArrayEquals("secret-value".toCharArray(), secret);
+            Arrays.fill(secret, '\0');
+        }
+    }
+
+    @Test
+    void twoHandlesOfOneSessionShareTheItems() throws Exception {
+        CollectionInterface other = session.collectionById(collection.getId().get()).get();
+        String item = collection.createItem("shared-test", "secret").get();
+
+        char[] secret = other.getSecret(item).get();
+        assertArrayEquals("secret".toCharArray(), secret);
+        Arrays.fill(secret, '\0');
+
+        // Closing one leaves the other, and their session, working.
+        other.close();
+        char[] again = collection.getSecret(item).get();
+        assertArrayEquals("secret".toCharArray(), again);
+        Arrays.fill(again, '\0');
     }
 
     @Test
