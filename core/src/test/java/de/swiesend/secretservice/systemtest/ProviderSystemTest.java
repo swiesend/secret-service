@@ -346,10 +346,10 @@ public class ProviderSystemTest {
     }
 
     /**
-     * Whether someone answers the provider's dialogs, as xdotool does in the CI leg that runs
-     * KeePassXC with ConfirmAccessItem on: {@code -Dsecret-service.system-test.dialogs-answered=true}.
-     * There a second client needs a dialog for the items of the first, which elsewhere nobody
-     * answers.
+     * Whether someone answers the provider's dialogs, as xdotool does in the CI legs that run
+     * KeePassXC with ConfirmAccessItem on and gnome-keyring with its dialogs shown:
+     * {@code -Dsecret-service.system-test.dialogs-answered=true}. There a second client needs a
+     * dialog for the items of the first, which elsewhere nobody answers.
      */
     private static final boolean DIALOGS_ANSWERED = Boolean.getBoolean("secret-service.system-test.dialogs-answered");
 
@@ -387,7 +387,9 @@ public class ProviderSystemTest {
             assertNotNull(second, "createItem returned empty");
             Map<String, String> read;
             try (Client other = new Client()) {
-                // KeePassXC shows one dialog for all the items of one Unlock call.
+                // KeePassXC shows one dialog for all the items of one Unlock call. gnome-keyring
+                // shows its unlock dialog: reading all secrets asks for the user's permission, and
+                // this client has no password to unlock the collection with.
                 read = other.collection.withSecrets(secrets -> {
                     Map<String, String> copy = new java.util.HashMap<>();
                     for (String path : List.of(first, second)) {

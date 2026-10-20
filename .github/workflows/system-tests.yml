@@ -2,9 +2,9 @@ name: System Tests
 
 # Runs the provider-agnostic system test suite (@Tag("system-test")) against each
 # supported Secret Service provider. gnome-keyring is the reliable, blocking leg.
-# KeePassXC's headless bring-up is fragile, and KWallet's and oo7's have yet to prove
-# themselves on the runners, so those legs are non-blocking (continue-on-error) and
-# informative.
+# KeePassXC's headless bring-up is fragile, and KWallet's, oo7's and that of gnome-keyring
+# with its dialogs answered have yet to prove themselves on the runners, so those legs are
+# non-blocking (continue-on-error) and informative.
 
 on:
   push:
@@ -45,6 +45,12 @@ jobs:
           - provider: gnome-keyring
             experimental: false
             collection: test
+          # gnome-keyring as at a desktop: gcr-prompter shows its dialogs on a virtual X server,
+          # and the container answers each through xdotool with the password of its keyrings.
+          - provider: gnome-keyring-dialogs
+            experimental: true
+            collection: test
+            dialogs-answered: true
           - provider: kwallet
             experimental: true
             collection: kdewallet
@@ -107,8 +113,9 @@ jobs:
 
       # The container runs --rm, so anything it left in /tmp is gone by the time the job
       # is read. Surefire reports are collected for every provider; the daemon logs for
-      # keepassxc, kwallet and oo7, which write them under the mounted workspace.
-      # gnome-keyring's daemon writes to the job's output.
+      # keepassxc, kwallet, oo7 and gnome-keyring-dialogs, which write them under the mounted
+      # workspace, the last with a log of the dialogs it answered. The daemon of the
+      # gnome-keyring leg forks and logs to syslog, which its container does not have.
       - name: Collect provider diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

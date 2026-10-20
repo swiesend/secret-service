@@ -158,7 +158,8 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
   runs against whichever provider serves `org.freedesktop.secrets` (gnome-keyring, KeePassXC,
   KWallet), skipping cleanly (`Assumptions`) when a provider/collection is absent. The
   `system-tests.yml` workflow runs it against all three providers, KWallet in versions 5 and 6
-  (the KWallet/KeePassXC legs are non-blocking).
+  (the KWallet/KeePassXC legs are non-blocking), and against gnome-keyring with its dialogs shown
+  and answered through xdotool (`gnome-keyring-dialogs`, non-blocking too).
 - The standalone developer GUI lives in the separate `tools/gui` project (not in the test suite or
   the core jar). Launch it with `mvn -DskipTests -Dgpg.skip=true install` then
   `mvn -f tools/gui/pom.xml exec:java`.
