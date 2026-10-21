@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -46,7 +47,7 @@ class SharedSecretTest {
     @Test
     void aSessionWhoseSecretHasAZeroTopByteIsReplaced() throws Exception {
         harness.start(false);
-        harness.fake().setHashSecretsWithoutLeadingZeros(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS);
         harness.fake().setZeroTopByteSecrets(1);
         int opened = harness.fake().openSessionCalls();
         int closed = harness.fake().closeSessionCalls();
@@ -75,7 +76,7 @@ class SharedSecretTest {
     @Test
     void anyOtherSessionIsKept() throws Exception {
         harness.start(false);
-        harness.fake().setHashSecretsWithoutLeadingZeros(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS);
         int opened = harness.fake().openSessionCalls();
         int closed = harness.fake().closeSessionCalls();
 

@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -99,7 +100,7 @@ class BulkUnlockTest {
         // The user dismisses the dialog.
         CollectionInterface collection = twoLockedItems();
         harness.fake().setDismissPrompts(true);
-        harness.fake().setReadLockedItemsAsEmpty(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_READS_A_LOCKED_ITEM_AS_EMPTY);
 
         assertEquals(Map.of(), collection.withSecrets(BulkUnlockTest::strings).orElseThrow());
         assertEquals(1, itemUnlocks().size(), "asked once");

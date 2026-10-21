@@ -51,6 +51,9 @@ import javax.crypto.spec.DHPublicKeySpec;
  * {@code Prompt} and {@code Dismiss} reach the fake, which records them. The prompt that unlocks
  * the collection shows its dialog as gnome-keyring does: once the client calls {@code Prompt}, and
  * one dialog at a time.</p>
+ *
+ * <p>The fake follows the specification where {@link ProviderBug} lists a provider's bug, until a
+ * test makes it {@link #reproduce} that bug.</p>
  */
 public final class FakeSecretService {
 
@@ -186,6 +189,28 @@ public final class FakeSecretService {
     public FakeSecretService(DBusConnection connection, boolean itemLocked) {
         this.connection = connection;
         this.itemLocked = itemLocked;
+    }
+
+    /**
+     * Makes the fake behave as a provider with these bugs does; it follows the specification there
+     * otherwise. A bug that the fake always shows needs no call.
+     *
+     * @throws UnsupportedOperationException for a bug that the fake does not reproduce
+     */
+    public void reproduce(ProviderBug... bugs) {
+        for (ProviderBug bug : bugs) {
+            if (bug.fake == ProviderBug.Fake.NOT_REPRODUCED) {
+                throw new UnsupportedOperationException(
+                        bug + " is not reproduced by the fake; its description says why");
+            }
+            reproduced.add(bug);
+        }
+    }
+
+    private final java.util.Set<ProviderBug> reproduced = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    private boolean reproduces(ProviderBug bug) {
+        return reproduced.contains(bug);
     }
 
     /** Paths that {@code Unlock} was called with, in order. */
@@ -493,26 +518,12 @@ public final class FakeSecretService {
     private volatile String secretValue = SECRET_VALUE;
     private volatile java.nio.charset.Charset secretEncoding = StandardCharsets.UTF_8;
 
-    /**
-     * Makes {@code GetSecret} answer for a locked item with an empty secret instead of an error, as
-     * KWallet does (KDE bug 524650).
-     */
-    public void setReadLockedItemsAsEmpty(boolean empty) { this.readLockedItemsAsEmpty = empty; }
-    private volatile boolean readLockedItemsAsEmpty;
-
     /** How often {@code GetSecret} was called for a locked item. */
     public int lockedItemReads() {
         return lockedItemReads.get();
     }
 
     private final java.util.concurrent.atomic.AtomicInteger lockedItemReads = new java.util.concurrent.atomic.AtomicInteger();
-
-    /**
-     * Hashes a session's shared secret without its leading zero bytes, as KWallet does (OpenSSL's
-     * {@code DH_compute_key}). gnome-keyring and KeePassXC hash all of its 128 bytes.
-     */
-    public void setHashSecretsWithoutLeadingZeros(boolean withoutZeros) { this.hashWithoutLeadingZeros = withoutZeros; }
-    private volatile boolean hashWithoutLeadingZeros;
 
     /**
      * Gives the next {@code count} sessions a shared secret whose top byte is zero, and every other
@@ -612,7 +623,9 @@ public final class FakeSecretService {
                     secret = secret.multiply(theirs.getY()).mod(p);
                 }
                 byte[] shared = toPrimeLength(secret);
-                sessionKey = hkdfSha256To128(hashWithoutLeadingZeros ? withoutLeadingZeros(shared) : shared);
+                sessionKey = hkdfSha256To128(
+                        reproduces(ProviderBug.KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS)
+                                ? withoutLeadingZeros(shared) : shared);
 
                 return new Pair<>(new Variant<>(ourY.toByteArray()), new DBusPath(SESSION_PATH));
             } catch (Exception e) {
@@ -801,6 +814,11 @@ public final class FakeSecretService {
 
         @Override
         public DBusPath Delete() {
+            if (isLocked(path)) {
+                // "Done", and the item kept, as KWallet keeps its secret.
+                if (reproduces(ProviderBug.KWALLET_ANSWERS_DELETE_OF_A_LOCKED_ITEM_AS_DONE)) return new DBusPath("/");
+                throw new org.freedesktop.Secret.Error.IsLocked("fake: the item is locked");
+            }
             // Deleted at once, answering "/" for "no prompt necessary", as gnome-keyring does. The
             // fake does not own org.gnome.keyring, so the client sees a provider other than
             // gnome-keyring giving that answer.
@@ -816,8 +834,10 @@ public final class FakeSecretService {
             if (locked) {
                 lockedItemReads.incrementAndGet();
                 // What a provider does for a locked item -- including one locked only because its
-                // collection is. The client must not get here. KWallet answers with an empty secret.
-                if (!readLockedItemsAsEmpty) throw new IllegalStateException("fake: item is locked");
+                // collection is. The client must not get here.
+                if (!reproduces(ProviderBug.KWALLET_READS_A_LOCKED_ITEM_AS_EMPTY)) {
+                    throw new org.freedesktop.Secret.Error.IsLocked("fake: the item is locked");
+                }
             }
             try {
                 byte[] iv = new byte[16];
@@ -850,13 +870,30 @@ public final class FakeSecretService {
         public void SetSecret(WireSecret secret) {
             setSecretCalls.incrementAndGet();
             sentContentTypes.add(secret.contentType());
+            // Stores nothing either way: KWallet answers success and drops it.
+            if (isLocked(path) && !reproduces(ProviderBug.KWALLET_DROPS_THE_SECRET_FOR_A_LOCKED_ITEM)) {
+                throw new org.freedesktop.Secret.Error.IsLocked("fake: the item is locked");
+            }
         }
 
         @Override
         public <A> void Set(String iface, String property, A value) {
             // Changes nothing: the tests need to see which properties were set, not the new values.
             if (refuseItemPropertyChanges) throw new IllegalStateException("fake: the item is locked");
+            if (isLocked(path) && !takesChangesWhileLocked()) {
+                throw new org.freedesktop.Secret.Error.IsLocked("fake: the item is locked");
+            }
             itemPropertySets.add(property);
+        }
+
+        /**
+         * KWallet takes a change to an item of a closed wallet, and KeePassXC one to an item that it
+         * keeps locked for the client while the database is open.
+         */
+        private boolean takesChangesWhileLocked() {
+            return collectionLocked
+                    ? reproduces(ProviderBug.KWALLET_TAKES_THE_LABEL_OF_A_LOCKED_ITEM)
+                    : reproduces(ProviderBug.KEEPASSXC_CHANGES_AN_ITEM_IT_HAS_NOT_ALLOWED);
         }
 
         @Override public Map<String, Variant<?>> GetAll(String iface) { return Map.of(); }

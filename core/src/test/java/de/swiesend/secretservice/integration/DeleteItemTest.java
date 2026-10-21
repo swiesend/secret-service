@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -50,6 +51,7 @@ class DeleteItemTest {
         // well, and deletes nothing, so "/" alone cannot be taken as done.
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KWALLET_ANSWERS_DELETE_OF_A_LOCKED_ITEM_AS_DONE);
         fake.lockCollection();
         fake.setRefuseCollectionUnlock(true);
 

@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -20,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * an error, but KWallet answers with an empty secret (KDE bug 524650), which the library passed on
  * as the item's secret: after an unlock that the user refused, the item's password was empty.
  *
- * <p>Against {@link FakeSecretService}, which answers as KWallet does.</p>
+ * <p>Against {@link FakeSecretService}, with KWallet's bug reproduced.</p>
  */
 class LockedItemSecretTest {
 
@@ -40,7 +41,7 @@ class LockedItemSecretTest {
     /** A locked collection that stays locked, as when the user refuses to unlock it. */
     private CollectionInterface refusedUnlock() throws Exception {
         CollectionInterface collection = harness.start(false);
-        harness.fake().setReadLockedItemsAsEmpty(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_READS_A_LOCKED_ITEM_AS_EMPTY);
         harness.fake().lockCollection();
         harness.fake().setRefuseCollectionUnlock(true);
         return collection;
@@ -71,7 +72,7 @@ class LockedItemSecretTest {
         // The item is locked on its own, as KeePassXC locks one, and the user dismisses the
         // dialog that would unlock it.
         CollectionInterface collection = harness.start(true);
-        harness.fake().setReadLockedItemsAsEmpty(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_READS_A_LOCKED_ITEM_AS_EMPTY);
         harness.fake().setDismissPrompts(true);
 
         Optional<Map<String, char[]>> secrets = collection.getSecrets();
@@ -85,7 +86,7 @@ class LockedItemSecretTest {
     void aBulkReadReadsAnUnlockedItem() throws Exception {
         // The counterpart of the test above: the skip there is the lock check's.
         CollectionInterface collection = harness.start(false);
-        harness.fake().setReadLockedItemsAsEmpty(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_READS_A_LOCKED_ITEM_AS_EMPTY);
 
         Optional<Map<String, char[]>> secrets = collection.getSecrets();
 
