@@ -62,8 +62,8 @@ class PromptResultTest {
         harness.start(false);
         Prompt prompt = new Prompt(harness.service().getService());
         try {
-            // The answer to an earlier prompt on the same path: the user refused that one. The fake
-            // gives every prompt the same path; a provider that restarts reuses its paths too.
+            // The answer to an earlier prompt on the same path: the user refused that one. A
+            // provider that restarts numbers its prompts from the start again.
             send(FakeSecretService.PROMPT_PATH, true);
             assertTrue(received(prompt, 1), "the precondition: the earlier answer was received");
 

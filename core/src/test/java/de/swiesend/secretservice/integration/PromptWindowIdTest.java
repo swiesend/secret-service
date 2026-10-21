@@ -1,27 +1,21 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
-import de.swiesend.secretservice.Prompt;
-import de.swiesend.secretservice.handlers.MessageHandler;
-import org.freedesktop.dbus.DBusPath;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * {@code Prompt(window_id)} takes the caller's window, over which the provider shows its dialog:
  * KeePassXC reads it as an X11 window, oo7 as "x11:" or "wayland:" and a handle. The library sent
  * the last segment of the prompt's path, which names the prompt and no window.
- *
- * <p>The fake provider exports no Prompt object, so the call is recorded on the library's side.</p>
  */
 class PromptWindowIdTest {
 
@@ -40,26 +34,14 @@ class PromptWindowIdTest {
 
     @Test
     void aPromptIsShownWithAnEmptyWindowId() throws Exception {
-        harness.start(false);
-        List<Object> windowIds = Collections.synchronizedList(new ArrayList<>());
-        Prompt prompt = new Prompt(harness.service().getService()) {
-            {
-                msg = new MessageHandler(getConnection()) {
-                    @Override
-                    public Optional<Object[]> send(String service, String path, String iface, String method,
-                                                   String signature, Object... args) {
-                        if ("Prompt".equals(method)) windowIds.add(args[0]);
-                        return Optional.of(new Object[0]);
-                    }
-                };
-            }
-        };
-        try {
-            prompt.prompt(new DBusPath(FakeSecretService.PROMPT_PATH));
+        CollectionInterface collection = harness.start(true);
+        harness.fake().setDismissPrompts(true);
 
-            assertEquals(List.of(""), windowIds, "not \"fake\", the id of the prompt");
-        } finally {
-            prompt.getSignalHandler().disconnect();
-        }
+        assertFalse(collection.unlockItem(FakeSecretService.ITEM_PATH),
+                "the precondition: the user refused the prompt that unlocks the item");
+
+        assertEquals(1, harness.fake().promptCalls().size(), "the library showed the prompt");
+        assertEquals(List.of(""), harness.fake().promptWindowIds(),
+                "with the empty window id, not the last part of the prompt's path");
     }
 }

@@ -3,6 +3,7 @@ package de.swiesend.secretservice;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBusInterface;
 import org.freedesktop.dbus.interfaces.Properties;
 import org.freedesktop.dbus.types.Variant;
@@ -19,8 +20,10 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +46,11 @@ import javax.crypto.spec.DHPublicKeySpec;
  * {@code ReadAlias}, {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a
  * provider: it does no access control and keeps its secret in a field. A test can add a second
  * item, with a lock of its own, for the reads of several items.</p>
+ *
+ * <p>Each prompt it hands out has a path of its own and is an object on the bus, so the client's
+ * {@code Prompt} and {@code Dismiss} reach the fake, which records them. The prompt that unlocks
+ * the collection shows its dialog as gnome-keyring does: once the client calls {@code Prompt}, and
+ * one dialog at a time.</p>
  */
 public final class FakeSecretService {
 
@@ -58,7 +66,13 @@ public final class FakeSecretService {
     /** The item that {@link #addSecondItem(boolean)} adds. */
     public static final String SECOND_ITEM_PATH = COLLECTION_PATH + "/3";
     public static final String SESSION_PATH = "/org/freedesktop/secrets/session/fake";
+    /** A prompt's path that the fake never hands out, for the signals that a test sends itself. */
     public static final String PROMPT_PATH = "/org/freedesktop/secrets/prompt/fake";
+    /**
+     * Where the fake's own prompts are: "u" and a number for one that unlocks the collection, "p"
+     * and a number for any other, as gnome-keyring names its prompts.
+     */
+    private static final String PROMPT_PREFIX = "/org/freedesktop/secrets/prompt/";
 
     /** What the fake item holds. */
     public static final String SECRET_VALUE = "the-locked-secret";
@@ -136,6 +150,20 @@ public final class FakeSecretService {
     @DBusInterfaceName(Static.Interfaces.SESSION)
     public interface WireSession extends DBusInterface {
         void Close();
+    }
+
+    /**
+     * Without {@code @DBusInterfaceName}, unlike the interfaces above. dbus-java keeps one JVM-wide
+     * map from an annotated D-Bus interface name to the Java interface last exported under it, and
+     * builds each incoming signal of that interface as that Java interface's nested class: with
+     * org.freedesktop.Secret.Prompt mapped here, the client could no longer build its
+     * Prompt.Completed, in this test and in every later one in the JVM. dbus-java dispatches an
+     * incoming call by member name and signature, so the client's Prompt and Dismiss reach this
+     * interface all the same.
+     */
+    public interface WirePrompt extends DBusInterface {
+        void Prompt(String windowId);
+        void Dismiss();
     }
 
 
@@ -265,22 +293,74 @@ public final class FakeSecretService {
     public void setSearchReplyDelay(java.time.Duration delay) { this.searchReplyDelay = delay; }
     private volatile java.time.Duration searchReplyDelay = java.time.Duration.ZERO;
 
-    /** State change the outstanding Lock prompt would authorise; applied only on approval. */
+    /** State change the outstanding Lock or CreateItem prompt would authorise; applied only on approval. */
     private volatile Runnable pendingApproval;
+    /** The prompt that {@link #pendingApproval} belongs to. */
+    private volatile FakePrompt pendingPrompt;
 
     /**
-     * Answers the outstanding Lock prompt affirmatively: applies the change it authorises, then
-     * emits Completed. Lock uses explicit approval rather than a timer, because a timer applies the
-     * change whether or not the client ever engaged with the prompt, which makes "the client
-     * declined to prompt" indistinguishable from "it happened anyway".
+     * Answers the open prompt affirmatively, as the user does: the unlock dialog on the screen, which
+     * unlocks the collection, or else the outstanding Lock or CreateItem prompt, whose change it
+     * applies before Completed goes out. Those prompts use explicit approval rather than a timer,
+     * because a timer applies the change whether or not the client ever engaged with the prompt,
+     * which makes "the client declined to prompt" indistinguishable from "it happened anyway".
      */
     public void approvePendingPrompt() {
+        synchronized (promptLock) {
+            FakePrompt dialog = unlockDialogs.pollFirst();
+            if (dialog != null) {
+                collectionLocked = false;
+                complete(dialog, false, unlockedCollection());
+                showNextDialog();
+                return;
+            }
+        }
+        FakePrompt prompt = pendingPrompt;
         Runnable apply = pendingApproval;
-        pendingApproval = null;
-        if (apply != null) apply.run();
         Variant<?> result = pendingResult;
+        clearPendingApproval();
+        if (prompt == null) return;
+        if (apply != null) apply.run();
+        emitCompletedLater(prompt, false, () -> { }, result == null ? noResult() : result);
+    }
+
+    /**
+     * Refuses the open prompt, as the user does who cancels its dialog: the unlock dialog on the
+     * screen, after which the next unlock prompt that waits shows its own, or else the outstanding
+     * Lock or CreateItem prompt.
+     */
+    public void refusePendingPrompt() {
+        synchronized (promptLock) {
+            FakePrompt dialog = unlockDialogs.pollFirst();
+            if (dialog != null) {
+                complete(dialog, true, noResult());
+                showNextDialog();
+                return;
+            }
+        }
+        FakePrompt prompt = pendingPrompt;
+        clearPendingApproval();
+        if (prompt != null) emitCompletedLater(prompt, true, () -> { }, noResult());
+    }
+
+    /**
+     * Hands out a prompt that completes only when a test approves or refuses it, and applies
+     * {@code change} on approval.
+     *
+     * @param result what Completed carries on approval, or null for an empty list of paths
+     */
+    private FakePrompt awaitApproval(Runnable change, Variant<?> result) {
+        FakePrompt prompt = newPrompt(false);
+        pendingPrompt = prompt;
+        pendingResult = result;
+        pendingApproval = change;
+        return prompt;
+    }
+
+    private void clearPendingApproval() {
+        pendingApproval = null;
+        pendingPrompt = null;
         pendingResult = null;
-        emitCompletedLater(false, () -> { }, result == null ? new Variant<>(new ArrayList<DBusPath>(), "ao") : result);
     }
 
     /** What the outstanding prompt answers with, when it is not an empty list of paths. */
@@ -303,8 +383,31 @@ public final class FakeSecretService {
 
     private final List<java.util.Set<String>> createItemPropertyNames = Collections.synchronizedList(new ArrayList<>());
 
-    /** Whether a Lock prompt is outstanding, so a test can wait for it instead of racing it. */
-    public boolean hasPendingPrompt() { return pendingApproval != null; }
+    /**
+     * Whether a prompt waits for the user, so a test can wait for it instead of racing it: an unlock
+     * dialog on the screen, or an outstanding Lock or CreateItem prompt.
+     */
+    public boolean hasPendingPrompt() {
+        synchronized (promptLock) {
+            if (!unlockDialogs.isEmpty()) return true;
+        }
+        return pendingApproval != null;
+    }
+
+    /** The paths of the prompts that the client called {@code Prompt} on, in call order. */
+    public List<String> promptCalls() {
+        return List.copyOf(promptCalls);
+    }
+
+    /** The window ids that the client's {@code Prompt} calls gave, in call order. */
+    public List<String> promptWindowIds() {
+        return List.copyOf(promptWindowIds);
+    }
+
+    /** The paths of the prompts that the client called {@code Dismiss} on, in call order. */
+    public List<String> dismissCalls() {
+        return List.copyOf(dismissCalls);
+    }
 
     /** Waits for any pending prompt emission, so teardown does not race it. */
     public void awaitPendingPrompt() {
@@ -529,9 +632,9 @@ public final class FakeSecretService {
                     return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
                 }
                 if (requirePromptForCollectionUnlock && collectionLocked) {
-                    // Unlocked only when a test answers the prompt, as for the Lock prompts.
-                    pendingApproval = () -> collectionLocked = false;
-                    return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+                    // Unlocked only when a test answers the prompt's dialog, which shows once the
+                    // client calls Prompt on it.
+                    return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(newPrompt(true).path));
                 }
                 // A collection-level unlock succeeds immediately and, crucially, does NOT touch the
                 // item. That asymmetry is the bug under test.
@@ -542,30 +645,28 @@ public final class FakeSecretService {
                 // A REAL prompt path, and a Completed(dismissed=true) to go with it. Answering "/"
                 // instead would leave the client no prompt to await -- so every test would hit the
                 // "no prompt result" path, and the dismissal branch would have no coverage at all.
-                //
-                // No Prompt object is exported: declaring @DBusInterfaceName for
-                // org.freedesktop.Secret.Prompt registers a JVM-wide interface->class mapping that
-                // stops dbus-java constructing the library's own Prompt.Completed. The client's
-                // Prompt() method call therefore fails harmlessly; only the signal matters.
                 itemUnlockPrompts.incrementAndGet();
-                emitCompletedLater(true);
-                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+                FakePrompt prompt = newPrompt(false);
+                emitCompletedLater(prompt, true);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(prompt.path));
             }
             if (unlockFirstItemWithoutPrompt && items.size() > 1) {
                 // The first at once, the rest when the prompt is answered.
                 unlockItem(items.get(0));
                 List<String> rest = items.subList(1, items.size());
                 itemUnlockPrompts.incrementAndGet();
-                emitCompletedLater(false, () -> rest.forEach(FakeSecretService.this::unlockItem));
-                return new Pair<>(new ArrayList<>(List.of(new DBusPath(items.get(0)))), new DBusPath(PROMPT_PATH));
+                FakePrompt prompt = newPrompt(false);
+                emitCompletedLater(prompt, false, () -> rest.forEach(FakeSecretService.this::unlockItem));
+                return new Pair<>(new ArrayList<>(List.of(new DBusPath(items.get(0)))), new DBusPath(prompt.path));
             }
             if (requirePromptForItemOps) {
                 // Unlocked only when the prompt is answered -- see emitCompletedLater. Doing it
                 // here would mean a client that declines to prompt still sees the item unlocked.
                 // One prompt for every item of the call, as KeePassXC shows one dialog for them.
                 itemUnlockPrompts.incrementAndGet();
-                emitCompletedLater(false, () -> items.forEach(FakeSecretService.this::unlockItem));
-                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+                FakePrompt prompt = newPrompt(false);
+                emitCompletedLater(prompt, false, () -> items.forEach(FakeSecretService.this::unlockItem));
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(prompt.path));
             }
             items.forEach(FakeSecretService.this::unlockItem);
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
@@ -580,14 +681,14 @@ public final class FakeSecretService {
                 // locked only when a test calls approvePendingPrompt(), so a client that declines
                 // to prompt leaves it unlocked, as a real provider does when Prompt() is never
                 // called.
-                pendingApproval = () -> itemLocked = true;
-                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+                FakePrompt prompt = awaitApproval(() -> itemLocked = true, null);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(prompt.path));
             }
             boolean collectionRequested = objects.stream().anyMatch(p -> COLLECTION_PATH.equals(p.getPath()));
             if (collectionRequested && requirePromptForCollectionLock && !collectionLocked) {
                 // As for the item above: locked only when a test answers the prompt.
-                pendingApproval = () -> collectionLocked = true;
-                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+                FakePrompt prompt = awaitApproval(() -> collectionLocked = true, null);
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(prompt.path));
             }
             for (DBusPath p : objects) {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
@@ -623,8 +724,9 @@ public final class FakeSecretService {
             // Through a prompt, as a provider without gnome-keyring's password interface creates a
             // collection: the user sets the password there. The user cancels it here, so nothing is
             // created; the tests need to see that the request was made, not a new collection.
-            emitCompletedLater(true);
-            return new Pair<>(new DBusPath("/"), new DBusPath(PROMPT_PATH));
+            FakePrompt prompt = newPrompt(false);
+            emitCompletedLater(prompt, true);
+            return new Pair<>(new DBusPath("/"), new DBusPath(prompt.path));
         }
 
         @Override
@@ -662,9 +764,8 @@ public final class FakeSecretService {
             sentContentTypes.add(secret.contentType());
             // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
             // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
-            pendingApproval = () -> { };
-            pendingResult = new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o");
-            return new Pair<>(new DBusPath("/"), new DBusPath(PROMPT_PATH));
+            FakePrompt prompt = awaitApproval(() -> { }, new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o"));
+            return new Pair<>(new DBusPath("/"), new DBusPath(prompt.path));
         }
 
         @Override
@@ -770,35 +871,154 @@ public final class FakeSecretService {
     }
 
 
+    // ---- prompts ---------------------------------------------------------------------------
+
     /**
-     * Emits {@code Prompt.Completed} shortly after Unlock returns, as a provider does once the user
-     * has answered. The delay lets the client arm its signal handler first -- it does that inside
-     * Prompt.await, which it only reaches after Unlock has returned.
+     * A prompt that the fake handed out. As on a provider, each has a path of its own and is an
+     * object on the bus. Its fields are guarded by {@link #promptLock}.
      */
-    private void emitCompletedLater(boolean dismissed) {
-        emitCompletedLater(dismissed, () -> { });
+    private static final class FakePrompt {
+        final String path;
+        /** Unlocks the collection through gnome-keyring's dialog, shown one at a time. */
+        final boolean unlocksCollection;
+        boolean prompted;
+        boolean completed;
+
+        FakePrompt(String path, boolean unlocksCollection) {
+            this.path = path;
+            this.unlocksCollection = unlocksCollection;
+        }
+    }
+
+    private final Object promptLock = new Object();
+    private int promptNumber;
+    /**
+     * The unlock prompts that the client has called Prompt on and that have no answer, in that
+     * order: the first one's dialog is on the screen, and the others wait for it, as gnome-keyring
+     * queues them.
+     */
+    private final Deque<FakePrompt> unlockDialogs = new ArrayDeque<>();
+    private final List<String> promptCalls = Collections.synchronizedList(new ArrayList<>());
+    private final List<String> promptWindowIds = Collections.synchronizedList(new ArrayList<>());
+    private final List<String> dismissCalls = Collections.synchronizedList(new ArrayList<>());
+
+    /** Hands out a new prompt, on the bus. */
+    private FakePrompt newPrompt(boolean unlocksCollection) {
+        FakePrompt prompt;
+        synchronized (promptLock) {
+            prompt = new FakePrompt(PROMPT_PREFIX + (unlocksCollection ? "u" : "p") + ++promptNumber,
+                    unlocksCollection);
+        }
+        try {
+            connection.exportObject(prompt.path, new PromptImpl(prompt));
+        } catch (DBusException e) {
+            throw new IllegalStateException("fake: could not export a prompt", e);
+        }
+        return prompt;
+    }
+
+    private final class PromptImpl implements WirePrompt {
+        private final FakePrompt prompt;
+
+        PromptImpl(FakePrompt prompt) {
+            this.prompt = prompt;
+        }
+
+        @Override
+        public void Prompt(String windowId) {
+            promptCalls.add(prompt.path);
+            promptWindowIds.add(windowId);
+            synchronized (promptLock) {
+                if (prompt.prompted || prompt.completed) return;
+                prompt.prompted = true;
+                // Every other prompt is answered by a timer or by the test, as the call that
+                // handed it out arranged.
+                if (!prompt.unlocksCollection) return;
+                unlockDialogs.addLast(prompt);
+                showNextDialog();
+            }
+        }
+
+        @Override
+        public void Dismiss() {
+            dismissCalls.add(prompt.path);
+            synchronized (promptLock) {
+                if (prompt.completed) return;
+                boolean shown = unlockDialogs.peekFirst() == prompt;
+                unlockDialogs.remove(prompt);
+                if (pendingPrompt == prompt) clearPendingApproval();
+                complete(prompt, true, noResult());
+                if (shown) showNextDialog();
+            }
+        }
+
+        @Override public String getObjectPath() { return prompt.path; }
+        @Override public boolean isRemote() { return false; }
+    }
+
+    /**
+     * Completes the waiting unlock prompts from the first while the collection is unlocked:
+     * gnome-keyring shows one unlock dialog at a time, and a prompt whose collection was unlocked
+     * while it waited completes without one. The first that remains shows its dialog. The caller
+     * holds {@link #promptLock}.
+     */
+    private void showNextDialog() {
+        FakePrompt next;
+        while ((next = unlockDialogs.peekFirst()) != null && !collectionLocked) {
+            unlockDialogs.removeFirst();
+            complete(next, false, unlockedCollection());
+        }
+    }
+
+    /** Ends {@code prompt} and announces how. The caller holds {@link #promptLock}. */
+    private void complete(FakePrompt prompt, boolean dismissed, Variant<?> result) {
+        prompt.completed = true;
+        try {
+            connection.sendMessage(new de.swiesend.secretservice.interfaces.Prompt.Completed(
+                    prompt.path, dismissed, result));
+        } catch (Exception e) {
+            // The test may already have torn the bus down; a Completed nobody is waiting for is
+            // not a failure. Throwing here printed stack traces on a passing build, which the
+            // next person to read CI output takes for an error.
+            log("fake: dropped a Completed signal after teardown: " + e.getClass().getName());
+        }
+    }
+
+    private static Variant<?> noResult() {
+        return new Variant<>(new ArrayList<DBusPath>(), "ao");
+    }
+
+    private static Variant<?> unlockedCollection() {
+        return new Variant<>(new ArrayList<>(List.of(new DBusPath(COLLECTION_PATH))), "ao");
+    }
+
+    /**
+     * Completes {@code prompt} shortly after the call that handed it out returns, as a provider does
+     * once the user has answered. The delay lets the client arm its signal handler first -- it does
+     * that inside Prompt.await, which it only reaches after Unlock has returned. A prompt that the
+     * client dismissed meanwhile has had its answer.
+     */
+    private void emitCompletedLater(FakePrompt prompt, boolean dismissed) {
+        emitCompletedLater(prompt, dismissed, () -> { });
     }
 
     /** @param onAnswered applied when the prompt is answered, before the signal goes out. */
-    private void emitCompletedLater(boolean dismissed, Runnable onAnswered) {
-        emitCompletedLater(dismissed, onAnswered, new Variant<>(new ArrayList<DBusPath>(), "ao"));
+    private void emitCompletedLater(FakePrompt prompt, boolean dismissed, Runnable onAnswered) {
+        emitCompletedLater(prompt, dismissed, onAnswered, noResult());
     }
 
     /** @param result the prompt's result, which depends on the operation that asked for it */
-    private void emitCompletedLater(boolean dismissed, Runnable onAnswered, Variant<?> result) {
+    private void emitCompletedLater(FakePrompt prompt, boolean dismissed, Runnable onAnswered, Variant<?> result) {
         Thread t = new Thread(() -> {
             try {
                 Thread.sleep(150);
-                if (!dismissed) onAnswered.run();
-                connection.sendMessage(new de.swiesend.secretservice.interfaces.Prompt.Completed(
-                        PROMPT_PATH, dismissed, result));
+                synchronized (promptLock) {
+                    if (prompt.completed) return;
+                    if (!dismissed) onAnswered.run();
+                    complete(prompt, dismissed, result);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                // The test may already have torn the bus down; a Completed nobody is waiting for is
-                // not a failure. Throwing here printed stack traces on a passing build, which the
-                // next person to read CI output takes for an error.
-                log("fake: dropped a Completed signal after teardown: " + e.getClass().getName());
             }
         }, "fake-prompt");
         t.setDaemon(true);
