@@ -1086,6 +1086,14 @@ public class Collection implements CollectionInterface {
             // The stored password works only through gnome-keyring's own interface. On any other
             // provider the prompt is the only way to unlock, password or not.
             if (encryptedCollectionPassword.isEmpty() || isDefault() || !service.isGnomeKeyringAvailable()) {
+                // Not asked at all: gnome-keyring answers with a prompt that only its dialog
+                // completes, and performPrompt() would dismiss it unshown, which aborts gnome-keyring
+                // while another application's unlock dialog is on the screen.
+                if (!isPrompting && service.isGnomeKeyringAvailable()) {
+                    log.debug("Unlocking collection {} needs gnome-keyring's dialog, and prompting is disabled.",
+                            collection.getObjectPath());
+                    return false;
+                }
                 Optional<Pair<List<DBusPath>, DBusPath>> maybeResponse = service.getService().unlock(lockable());
                 if (maybeResponse.isPresent()) {
                     DBusPath promptPath = maybeResponse.get().b;

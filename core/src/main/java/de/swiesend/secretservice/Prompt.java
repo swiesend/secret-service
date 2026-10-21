@@ -3,6 +3,8 @@ package de.swiesend.secretservice;
 import de.swiesend.secretservice.handlers.Messaging;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.messages.DBusSignal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -13,12 +15,16 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 public class Prompt extends Messaging implements de.swiesend.secretservice.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
+    private static final Logger log = LoggerFactory.getLogger(Prompt.class);
+
+    private final Service service;
 
     public Prompt(Service service) {
         super(service.getConnection(), signals,
                 Static.Service.SECRETS,
                 "/",
                 Static.Interfaces.PROMPT);
+        this.service = service;
     }
 
     @Override
@@ -43,7 +49,13 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
     /**
      * Await the user interaction with the prompt.
      * <p>
-     * A prompt can either be dismissed or be completed successfully.
+     * A prompt can either be dismissed or be completed successfully. One that nobody answers within
+     * the timeout, or whose wait is interrupted, is dismissed, unless it is an unlock prompt of
+     * gnome-keyring, given by {@link Service#unlock} of the service that this object was made with:
+     * that one stays open, and an answer still unlocks the collection. gnome-keyring aborts when a client dismisses an unlock prompt while
+     * an unlock dialog is on the screen: before 51 for the dialog's own prompt
+     * (GNOME/gnome-keyring#37), and up to 51.1 for one that waits behind it. gnome-keyring 51
+     * leaves the dialog of a dismissed prompt on the screen anyway.
      *
      * @param path    Objectpath of the prompt.
      * @param timeout Duration until the prompt times out.
@@ -56,18 +68,24 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
             // No prompt, so no result of one. The newest Completed signal this handler has seen
             // came from another prompt, perhaps another application's.
             return null;
-        } else {
-            return sh.await(
-                    Completed.class,
-                    path.getPath(),
-                    () -> {
-                        prompt(path);
-                        // What the handler dismisses when nobody answers in time: this prompt.
-                        return new Bound(path);
-                    },
-                    timeout
-            );
         }
+        // Before the wait: after an interrupt, the provider may not be asked any more.
+        boolean leftOpen = service.gaveUnlockPrompt(path) && service.isGnomeKeyring();
+        Completed completed = sh.await(
+                Completed.class,
+                path.getPath(),
+                () -> {
+                    prompt(path);
+                    // What the handler dismisses when nobody answers in time: this prompt, or none.
+                    return leftOpen ? null : new Bound(path);
+                },
+                timeout
+        );
+        if (completed == null && leftOpen) {
+            log.info("Left gnome-keyring's unlock prompt ({}) open: nobody answered it in time, and "
+                    + "a dismissal can abort gnome-keyring.", path.getPath());
+        }
+        return completed;
     }
 
     /**

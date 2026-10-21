@@ -28,6 +28,30 @@ public final class Dialogs {
     /** Why a test that locks or writes into the default collection skips without that keyring. */
     public static final String NOT_A_THROWAWAY_KEYRING = "Changes the user's default collection";
 
+    /**
+     * The environment variable with the directory through which a test controls the dialog
+     * answerer of the gnome-keyring-dialogs container, which sets it, for
+     * {@code @EnabledIfEnvironmentVariable}: see {@link #hold()}.
+     */
+    public static final String CONTROL = "SECRET_SERVICE_DIALOG_CONTROL";
+
+    /** Why a test that controls the dialog answerer skips without it. */
+    public static final String NO_ANSWERER_TO_CONTROL = "Needs the dialog answerer of the gnome-keyring-dialogs container";
+
+    /** Keeps the answerer from the dialogs that come up from now on, as a user who is away. */
+    public static void hold() throws java.io.IOException {
+        java.nio.file.Files.writeString(control().resolve("hold"), "");
+    }
+
+    /** Lets the answerer answer the dialogs again, the ones that it held back among them. */
+    public static void release() throws java.io.IOException {
+        java.nio.file.Files.deleteIfExists(control().resolve("hold"));
+    }
+
+    private static java.nio.file.Path control() {
+        return java.nio.file.Path.of(System.getenv(CONTROL));
+    }
+
     private Dialogs() {
     }
 }
