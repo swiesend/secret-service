@@ -37,17 +37,26 @@ public class TransportEncryption implements AutoCloseable {
 
     private Session session = null;
 
+    // What this object opened itself, and so releases in close(). A Service passed in belongs to
+    // the caller, which still uses its signal handlers.
+    private final boolean ownsService;
+    private DBusConnection ownConnection = null;
+
     public TransportEncryption() throws DBusException {
         DBusConnection connection = DBusConnectionBuilder.forSessionBus().withShared(false).build();
         this.service = new Service(connection);
+        this.ownsService = true;
+        this.ownConnection = connection;
     }
 
     public TransportEncryption(DBusConnection connection) {
         this.service = new Service(connection);
+        this.ownsService = true;
     }
 
     public TransportEncryption(de.swiesend.secretservice.Service service) {
         this.service = service;
+        this.ownsService = false;
     }
 
     static private BigInteger fromBinary(byte[] bytes) {
@@ -153,6 +162,13 @@ public class TransportEncryption implements AutoCloseable {
     public void close() {
         clear();
         if (session != null) session.close();
+        // Registered on the connection, the Service's signal handlers outlive this object unless
+        // released here, and keep receiving every Secret Service signal on the bus.
+        if (ownsService) service.getSignalHandler().disconnect();
+        if (ownConnection != null) {
+            ownConnection.disconnect();
+            ownConnection = null;
+        }
     }
 
     public class InitializedSession {

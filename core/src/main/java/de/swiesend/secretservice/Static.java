@@ -193,7 +193,14 @@ public class Static {
 
     public static class Utils {
         public static boolean isNullOrEmpty(final CharSequence cs) {
-            return cs == null || cs.toString().trim().isEmpty();
+            if (cs == null) return true;
+            // Char by char, never through toString(): the sequence is often a secret, and a String
+            // is a copy of it that nothing can erase. Blank counts as empty, as with trim(): no
+            // char above U+0020.
+            for (int i = 0; i < cs.length(); i++) {
+                if (cs.charAt(i) > ' ') return false;
+            }
+            return true;
         }
 
         public static boolean isNullOrEmpty(final byte[] bytes) {

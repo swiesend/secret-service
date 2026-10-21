@@ -7,6 +7,9 @@ import org.freedesktop.dbus.annotations.Position;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -98,21 +101,35 @@ public final class Secret extends Struct implements AutoCloseable {
     }
 
     static public byte[] toBytes(CharSequence passphrase) {
-        final ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(passphrase));
-        final byte[] bytes = new byte[encoded.remaining()];
-        encoded.get(bytes);
-        try {
-            return bytes;
-        } finally {
-            clear(encoded);
-        }
+        return toUtf8(CharBuffer.wrap(passphrase));
     }
 
     static public byte[] toBytes(char[] passphrase) {
-        final ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(passphrase));
-        final byte[] bytes = new byte[encoded.remaining()];
-        encoded.get(bytes);
+        return toUtf8(CharBuffer.wrap(passphrase));
+    }
+
+    /**
+     * Encodes into one buffer sized for the worst case, so the encoder never outgrows it.
+     * {@code Charset.encode} starts at 1.1 bytes per char, and when that is too small it copies
+     * into a larger buffer and drops the old one without erasing it: for a secret that is not
+     * plain ASCII, a partial copy of it stayed on the heap.
+     */
+    private static byte[] toUtf8(CharBuffer chars) {
+        // The same replacement for unpaired surrogates as Charset.encode.
+        CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        final ByteBuffer encoded = ByteBuffer.allocate(
+                Math.toIntExact((long) Math.ceil(chars.remaining() * (double) encoder.maxBytesPerChar())));
         try {
+            CoderResult result = encoder.encode(chars, encoded, true);
+            if (result.isUnderflow()) result = encoder.flush(encoded);
+            if (!result.isUnderflow()) {
+                throw new IllegalStateException("The UTF-8 encoder outgrew its worst-case buffer: " + result);
+            }
+            encoded.flip();
+            final byte[] bytes = new byte[encoded.remaining()];
+            encoded.get(bytes);
             return bytes;
         } finally {
             clear(encoded);

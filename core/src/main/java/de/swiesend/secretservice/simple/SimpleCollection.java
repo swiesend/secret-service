@@ -29,27 +29,29 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
  *
  * <p><strong>Deprecated.</strong> This class preserves the original 1.x API surface
  * (static shared D-Bus connection, {@code null} returns, checked exceptions) for backward
- * compatibility only. It will be removed in version 3.0.</p>
+ * compatibility only. It will be removed in version 4.0.</p>
  *
  * <p><strong>Migration:</strong> Replace usages with the functional API.</p>
  *
- * <p>Simple example — let the collection manage its own session:</p>
+ * <p>Simple example — let the collection manage its own session, which {@code close()} ends:</p>
  * <pre>{@code
- * Collection.openDefault().ifPresentOrElse(collection -> {
+ * try (CollectionInterface collection = Collection.openDefault()
+ *         .orElseThrow(() -> new IOException("Could not open the default collection."))) {
  *     collection.createItem("My label", "s3cr3t", Map.of());
- * }, () -> log.error("Could not open the default collection."));
+ * }
  * }</pre>
  *
  * <p>Full example — manage the connection lifecycle explicitly:</p>
  * <pre>{@code
- * try (var system = de.swiesend.secretservice.functional.System.connect()) {
- *     SecretService.create(Optional.of(system)).ifPresentOrElse(service -> {
- *         service.openSession().ifPresentOrElse(session -> {
- *             Collection.openDefault(Optional.of(session)).ifPresentOrElse(collection -> {
- *                 collection.createItem("My label", "s3cr3t", Map.of());
- *             }, () -> log.error("Could not open the default collection."));
- *         }, () -> log.error("Could not open an encrypted session."));
- *     }, () -> log.error("Could not connect to the secret service."));
+ * try (SystemInterface system = de.swiesend.secretservice.functional.System.connect()
+ *              .orElseThrow(() -> new IOException("Could not connect to the D-Bus."));
+ *      ServiceInterface service = SecretService.create(Optional.of(system))
+ *              .orElseThrow(() -> new IOException("Could not connect to the secret service."));
+ *      SessionInterface session = service.openSession()
+ *              .orElseThrow(() -> new IOException("Could not open an encrypted session."));
+ *      CollectionInterface collection = Collection.openDefault(Optional.of(session))
+ *              .orElseThrow(() -> new IOException("Could not open the default collection."))) {
+ *     collection.createItem("My label", "s3cr3t", Map.of());
  * }
  * }</pre>
  *
@@ -83,7 +85,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
             delegate = de.swiesend.secretservice.functional.Collection
                     .openDefault(Optional.of(session))
                     .orElseThrow(() -> new IOException("Could not open the default collection."));
+        } catch (IOException e) {
+            closeAfterFailedOpen();
+            throw e;
         } catch (RuntimeException e) {
+            closeAfterFailedOpen();
             throw new IOException("Could not initialize the secret service.", e);
         }
     }
@@ -115,7 +121,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                     .open(label, maybePassword, Optional.of(session))
                     .orElseThrow(() -> new IOException(
                             String.format("Could not acquire collection with name %s", label)));
+        } catch (IOException e) {
+            closeAfterFailedOpen();
+            throw e;
         } catch (RuntimeException e) {
+            closeAfterFailedOpen();
             throw new IOException("Could not initialize the secret service.", e);
         }
     }
@@ -130,7 +140,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     private static DBusConnection getConnection() {
         try {
             return DBusConnectionBuilder.forSessionBus().withShared(false).build();
-        } catch (DBusException | DBusExecutionException e) {
+        } catch (DBusException | DBusExecutionException | IllegalStateException | IllegalArgumentException e) {
+            // IllegalStateException is InvalidBusAddressException, for a malformed address. This runs
+            // in the static initializer, where an escaping exception makes the class unusable for
+            // the life of the JVM.
             if (e == null) {
                 log.warn("Could not communicate properly with the D-Bus.");
             } else {
@@ -195,13 +208,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                 // Necessary in order to check if the secret service supports the expected transport encryption
                 // algorithm (DH_IETF1024_SHA256_AES128_CBC_PKCS7) or raises an error, like
                 // "org.freedesktop.DBus.Error.ServiceUnknown <: org.freedesktop.dbus.exceptions.DBusException"
-                TransportEncryption transport = new TransportEncryption(connection);
-                Optional<TransportEncryption.OpenedSession> opened = transport.initialize().flatMap(init -> init.openSession());
-                boolean isSessionSupported = opened.isPresent();
-                transport.close();
-
-                return isSessionSupported;
-            } catch (DBusException | ExceptionInInitializerError e) {
+                try (TransportEncryption transport = new TransportEncryption(connection)) {
+                    return transport.initialize().flatMap(init -> init.openSession()).isPresent();
+                }
+            } catch (DBusException | DBusExecutionException | ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
             }
@@ -235,7 +245,7 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                         de.swiesend.secretservice.gnome.keyring.Static.Service.KEYRING)) {
                     return false;
                 }
-            } catch (DBusException | ExceptionInInitializerError e) {
+            } catch (DBusException | DBusExecutionException | ExceptionInInitializerError e) {
                 log.warn("The secret service is not available. You may want to install the `gnome-keyring` package. Is the `gnome-keyring-daemon` running?", e);
                 return false;
             }
@@ -288,6 +298,19 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         return daemonThread;
     }
 
+    /**
+     * Closes the service that {@link #init()} opened, when the constructor fails after it: the
+     * caller never gets the instance whose {@link #close()} would.
+     */
+    private void closeAfterFailedOpen() {
+        if (service == null) return;
+        try {
+            service.close();
+        } catch (Exception e) {
+            log.warn("Failed to close the secret service after a failed open.", e);
+        }
+    }
+
     private void init() throws IOException {
         if (!isAvailable()) throw new IOException("The secret service is not available.");
         // Wrap the static connection so the functional layer shares it rather than
@@ -319,12 +342,16 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Locks and unlocks the default collection explicitly.
+     * Locks and unlocks the collection explicitly, so the user confirms access through the
+     * provider's dialog. Since 3.0 this applies to every collection, not just the default one.
      * <p>
-     * The default collection gets only locked on the first call of a session.
+     * The collection gets only locked on the first call for this instance.
      * <p>
-     * Once the default collection is unlocked the user will not be prompted again
-     * as long as the default collection stays unlocked.
+     * Once the collection is unlocked the user will not be prompted again
+     * as long as the collection stays unlocked.
+     * <p>
+     * A provider that locks only through a prompt, as KeePassXC does, confirms access to its
+     * secrets itself: there the collection is used as it is.
      * <p>
      * This method is used to enforce user interaction for:
      * <p>
@@ -344,7 +371,8 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Clears the private key of the transport encryption and the passphrase of the collection.
+     * Clears the passphrase of the collection. The transport encryption's keys are erased when
+     * {@link #close()} closes the session.
      */
     @Override
     public void clear() {
@@ -463,7 +491,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public List<String> getItems(Map<String, String> attributes) {
         if (attributes == null) return null;
-        return delegate.getItems(attributes).orElse(null);
+        // null, not an empty list, when nothing matches: the 1.x contract, which callers test with
+        // `if (items == null)` before they create the item or read items.get(0).
+        return delegate.getItems(attributes).filter(paths -> !paths.isEmpty()).orElse(null);
     }
 
     /**
@@ -522,9 +552,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public void deleteItems(List<String> objectPaths) throws SecurityException {
-        if (objectPaths == null || objectPaths.isEmpty()) {
+        if (objectPaths == null) {
             throw new SecurityException("Cannot delete unspecified items.");
         }
+        // Nothing to delete. 1.x looped over the empty list and returned; it was never an error.
+        if (objectPaths.isEmpty()) return;
 
         unlockWithUserPermission();
 

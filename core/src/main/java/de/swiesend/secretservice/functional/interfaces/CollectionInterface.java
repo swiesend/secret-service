@@ -170,8 +170,27 @@ public interface CollectionInterface extends AutoCloseable {
 
     boolean isLocked();
 
+    /**
+     * Locks the collection. A provider that locks only through a prompt, as KeePassXC does, has
+     * that prompt carried out; after {@link #disablePrompt()} it is dismissed instead, and the
+     * collection stays unlocked.
+     *
+     * @return whether the collection is locked afterwards
+     */
     boolean lock();
 
+    /**
+     * Makes the user confirm access, against CVE-2018-19358. {@link #getSecrets()} and
+     * {@link #withSecrets(Function)} require it; {@link #deleteItem(String)} and
+     * {@link #deleteItems(List)} ask for it first. Reading a single secret does not.
+     *
+     * <p>Where the provider locks without a prompt, as gnome-keyring does, the collection is
+     * locked and then unlocked through the provider's dialog, once per collection object. A
+     * provider that locks only through a prompt, as KeePassXC does, confirms access to its secrets
+     * itself, and the collection is used as it is.</p>
+     *
+     * @return whether the collection is unlocked afterwards
+     */
     boolean unlockWithUserPermission();
 
     boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes);

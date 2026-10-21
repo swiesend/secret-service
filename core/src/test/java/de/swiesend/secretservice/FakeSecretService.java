@@ -38,8 +38,9 @@ import javax.crypto.spec.DHPublicKeySpec;
  * item locked; only {@code Unlock} on the <em>item</em> path clears it. A client that unlocks just
  * the collection therefore cannot read the secret, exactly as on a real KeePassXC.</p>
  *
- * <p>Only the members the read path touches are implemented, and {@code Item.Delete}. This is a
- * test fixture, not a provider: it does no access control and keeps its secret in a field.</p>
+ * <p>Only the members the read path touches are implemented, and {@code Item.Delete},
+ * {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a provider: it does
+ * no access control and keeps its secret in a field.</p>
  */
 public final class FakeSecretService {
 
@@ -68,11 +69,13 @@ public final class FakeSecretService {
         Pair<List<DBusPath>, DBusPath> Unlock(List<DBusPath> objects);
         Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects);
         Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes);
+        Pair<DBusPath, DBusPath> CreateCollection(Map<String, Variant<?>> properties, String alias);
     }
 
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
+        Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace);
     }
 
     @DBusInterfaceName(Static.Interfaces.ITEM)
@@ -113,6 +116,21 @@ public final class FakeSecretService {
         return List.copyOf(unlockCalls);
     }
 
+    /** Labels that {@code CreateCollection} was called with, in order. */
+    public List<String> createCollectionCalls() {
+        return List.copyOf(createCollectionCalls);
+    }
+
+    private final List<String> createCollectionCalls = Collections.synchronizedList(new ArrayList<>());
+
+    /**
+     * Claims another bus name on the fake's connection, as gnome-keyring owns {@code org.gnome.keyring}
+     * on the connection that serves {@code org.freedesktop.secrets}.
+     */
+    public void requestBusName(String name) throws Exception {
+        connection.requestBusName(name);
+    }
+
     /** Makes the prompt come back dismissed, as if the user had refused it. */
     public void setDismissPrompts(boolean dismiss) {
         this.dismissPrompts = dismiss;
@@ -138,6 +156,29 @@ public final class FakeSecretService {
     public void setRequirePromptForItemOps(boolean require) { this.requirePromptForItemOps = require; }
     private volatile boolean requirePromptForItemOps;
 
+    /**
+     * Makes locking the collection require a prompt, as KeePassXC does: Lock answers with a prompt
+     * path and locks only when {@link #approvePendingPrompt()} answers it.
+     */
+    public void setRequirePromptForCollectionLock(boolean require) { this.requirePromptForCollectionLock = require; }
+    private volatile boolean requirePromptForCollectionLock;
+
+    /**
+     * Makes unlocking the locked collection require a prompt, as gnome-keyring's password dialog
+     * does: Unlock answers with a prompt path and unlocks only when {@link #approvePendingPrompt()}
+     * answers it.
+     */
+    public void setRequirePromptForCollectionUnlock(boolean require) { this.requirePromptForCollectionUnlock = require; }
+    private volatile boolean requirePromptForCollectionUnlock;
+
+    public boolean isCollectionLocked() {
+        return collectionLocked;
+    }
+
+    /** Makes {@code Service.SearchItems} reply only after {@code delay}, as an overloaded provider does. */
+    public void setSearchReplyDelay(java.time.Duration delay) { this.searchReplyDelay = delay; }
+    private volatile java.time.Duration searchReplyDelay = java.time.Duration.ZERO;
+
     /** State change the outstanding Lock prompt would authorise; applied only on approval. */
     private volatile Runnable pendingApproval;
 
@@ -151,8 +192,23 @@ public final class FakeSecretService {
         Runnable apply = pendingApproval;
         pendingApproval = null;
         if (apply != null) apply.run();
-        emitCompletedLater(false);
+        Variant<?> result = pendingResult;
+        pendingResult = null;
+        emitCompletedLater(false, () -> { }, result == null ? new Variant<>(new ArrayList<DBusPath>(), "ao") : result);
     }
+
+    /** What the outstanding prompt answers with, when it is not an empty list of paths. */
+    private volatile Variant<?> pendingResult;
+
+    /** Where the fake reports an item created through its CreateItem prompt. */
+    public static final String CREATED_ITEM_PATH = COLLECTION_PATH + "/2";
+
+    /** Labels that {@code CreateItem} was called with, in order. */
+    public List<String> createItemCalls() {
+        return List.copyOf(createItemCalls);
+    }
+
+    private final List<String> createItemCalls = Collections.synchronizedList(new ArrayList<>());
 
     /** Whether a Lock prompt is outstanding, so a test can wait for it instead of racing it. */
     public boolean hasPendingPrompt() { return pendingApproval != null; }
@@ -234,6 +290,11 @@ public final class FakeSecretService {
                 if (refuseCollectionUnlock) {
                     return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
                 }
+                if (requirePromptForCollectionUnlock && collectionLocked) {
+                    // Unlocked only when a test answers the prompt, as for the Lock prompts.
+                    pendingApproval = () -> collectionLocked = false;
+                    return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+                }
                 // A collection-level unlock succeeds immediately and, crucially, does NOT touch the
                 // item. That asymmetry is the bug under test.
                 collectionLocked = false;
@@ -274,6 +335,12 @@ public final class FakeSecretService {
                 pendingApproval = () -> itemLocked = true;
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
             }
+            boolean collectionRequested = objects.stream().anyMatch(p -> COLLECTION_PATH.equals(p.getPath()));
+            if (collectionRequested && requirePromptForCollectionLock && !collectionLocked) {
+                // As for the item above: locked only when a test answers the prompt.
+                pendingApproval = () -> collectionLocked = true;
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(PROMPT_PATH));
+            }
             for (DBusPath p : objects) {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
                 if (COLLECTION_PATH.equals(p.getPath())) collectionLocked = true;
@@ -283,6 +350,13 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes) {
+            if (!searchReplyDelay.isZero()) {
+                try {
+                    Thread.sleep(searchReplyDelay.toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             // (unlocked, locked). Reporting the item in neither list when it is locked would be a
             // trap for the next test to use this: it would look like the item does not exist.
             List<DBusPath> item = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
@@ -292,6 +366,17 @@ public final class FakeSecretService {
             return (itemLocked || collectionLocked)
                     ? new Pair<>(new ArrayList<DBusPath>(), item)
                     : new Pair<>(item, new ArrayList<DBusPath>());
+        }
+
+        @Override
+        public Pair<DBusPath, DBusPath> CreateCollection(Map<String, Variant<?>> properties, String alias) {
+            Variant<?> label = properties.get(Collection.LABEL);
+            createCollectionCalls.add(label == null ? "" : String.valueOf(label.getValue()));
+            // Through a prompt, as a provider without gnome-keyring's password interface creates a
+            // collection: the user sets the password there. The user cancels it here, so nothing is
+            // created; the tests need to see that the request was made, not a new collection.
+            emitCompletedLater(true);
+            return new Pair<>(new DBusPath("/"), new DBusPath(PROMPT_PATH));
         }
 
         @Override
@@ -313,6 +398,17 @@ public final class FakeSecretService {
         @Override
         public List<DBusPath> SearchItems(Map<String, String> attributes) {
             return List.of(new DBusPath(ITEM_PATH));
+        }
+
+        @Override
+        public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace) {
+            Variant<?> label = properties.get(Item.LABEL);
+            createItemCalls.add(label == null ? "" : String.valueOf(label.getValue()));
+            // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
+            // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
+            pendingApproval = () -> { };
+            pendingResult = new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o");
+            return new Pair<>(new DBusPath("/"), new DBusPath(PROMPT_PATH));
         }
 
         @Override
@@ -399,12 +495,17 @@ public final class FakeSecretService {
 
     /** @param onAnswered applied when the prompt is answered, before the signal goes out. */
     private void emitCompletedLater(boolean dismissed, Runnable onAnswered) {
+        emitCompletedLater(dismissed, onAnswered, new Variant<>(new ArrayList<DBusPath>(), "ao"));
+    }
+
+    /** @param result the prompt's result, which depends on the operation that asked for it */
+    private void emitCompletedLater(boolean dismissed, Runnable onAnswered, Variant<?> result) {
         Thread t = new Thread(() -> {
             try {
                 Thread.sleep(150);
                 if (!dismissed) onAnswered.run();
                 connection.sendMessage(new de.swiesend.secretservice.interfaces.Prompt.Completed(
-                        PROMPT_PATH, dismissed, new Variant<>(new ArrayList<DBusPath>(), "ao")));
+                        PROMPT_PATH, dismissed, result));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
