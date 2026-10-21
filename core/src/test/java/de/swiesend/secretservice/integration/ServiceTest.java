@@ -75,7 +75,8 @@ public class ServiceTest {
                 Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7, new Variant<>(input));
         log.info(response.toString());
 
-        byte[] peerPublicKey = Static.Utils.toByteArray(response.get().a.getValue());
+        // As declared: the value is a byte[], whatever dbus-java decoded the "ay" into.
+        byte[] peerPublicKey = response.get().a.getValue();
         // The peer's DH public value is an unsigned big-endian integer of up to 1024 bits, sent
         // without leading zero bytes: about one value in 256 has a zero top byte and arrives as
         // 127 bytes, and rarer ones as fewer.
@@ -278,6 +279,9 @@ public class ServiceTest {
         log.info(result.toString());
 
         assertEquals(1, result.size());
+        // Read as declared: a Secret, not the struct as it arrived.
+        Secret secret = result.values().iterator().next();
+        assertEquals(context.session.getPath().getPath(), secret.getSession().getPath());
     }
 
     @Test

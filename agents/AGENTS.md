@@ -166,7 +166,7 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Transport encryption uses DH key exchange + AES-128-CBC (not optional for production use)
 - Secrets are wrapped in `AutoCloseable` types that clear sensitive data on close
 - Byte arrays holding secrets are zeroed after use
-- The library addresses CVE-2018-19358 (gnome-keyring prompt bypass)
+- The library mitigates CVE-2018-19358 (gnome-keyring hands an unlocked keyring to every client) for reading all secrets and deleting items: `unlockWithUserPermission()` locks the collection, then unlocks it through the provider's dialog. Reading a single secret is not gated, and KeePassXC, which locks only through a prompt, confirms access itself
 - `withSecret()` callback API guarantees zeroing even on exception paths
 
 ## Git Conventions

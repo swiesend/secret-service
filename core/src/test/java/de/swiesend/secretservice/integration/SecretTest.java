@@ -24,6 +24,19 @@ public class SecretTest {
     }
 
     @Test
+    public void toBytesEncodesUtf8LikeTheJdk() {
+        // Non-ASCII outgrew the JDK encoder's first buffer, which is where an unerased copy of the
+        // secret used to be left; the bytes must still be exactly the UTF-8 encoding. An unpaired
+        // surrogate becomes '?', as with Charset.encode.
+        for (String s : new String[]{"", "secret", "sécrèt", "пароль", "日本語のパスワード", "😀🔑",
+                "x\uD800y", "ü".repeat(1000)}) {
+            byte[] expected = s.getBytes(StandardCharsets.UTF_8);
+            assertArrayEquals(expected, Secret.toBytes((CharSequence) s), s);
+            assertArrayEquals(expected, Secret.toBytes(s.toCharArray()), s);
+        }
+    }
+
+    @Test
     public void getSecretValue() {
         Secret secret = new Secret(session, parameters.getBytes(), value.getBytes());
         assertArrayEquals("secret".getBytes(), secret.getSecretValue());
