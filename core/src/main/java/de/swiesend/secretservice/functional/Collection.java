@@ -1110,16 +1110,23 @@ public class Collection implements CollectionInterface {
         }
 
         if (password != null) {
-            boolean secretSet = session.getEncryptedSession().encrypt(password)
-                    .map(secret -> {
-                        try (secret) { // auto-close
-                            return item.setSecret(secret); // side-effect
-                        }
-                    })
-                    .orElse(false);
-            if (!secretSet) {
-                log.error("Could not set the secret of item {}", objectPath);
+            if (item.isLocked()) {
+                // Not sent: gnome-keyring refuses a secret for a locked item, but KWallet reports
+                // it set and throws it away. A label or attributes, above, KWallet keeps.
+                log.error("Item {} is locked; its secret is not set.", objectPath);
                 updated = false;
+            } else {
+                boolean secretSet = session.getEncryptedSession().encrypt(password)
+                        .map(secret -> {
+                            try (secret) { // auto-close
+                                return item.setSecret(secret); // side-effect
+                            }
+                        })
+                        .orElse(false);
+                if (!secretSet) {
+                    log.error("Could not set the secret of item {}", objectPath);
+                    updated = false;
+                }
             }
         }
         return updated;

@@ -26,6 +26,12 @@ public class TransportEncryption implements AutoCloseable {
 
     public static final int PRIVATE_VALUE_BITS = 1024;
     public static final int AES_BITS = 128;
+    /**
+     * The most sessions, the first included, that a key exchange takes to get a shared secret whose
+     * top byte is not zero; see {@link OpenedSession#generateSessionKey()}. The last one is kept
+     * either way: four such secrets in a row come once in 2^32.
+     */
+    private static final int SESSION_ATTEMPTS = 4;
     private static final Logger log = LoggerFactory.getLogger(TransportEncryption.class);
     private de.swiesend.secretservice.Service service;
     private DHParameterSpec dhParameters = null;
@@ -61,6 +67,24 @@ public class TransportEncryption implements AutoCloseable {
 
     static private BigInteger fromBinary(byte[] bytes) {
         return new BigInteger(1, bytes);
+    }
+
+    /**
+     * {@code value} as {@link BigInteger#toByteArray()} gives it, signed and most significant byte
+     * first, with zero bytes in front up to {@code length} bytes. Read as unsigned, as the
+     * specification reads a public key, the bytes are the same number. KWallet reads them as
+     * signed, so a value whose top bit is set keeps its sign byte: without it, KWallet takes a
+     * key whose top 9 bits are set, one in 512, for another.
+     */
+    static byte[] toKeyBytes(BigInteger value, int length) {
+        if (value.signum() < 0) {
+            throw new IllegalArgumentException("A public key is not negative.");
+        }
+        byte[] signed = value.toByteArray();
+        if (signed.length >= length) return signed;
+        byte[] padded = new byte[length];
+        System.arraycopy(signed, 0, padded, length - signed.length, signed.length);
+        return padded;
     }
 
     static private int toBytes(int bits) {
@@ -180,11 +204,14 @@ public class TransportEncryption implements AutoCloseable {
             // The public keys are transferred as an array of bytes representing an unsigned integer of arbitrary size,
             // most-significant byte first (e.g., the integer 32768 is represented as the 2-byte string 0x80 0x00)
             BigInteger ya = ((DHPublicKey) publicKey).getY();
+            // At least the prime's 128 bytes: KWallet refuses a shorter key, and toByteArray()
+            // gives one for a key whose top 9 bits are clear, one in 512.
+            int length = (dhParameters.getP().bitLength() + 7) / 8;
 
             // open session with "Client DH pub key as an array of bytes" without prime or generator
             return service.openSession(
                     Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7,
-                    new Variant<>(ya.toByteArray())
+                    new Variant<>(toKeyBytes(ya, length))
             ).flatMap(pair -> {
                 // transform peer's raw Y to a public key
                 yb = Static.Utils.toByteArray(pair.a.getValue());
@@ -205,14 +232,19 @@ public class TransportEncryption implements AutoCloseable {
             byte[] pseudoRandomKey = null;
             byte[] keyingMaterial = null;
             try {
-                DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(fromBinary(yb), dhParameters.getP(), dhParameters.getG());
-                KeyFactory keyFactory = KeyFactory.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
-                DHPublicKey peerPublicKey = (DHPublicKey) keyFactory.generatePublic(dhPublicKeySpec);
-
-                KeyAgreement keyAgreement = KeyAgreement.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
-                keyAgreement.init(privateKey);
-                keyAgreement.doPhase(peerPublicKey, true);
-                rawSessionKey = keyAgreement.generateSecret();
+                rawSessionKey = agree();
+                // Providers hash a shared secret whose top byte is zero in two ways: gnome-keyring
+                // and KeePassXC hash all of its 128 bytes, as libsecret does, and KWallet hashes it
+                // without the zero (OpenSSL's DH_compute_key). So in such a session, about one in
+                // 256, KWallet's key would be another than this one. No provider tells how it
+                // hashes, so another session replaces such a session on every provider.
+                for (int attempt = 1; rawSessionKey[0] == 0 && attempt < SESSION_ATTEMPTS; attempt++) {
+                    log.debug("Replacing session {}: providers derive different keys from its shared secret.", session.getPath());
+                    Secret.clear(rawSessionKey);
+                    rawSessionKey = null;
+                    if (!reopen()) return Optional.empty();
+                    rawSessionKey = agree();
+                }
 
                 // HKDF digest into a 128-bit key by extract and expand with "NULL salt and empty info"
                 // see: https://standards.freedesktop.org/secret-service/0.2/ch07s03.html
@@ -235,6 +267,25 @@ public class TransportEncryption implements AutoCloseable {
             }
         }
 
+        /** The session's Diffie-Hellman shared secret, in the prime's 128 bytes. */
+        private byte[] agree() throws NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
+            DHPublicKeySpec dhPublicKeySpec = new DHPublicKeySpec(fromBinary(yb), dhParameters.getP(), dhParameters.getG());
+            KeyFactory keyFactory = KeyFactory.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
+            DHPublicKey peerPublicKey = (DHPublicKey) keyFactory.generatePublic(dhPublicKeySpec);
+
+            KeyAgreement keyAgreement = KeyAgreement.getInstance(Static.Algorithm.DIFFIE_HELLMAN);
+            keyAgreement.init(privateKey);
+            keyAgreement.doPhase(peerPublicKey, true);
+            return keyAgreement.generateSecret();
+        }
+    }
+
+    /** Closes the session, and opens another with a key pair of its own. */
+    private boolean reopen() {
+        session.close();
+        session = null;
+        yb = null;
+        return initialize().flatMap(InitializedSession::openSession).isPresent();
     }
 
     public class EncryptedSession {
