@@ -519,6 +519,14 @@ public class Collection implements CollectionInterface {
 
         unlockWithUserPermission();
 
+        // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
+        // prompting is disabled. KWallet answers Delete on a closed wallet with "/" and deletes
+        // nothing, which the check below would report as done.
+        if (collection.isLocked()) {
+            log.info("The collection stayed locked, so the item is not deleted: {}", objectPath);
+            return false;
+        }
+
         Optional<Item> maybeItem = getItem(objectPath);
         if (maybeItem.isEmpty()) {
             log.error("Item not found: {}", objectPath);
@@ -532,14 +540,14 @@ public class Collection implements CollectionInterface {
             return false;
         }
         DBusPath promptPath = maybePromptPath.get();
-        Optional<DBusPath> performedPrompt = performPrompt(promptPath);
-        if (service.isGnomeKeyringAvailable() && performedPrompt.isEmpty()) {
-            // gnome-keyring returns no path;
+        // "/" is the specification's "no prompt necessary": on an unlocked collection, the provider
+        // has deleted the item. That holds for every provider, not only for gnome-keyring, which
+        // was the one case accepted. Only a real prompt can still be dismissed, time out, or be
+        // refused.
+        if (!requiresPrompt(promptPath)) {
             return true;
-        } else {
-            // KeePassXC returns an empty path
-            return performedPrompt.isPresent();
         }
+        return performPrompt(promptPath).isPresent();
     }
 
     @Override

@@ -13,7 +13,7 @@ import java.util.Set;
  * Detects which Secret Service provider is currently serving
  * {@code org.freedesktop.secrets} on the session D-Bus.
  *
- * <h3>Detection strategy</h3>
+ * <h2>Detection strategy</h2>
  * <ol>
  *   <li>Resolve the unique bus name (e.g. {@code :1.241}) of the
  *       {@code org.freedesktop.secrets} owner via {@code GetNameOwner}.</li>
