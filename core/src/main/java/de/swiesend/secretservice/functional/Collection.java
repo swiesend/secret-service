@@ -847,15 +847,20 @@ public class Collection implements CollectionInterface {
     }
 
     /**
+     * A locked item is not read: gnome-keyring and KeePassXC refuse to read one, but KWallet
+     * answers with an empty secret (KDE bug 524650), which would pass for the item's own.
+     *
      * @param allowItemUnlock whether a locked item may be unlocked first, which can raise a prompt.
      *                        False for the bulk readers: they iterate the whole collection, and one
-     *                        prompt per item is not a reasonable thing to do to a user.
+     *                        prompt per item is not a reasonable thing to do to a user. They skip a
+     *                        locked item.
      */
     private Optional<char[]> getSecret(String objectPath, boolean allowItemUnlock) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         try {
             unlock();
-            if (allowItemUnlock && !unlockItemIfLocked(objectPath)) return Optional.empty();
+            boolean readable = allowItemUnlock ? unlockItemIfLocked(objectPath) : !isItemLocked(objectPath);
+            if (!readable) return Optional.empty();
 
             return getItem(objectPath)
                     .flatMap(item -> {
@@ -1220,7 +1225,7 @@ public class Collection implements CollectionInterface {
      * unlocked but item locked is the real condition, and the only one acted on.
      *
      * <p>The check is deliberately <b>fail-closed</b>: {@link #lockedState()} separates "could not
-     * read it" from "unlocked", and both "locked" and "unknown" skip the unlock.
+     * read it" from "unlocked", and both "locked" and "unknown" skip the unlock and the read.
      * {@link de.swiesend.secretservice.Collection#isLocked()} collapses them to {@code false},
      * which here would mean a transient read failure silently re-enables the double prompt.
      *
@@ -1255,8 +1260,12 @@ public class Collection implements CollectionInterface {
 
         Optional<Boolean> collectionLocked = collection.lockedState();
         // Empty means the read failed. Treating that as "unlocked" would re-enable the double
-        // prompt on any transient D-Bus error, so unknown skips just like locked does.
-        if (collectionLocked.isEmpty() || collectionLocked.get()) return true;
+        // prompt on any transient D-Bus error, so unknown skips the unlock, and the read, just like
+        // locked does.
+        if (collectionLocked.isEmpty() || collectionLocked.get()) {
+            log.debug("Item {} is locked, and its collection is not known to be unlocked; not read.", objectPath);
+            return false;
+        }
 
         log.debug("Item is locked; asking the provider to unlock it: {}", objectPath);
         if (unlockItem(objectPath)) return true;
@@ -1274,6 +1283,17 @@ public class Collection implements CollectionInterface {
             log.debug("Item {} stayed locked because prompting is disabled; not read.", objectPath);
         }
         return false;
+    }
+
+    /**
+     * Whether the provider reports the item as locked, for the bulk readers, which skip a locked
+     * item. False also when that cannot be read, as {@link de.swiesend.secretservice.Item#isLocked()}
+     * answers then.
+     */
+    private boolean isItemLocked(String objectPath) {
+        boolean locked = getItem(objectPath).map(de.swiesend.secretservice.Item::isLocked).orElse(false);
+        if (locked) log.debug("Item {} is locked; not read.", objectPath);
+        return locked;
     }
 
     /**
