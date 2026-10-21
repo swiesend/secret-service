@@ -116,6 +116,10 @@ Landed on `main` after the `v3.0.0-alpha` tag; not part of a published release.
     - Since 1.x, the library dismissed an unlock prompt that nobody answered within its timeout, 120 seconds by default, or whose wait was interrupted. With prompting disabled, it dismissed one without showing it.
     - On gnome-keyring, it now leaves open an unlock prompt that `Service.unlock` gave, and an answer still unlocks the collection. With prompting disabled, it does not ask gnome-keyring to unlock at all.
     - It dismisses every other prompt, and the prompts of other providers, as before. gnome-keyring 51 leaves the dialog of a dismissed prompt on the screen in any case.
+  - **An unlock of a gnome-keyring collection waits on the dialog that an earlier request left open.**
+    - Asked again, gnome-keyring would queue another prompt behind the open dialog. When the user cancelled that dialog, it brought up one more dialog for each request that the application had given up on.
+    - Now one dialog serves all the requests of a connection, and a single cancel refuses them all. An answer that comes while no request waits unlocks the collection, so the next request finds it unlocked; a cancel lets the next request ask anew.
+    - The requests share the dialog across collection objects too, as `SimpleCollection`'s instances share one connection, and an application such as Cryptomator opens one per call.
 
 ## [3.0.0-alpha] - 2026-06-11
 

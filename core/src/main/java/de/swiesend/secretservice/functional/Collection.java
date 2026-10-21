@@ -825,6 +825,13 @@ public class Collection implements CollectionInterface {
                 log.debug("Unlocking item {} would need a prompt, and prompting is disabled.", itemPath);
                 return false;
             }
+            if (service.isGnomeKeyringAvailable()) {
+                if (unlockThroughGnomeKeyring(List.of(item.getPath())) == UnlockPrompts.Unlock.REFUSED) {
+                    log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
+                    return false;
+                }
+                return !item.isLocked();
+            }
             Optional<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlock(List.of(item.getPath()));
             if (maybeUnlock.isEmpty()) {
                 log.error("Could not unlock item: {}", itemPath);
@@ -971,10 +978,27 @@ public class Collection implements CollectionInterface {
             log.debug("{} items are locked, and their collection is not known to be unlocked.", locked.size());
             return paths;
         }
+        if (service.isGnomeKeyringAvailable()) {
+            if (unlockThroughGnomeKeyring(locked) == UnlockPrompts.Unlock.REFUSED) {
+                log.info("The prompt that unlocks {} items was dismissed.", locked.size());
+            }
+        } else {
+            unlockWithPrompt(locked);
+        }
+        // The provider's state, not the prompt result, is the authority.
+        Set<String> stillLocked = new HashSet<>();
+        for (String path : paths) {
+            if (isItemLocked(path)) stillLocked.add(path);
+        }
+        return stillLocked;
+    }
+
+    /** One Unlock call for {@code locked}, and its prompt carried out, for {@link #unlockItems}. */
+    private void unlockWithPrompt(List<DBusPath> locked) {
         Optional<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlock(locked);
         if (maybeUnlock.isEmpty()) {
             log.error("Could not unlock {} locked items.", locked.size());
-            return paths;
+            return;
         }
         DBusPath promptPath = maybeUnlock.get().b;
         if (requiresPrompt(promptPath)) {
@@ -987,12 +1011,24 @@ public class Collection implements CollectionInterface {
                 log.info("The prompt that unlocks {} items was dismissed.", locked.size());
             }
         }
-        // The provider's state, not the prompt result, is the authority.
-        Set<String> stillLocked = new HashSet<>();
-        for (String path : paths) {
-            if (isItemLocked(path)) stillLocked.add(path);
-        }
-        return stillLocked;
+    }
+
+    /**
+     * Unlocks {@code objects} through gnome-keyring's dialog, and waits on the unlock prompt of
+     * their collection that an earlier request of this connection left open, instead of asking
+     * again: see {@link UnlockPrompts}.
+     */
+    private UnlockPrompts.Unlock unlockThroughGnomeKeyring(List<DBusPath> objects) {
+        return UnlockPrompts.of(connection).unlock(service.getService(), prompt, objects,
+                collectionOf(objects.get(0)), service.getTimeout());
+    }
+
+    /** The collection that gnome-keyring unlocks for {@code object}: itself, or the item's own. */
+    private static String collectionOf(DBusPath object) {
+        String path = object.getPath();
+        String prefix = Static.ObjectPaths.COLLECTION + "/";
+        int end = path.startsWith(prefix) ? path.indexOf('/', prefix.length()) : -1;
+        return end < 0 ? path : path.substring(0, end);
     }
 
     @Override
@@ -1094,15 +1130,15 @@ public class Collection implements CollectionInterface {
                             collection.getObjectPath());
                     return false;
                 }
-                Optional<Pair<List<DBusPath>, DBusPath>> maybeResponse = service.getService().unlock(lockable());
-                if (maybeResponse.isPresent()) {
-                    DBusPath promptPath = maybeResponse.get().b;
-                    boolean unlockAccepted = promptPath.getPath().equals("/") || performPrompt(promptPath).isPresent();
-                    if (unlockAccepted && !collection.isLocked()) {
-                        isUnlockedOnceWithUserPermission = true;
-                        log.debug("Unlocked collection {}", collection.getObjectPath());
-                        return true;
-                    }
+                boolean unlockAccepted = service.isGnomeKeyringAvailable()
+                        ? unlockThroughGnomeKeyring(lockable()) == UnlockPrompts.Unlock.DONE
+                        : service.getService().unlock(lockable())
+                                .map(response -> "/".equals(response.b.getPath()) || performPrompt(response.b).isPresent())
+                                .orElse(false);
+                if (unlockAccepted && !collection.isLocked()) {
+                    isUnlockedOnceWithUserPermission = true;
+                    log.debug("Unlocked collection {}", collection.getObjectPath());
+                    return true;
                 }
             } else if (encryptedCollectionPassword.isPresent() && service.isGnomeKeyringAvailable()) {
                 boolean result = withoutPrompt.unlockWithMasterPassword(collection.getPath(), encryptedCollectionPassword.get());

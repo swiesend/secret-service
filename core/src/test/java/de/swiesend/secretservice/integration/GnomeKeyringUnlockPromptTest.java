@@ -155,6 +155,155 @@ class GnomeKeyringUnlockPromptTest {
         assertEquals(List.of(), fake.dismissCalls());
     }
 
+    // ---- one dialog for every request ----------------------------------------------------------
+
+    @Test
+    void aSecondReadWaitsOnTheDialogThatTheFirstLeftOpen() throws Exception {
+        CollectionInterface collection = lockedGnomeKeyring();
+        FakeSecretService fake = harness.fake();
+        assertEquals(Optional.empty(), collection.getSecret(FakeSecretService.ITEM_PATH), "nobody answered in time");
+
+        harness.service().setTimeout(Duration.ofSeconds(10));
+        Thread user = answerWhenShown(fake, true);
+        char[] secret = collection.getSecret(FakeSecretService.ITEM_PATH).orElseThrow();
+        user.join(5_000);
+
+        assertArrayEquals(FakeSecretService.SECRET_VALUE.toCharArray(), secret, "the answer came now");
+        assertEquals(1, fake.unlockRequests().size(), "gnome-keyring was asked once");
+        assertEquals(1, fake.promptCalls().size(), "and showed one dialog");
+    }
+
+    @Test
+    void aCancelOfThatDialogRefusesTheReadThatWaitsOnIt() throws Exception {
+        CollectionInterface collection = lockedGnomeKeyring();
+        FakeSecretService fake = harness.fake();
+        assertEquals(Optional.empty(), collection.getSecret(FakeSecretService.ITEM_PATH), "nobody answered in time");
+
+        harness.service().setTimeout(Duration.ofSeconds(10));
+        Thread user = answerWhenShown(fake, false);
+        long start = java.lang.System.nanoTime();
+        assertEquals(Optional.empty(), collection.getSecret(FakeSecretService.ITEM_PATH));
+        long waited = (java.lang.System.nanoTime() - start) / 1_000_000;
+        user.join(5_000);
+
+        assertTrue(waited < 5_000, "the cancel refused it, after " + waited + " ms, not its timeout");
+        assertFalse(fake.hasPendingPrompt(), "and brought up no other dialog");
+        assertEquals(1, fake.unlockRequests().size());
+        assertTrue(fake.isCollectionLocked());
+    }
+
+    @Test
+    void anAnswerWhileNobodyWaitsLeavesNothingToAsk() throws Exception {
+        CollectionInterface collection = lockedGnomeKeyring();
+        FakeSecretService fake = harness.fake();
+        assertEquals(Optional.empty(), collection.getSecret(FakeSecretService.ITEM_PATH), "nobody answered in time");
+
+        fake.approvePendingPrompt();
+
+        assertArrayEquals(FakeSecretService.SECRET_VALUE.toCharArray(),
+                collection.getSecret(FakeSecretService.ITEM_PATH).orElseThrow());
+        assertEquals(1, fake.unlockRequests().size(), "the collection was unlocked");
+    }
+
+    @Test
+    void aCancelWhileNobodyWaitsLetsTheNextReadAskAgain() throws Exception {
+        CollectionInterface collection = lockedGnomeKeyring();
+        FakeSecretService fake = harness.fake();
+        assertEquals(Optional.empty(), collection.getSecret(FakeSecretService.ITEM_PATH), "nobody answered in time");
+        fake.refusePendingPrompt();
+        awaitPromptCompleted(fake);
+
+        harness.service().setTimeout(Duration.ofSeconds(10));
+        Thread user = answerWhenShown(fake, true);
+        char[] secret = collection.getSecret(FakeSecretService.ITEM_PATH).orElseThrow();
+        user.join(5_000);
+
+        assertArrayEquals(FakeSecretService.SECRET_VALUE.toCharArray(), secret);
+        assertEquals(2, fake.unlockRequests().size(), "a new request, after the user refused the old one");
+    }
+
+    @Test
+    void readsThroughAnotherCollectionObjectOfTheConnectionWaitOnTheSameDialog() throws Exception {
+        // As SimpleCollection's instances share their connection, and an application may open one
+        // for each call.
+        CollectionInterface collection = lockedGnomeKeyring();
+        FakeSecretService fake = harness.fake();
+        assertEquals(Optional.empty(), collection.getSecret(FakeSecretService.ITEM_PATH), "nobody answered in time");
+
+        harness.service().setTimeout(Duration.ofSeconds(10));
+        try (CollectionInterface another = harness.service().openSession().orElseThrow()
+                .collection(FakeSecretService.COLLECTION_LABEL, Optional.empty()).orElseThrow()) {
+            Thread user = answerWhenShown(fake, true);
+            char[] secret = another.getSecret(FakeSecretService.ITEM_PATH).orElseThrow();
+            user.join(5_000);
+
+            assertArrayEquals(FakeSecretService.SECRET_VALUE.toCharArray(), secret);
+        }
+        assertEquals(1, fake.unlockRequests().size(), "gnome-keyring was asked once");
+    }
+
+    @Test
+    void readsThatComeTogetherShareOneDialog() throws Exception {
+        CollectionInterface collection = lockedGnomeKeyring();
+        FakeSecretService fake = harness.fake();
+        harness.service().setTimeout(Duration.ofSeconds(10));
+        java.util.concurrent.ExecutorService readers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            Thread user = answerWhenShown(fake, true);
+            java.util.concurrent.Future<Optional<char[]>> first =
+                    readers.submit(() -> collection.getSecret(FakeSecretService.ITEM_PATH));
+            java.util.concurrent.Future<Optional<char[]>> second =
+                    readers.submit(() -> collection.getSecret(FakeSecretService.ITEM_PATH));
+
+            assertTrue(first.get(15, java.util.concurrent.TimeUnit.SECONDS).isPresent());
+            assertTrue(second.get(15, java.util.concurrent.TimeUnit.SECONDS).isPresent());
+            user.join(5_000);
+        } finally {
+            readers.shutdownNow();
+        }
+        assertEquals(1, fake.unlockRequests().size(), "gnome-keyring was asked once");
+    }
+
+    /** The fake as gnome-keyring, its collection locked and unlocking through its dialog, a 1 s timeout. */
+    private CollectionInterface lockedGnomeKeyring() throws Exception {
+        CollectionInterface collection = harness.startAsGnomeKeyring(false);
+        harness.fake().reproduce(ProviderBug.GNOME_KEYRING_ABORTS_ON_A_DISMISSED_UNLOCK_DIALOG,
+                ProviderBug.GNOME_KEYRING_ABORTS_ON_A_DISMISSED_WAITING_UNLOCK);
+        harness.fake().lockCollection();
+        harness.fake().setRequirePromptForCollectionUnlock(true);
+        harness.service().setTimeout(Duration.ofSeconds(1));
+        return collection;
+    }
+
+    /**
+     * Answers the dialog from another thread once it is on the screen, as the user does, a moment
+     * later: the requests that wait on it have joined by then.
+     */
+    private static Thread answerWhenShown(FakeSecretService fake, boolean approve) {
+        Thread user = new Thread(() -> {
+            try {
+                long deadline = java.lang.System.nanoTime() + 5_000_000_000L;
+                while (!fake.hasPendingPrompt() && java.lang.System.nanoTime() < deadline) Thread.sleep(20);
+                Thread.sleep(300);
+                if (approve) fake.approvePendingPrompt();
+                else fake.refusePendingPrompt();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "user");
+        user.setDaemon(true);
+        user.start();
+        return user;
+    }
+
+    /** Waits until the fake has no prompt waiting for the user. */
+    private static void awaitPromptCompleted(FakeSecretService fake) throws InterruptedException {
+        long deadline = java.lang.System.nanoTime() + 5_000_000_000L;
+        while (fake.hasPendingPrompt() && java.lang.System.nanoTime() < deadline) Thread.sleep(20);
+        // The Completed signal reaches the library a moment after the fake sent it.
+        Thread.sleep(200);
+    }
+
     /** The fake as gnome-keyring, with the bugs reproduced, and the collection locked. */
     private FakeSecretService gnomeKeyring() throws Exception {
         harness.startAsGnomeKeyring(false);

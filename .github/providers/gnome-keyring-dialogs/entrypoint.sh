@@ -26,8 +26,9 @@ DIALOG_LOG="$LOG_DIR/dialogs.log"
 PASSWORD=test
 
 # Through this directory a test holds the answerer back, as a user who is away: while "hold" is in
-# it, answer_dialogs leaves the dialogs alone, and answers them once it is gone. The tests learn
-# the directory from the environment, which only this container sets.
+# it, answer_dialogs leaves the dialogs alone, and answers them once it is gone. "cancel" makes it
+# cancel the dialog on the screen, also while it holds, and it removes the file then. The tests
+# learn the directory from the environment, which only this container sets.
 export SECRET_SERVICE_DIALOG_CONTROL=/tmp/dialog-control
 mkdir -p "$SECRET_SERVICE_DIALOG_CONTROL"
 
@@ -71,6 +72,17 @@ type_password() {
 answer_dialogs() {
     local answered=" " visible win title fields
     while true; do
+        if [ -e "$SECRET_SERVICE_DIALOG_CONTROL/cancel" ]; then
+            win="$(xdotool search --onlyvisible --class gcr-prompter 2>/dev/null | head -1 || true)"
+            if [ -n "$win" ]; then
+                title="$(xdotool getwindowname "$win" 2>/dev/null || true)"
+                xdotool windowfocus --sync "$win" 2>/dev/null || true
+                if xdotool key Escape; then
+                    echo "cancelled \"$title\" (window $win) at $(date +%T)"
+                    rm -f "$SECRET_SERVICE_DIALOG_CONTROL/cancel"
+                fi
+            fi
+        fi
         if [ -e "$SECRET_SERVICE_DIALOG_CONTROL/hold" ]; then
             sleep 0.3
             continue

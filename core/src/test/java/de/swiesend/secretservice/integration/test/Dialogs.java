@@ -48,6 +48,20 @@ public final class Dialogs {
         java.nio.file.Files.deleteIfExists(control().resolve("hold"));
     }
 
+    /**
+     * Has the answerer cancel the dialog on the screen, as a user who refuses it, also while it
+     * holds back.
+     *
+     * @return whether it did within ten seconds
+     */
+    public static boolean cancelTheDialog() throws java.io.IOException, InterruptedException {
+        java.nio.file.Path cancel = control().resolve("cancel");
+        java.nio.file.Files.writeString(cancel, "");
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while (java.nio.file.Files.exists(cancel) && System.nanoTime() < deadline) Thread.sleep(100);
+        return !java.nio.file.Files.exists(cancel);
+    }
+
     private static java.nio.file.Path control() {
         return java.nio.file.Path.of(System.getenv(CONTROL));
     }
