@@ -16,7 +16,6 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
@@ -29,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import javax.crypto.interfaces.DHPrivateKey;
 import javax.crypto.interfaces.DHPublicKey;
-import javax.crypto.spec.DHPublicKeySpec;
 
 /**
  * A minimal in-process {@code org.freedesktop.secrets} provider that locks an item
@@ -332,8 +330,10 @@ public final class FakeSecretService {
      */
     public void approvePendingPrompt() {
         synchronized (promptLock) {
-            FakePrompt dialog = unlockDialogs.pollFirst();
+            if (answerDismissedDialog(true)) return;
+            FakePrompt dialog = unlockInProgress();
             if (dialog != null) {
+                unlockDialogs.removeFirst();
                 collectionLocked = false;
                 complete(dialog, false, unlockedCollection());
                 showNextDialog();
@@ -356,8 +356,10 @@ public final class FakeSecretService {
      */
     public void refusePendingPrompt() {
         synchronized (promptLock) {
-            FakePrompt dialog = unlockDialogs.pollFirst();
+            if (answerDismissedDialog(false)) return;
+            FakePrompt dialog = unlockInProgress();
             if (dialog != null) {
+                unlockDialogs.removeFirst();
                 complete(dialog, true, noResult());
                 showNextDialog();
                 return;
@@ -414,9 +416,70 @@ public final class FakeSecretService {
      */
     public boolean hasPendingPrompt() {
         synchronized (promptLock) {
-            if (!unlockDialogs.isEmpty()) return true;
+            if (dismissedDialog != null || unlockInProgress() != null) return true;
         }
         return pendingApproval != null;
+    }
+
+    /**
+     * Whether the fake has aborted, as gnome-keyring does on some dismissed unlock prompts: it
+     * answers no call from then on.
+     */
+    public boolean hasAborted() {
+        return aborted;
+    }
+
+    private volatile boolean aborted;
+
+    /** Fails the call once the fake has aborted: the daemon is gone. */
+    private void alive() {
+        if (aborted) throw new org.freedesktop.dbus.errors.ServiceUnknown("fake: the daemon has aborted");
+    }
+
+    /** Whether the items are off the bus, as KeePassXC takes those of a locked database off it. */
+    private boolean itemsHidden() {
+        return collectionLocked && reproduces(ProviderBug.KEEPASSXC_HIDES_THE_ITEMS_OF_A_LOCKED_DATABASE);
+    }
+
+    /** Whether a search for {@code attributes} finds nothing, whatever the collection holds. */
+    private boolean findsNothing(Map<String, String> attributes) {
+        return itemsHidden() || attributes.isEmpty() && reproduces(ProviderBug.KEEPASSXC_AN_EMPTY_SEARCH_FINDS_NOTHING);
+    }
+
+    /** Refuses a content type other than exactly the two that oo7 0.6.0 takes. */
+    private void checkContentType(String contentType) {
+        if (reproduces(ProviderBug.OO7_REFUSES_A_CONTENT_TYPE_WITH_PARAMETERS)
+                && !List.of("text/plain", "application/octet-stream").contains(contentType)) {
+            throw new org.freedesktop.dbus.exceptions.DBusExecutionException(
+                    "fake: oo7 refuses the content type " + contentType);
+        }
+    }
+
+    /** The paths that {@code Lock} was called with, in call order. */
+    public List<String> lockCalls() {
+        return List.copyOf(lockCalls);
+    }
+
+    private final List<String> lockCalls = Collections.synchronizedList(new ArrayList<>());
+
+    /**
+     * Lets the calls return that the fake does not answer, as oo7 answers none after a panic, so
+     * that a test's teardown does not wait for them. The fixture calls it when it stops.
+     */
+    public void release() {
+        released.countDown();
+    }
+
+    private final java.util.concurrent.CountDownLatch released = new java.util.concurrent.CountDownLatch(1);
+
+    /** Answers the call never, until {@link #release()}: the client's wait for the reply runs out. */
+    private void neverAnswer() {
+        try {
+            released.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        throw new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: the handler panicked");
     }
 
     /** The paths of the prompts that the client called {@code Prompt} on, in call order. */
@@ -595,24 +658,29 @@ public final class FakeSecretService {
             // Mirror of TransportEncryption's client half: RFC 2409 Second Oakley Group, HKDF-SHA256
             // with a null salt and empty info, AES-128. The client cannot negotiate a plain session,
             // so the fake has to do the real exchange.
+            alive();
+            openSessionCalls.incrementAndGet();
+            byte[] clientY = Static.Utils.toByteArray(input.getValue());
+            if (clientY.length < 128 && reproduces(ProviderBug.KWALLET_REFUSES_A_SHORT_PUBLIC_KEY)) {
+                throw new org.freedesktop.dbus.exceptions.DBusExecutionException(
+                        "fake: a public key of " + clientY.length + " bytes");
+            }
             try {
-                openSessionCalls.incrementAndGet();
-                byte[] clientY = Static.Utils.toByteArray(input.getValue());
                 DHParameterSpec params = new DHParameterSpec(SECOND_OAKLEY_GROUP_PRIME, BigInteger.valueOf(2), 1024);
 
                 KeyPairGenerator gen = KeyPairGenerator.getInstance("DiffieHellman");
                 gen.initialize(params);
 
-                DHPublicKey theirs = (DHPublicKey) KeyFactory.getInstance("DiffieHellman")
-                        .generatePublic(new DHPublicKeySpec(
-                                new BigInteger(1, clientY), params.getP(), params.getG()));
+                // As two's complement, the way QCA's BigInteger reads it, when KWallet's bug is on.
+                BigInteger theirY = reproduces(ProviderBug.KWALLET_READS_THE_PUBLIC_KEY_AS_SIGNED)
+                        ? new BigInteger(clientY) : new BigInteger(1, clientY);
 
                 boolean zeroTopByte = zeroTopByteSecrets > 0;
                 if (zeroTopByte) zeroTopByteSecrets--;
                 KeyPair ours = gen.generateKeyPair();
                 BigInteger p = params.getP();
                 BigInteger ourY = ((DHPublicKey) ours.getPublic()).getY();
-                BigInteger secret = theirs.getY().modPow(((DHPrivateKey) ours.getPrivate()).getX(), p);
+                BigInteger secret = theirY.modPow(((DHPrivateKey) ours.getPrivate()).getX(), p);
                 // Until the shared secret's top byte is zero or not, as the session should have it:
                 // 256 tries on average for a zero one. Each try adds one to the private exponent,
                 // which takes a multiplication on each side. Drawing a new key pair takes two
@@ -620,7 +688,7 @@ public final class FakeSecretService {
                 // two-second wait for the reply.
                 while ((secret.bitLength() <= 1016) != zeroTopByte) {
                     ourY = ourY.multiply(params.getG()).mod(p);
-                    secret = secret.multiply(theirs.getY()).mod(p);
+                    secret = secret.multiply(theirY).mod(p);
                 }
                 byte[] shared = toPrimeLength(secret);
                 sessionKey = hkdfSha256To128(
@@ -635,6 +703,7 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, DBusPath> Unlock(List<DBusPath> objects) {
+            alive();
             for (DBusPath p : objects) unlockCalls.add(p.getPath());
             unlockRequests.add(objects.stream().map(DBusPath::getPath).toList());
             // The bug this fixture exists for: unlocking the COLLECTION does nothing to the item.
@@ -687,6 +756,13 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects) {
+            alive();
+            for (DBusPath p : objects) lockCalls.add(p.getPath());
+            boolean collectionLockRequested = objects.stream().anyMatch(p -> COLLECTION_PATH.equals(p.getPath()));
+            if (collectionLockRequested && collectionLocked
+                    && reproduces(ProviderBug.KWALLET_REFUSES_TO_LOCK_A_LOCKED_WALLET)) {
+                throw new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: the wallet is closed already");
+            }
             boolean itemRequested = objects.stream().anyMatch(p -> ITEM_PATH.equals(p.getPath()));
             if (itemRequested && requirePromptForItemOps && !itemLocked) {
                 // Only the item goes behind a prompt, and only when it is not already locked;
@@ -712,6 +788,7 @@ public final class FakeSecretService {
 
         @Override
         public Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes) {
+            alive();
             if (!searchReplyDelay.isZero()) {
                 try {
                     Thread.sleep(searchReplyDelay.toMillis());
@@ -719,6 +796,7 @@ public final class FakeSecretService {
                     Thread.currentThread().interrupt();
                 }
             }
+            if (findsNothing(attributes)) return new Pair<>(new ArrayList<>(), new ArrayList<>());
             // (unlocked, locked). Reporting the item in neither list when it is locked would be a
             // trap for the next test to use this: it would look like the item does not exist.
             // Same condition as the Locked property and GetSecret below: a fixture that reports an
@@ -732,6 +810,7 @@ public final class FakeSecretService {
 
         @Override
         public Pair<DBusPath, DBusPath> CreateCollection(Map<String, Variant<?>> properties, String alias) {
+            alive();
             Variant<?> label = properties.get(Collection.LABEL);
             createCollectionCalls.add(label == null ? "" : String.valueOf(label.getValue()));
             // Through a prompt, as a provider without gnome-keyring's password interface creates a
@@ -744,6 +823,7 @@ public final class FakeSecretService {
 
         @Override
         public DBusPath ReadAlias(String name) {
+            alive();
             String target = "default".equals(name) ? defaultAlias : null;
             return new DBusPath(target == null ? "/" : target);
         }
@@ -751,6 +831,7 @@ public final class FakeSecretService {
         @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
+            alive();
             if ("Collections".equals(property)) {
                 return (A) new Variant<>(new ArrayList<>(List.of(new DBusPath(COLLECTION_PATH))), "ao");
             }
@@ -766,15 +847,22 @@ public final class FakeSecretService {
     private final class CollectionImpl implements WireCollection, Properties {
         @Override
         public List<DBusPath> SearchItems(Map<String, String> attributes) {
-            return items();
+            alive();
+            return findsNothing(attributes) ? new ArrayList<>() : items();
         }
 
         @Override
         public Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, WireSecret secret, boolean replace) {
+            alive();
             Variant<?> label = properties.get(Item.LABEL);
             createItemCalls.add(label == null ? "" : String.valueOf(label.getValue()));
             createItemPropertyNames.add(java.util.Set.copyOf(properties.keySet()));
             sentContentTypes.add(secret.contentType());
+            if (!properties.containsKey(Item.ATTRIBUTES)
+                    && reproduces(ProviderBug.OO7_PANICS_ON_CREATE_ITEM_WITHOUT_ATTRIBUTES)) {
+                neverAnswer();
+            }
+            checkContentType(secret.contentType());
             // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
             // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
             FakePrompt prompt = awaitApproval(() -> { }, new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o"));
@@ -783,6 +871,7 @@ public final class FakeSecretService {
 
         @Override
         public DBusPath Delete() {
+            alive();
             // Counted, not carried out: the collection and its item stay for the rest of the test.
             collectionDeleteCalls.incrementAndGet();
             return new DBusPath("/");
@@ -791,9 +880,10 @@ public final class FakeSecretService {
         @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
+            alive();
             switch (property) {
                 case "Locked":  return (A) Boolean.valueOf(collectionLocked);
-                case "Items":   return (A) new Variant<>(items(), "ao");
+                case "Items":   return (A) new Variant<>(itemsHidden() ? new ArrayList<DBusPath>() : items(), "ao");
                 case "Label":   return (A) COLLECTION_LABEL;
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
             }
@@ -812,8 +902,15 @@ public final class FakeSecretService {
             this.path = path;
         }
 
+        /** Fails the call when the item is not on the bus, as an unknown object does. */
+        private void reachable() {
+            alive();
+            if (itemsHidden()) throw new org.freedesktop.dbus.errors.UnknownObject("fake: no such object " + path);
+        }
+
         @Override
         public DBusPath Delete() {
+            reachable();
             if (isLocked(path)) {
                 // "Done", and the item kept, as KWallet keeps its secret.
                 if (reproduces(ProviderBug.KWALLET_ANSWERS_DELETE_OF_A_LOCKED_ITEM_AS_DONE)) return new DBusPath("/");
@@ -830,6 +927,7 @@ public final class FakeSecretService {
 
         @Override
         public WireSecret GetSecret(DBusPath session) {
+            reachable();
             boolean locked = isLocked(path);
             if (locked) {
                 lockedItemReads.incrementAndGet();
@@ -847,15 +945,24 @@ public final class FakeSecretService {
                 String value = ITEM_PATH.equals(path) ? secretValue : SECOND_SECRET_VALUE;
                 byte[] ct = c.doFinal(locked ? new byte[0] : value.getBytes(secretEncoding));
                 lastCiphertext = ct.clone();
-                return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
+                return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, reportedContentType());
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
             }
         }
 
+        /** The stored content type as the provider gives it back. */
+        private String reportedContentType() {
+            if (reproduces(ProviderBug.GNOME_KEYRING_GIVES_EVERY_SECRET_AS_TEXT_PLAIN)) return "text/plain";
+            boolean textPlain = secretContentType.split(";", 2)[0].trim().equalsIgnoreCase("text/plain");
+            if (textPlain && reproduces(ProviderBug.KEEPASSXC_DROPS_THE_CHARSET)) return "text/plain";
+            return secretContentType;
+        }
+
         @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
+            reachable();
             switch (property) {
                 // gnome-keyring reports an item as locked whenever its collection is locked, so
                 // the fake does too when asked to. This is what makes the regression reproducible.
@@ -868,8 +975,10 @@ public final class FakeSecretService {
 
         @Override
         public void SetSecret(WireSecret secret) {
+            reachable();
             setSecretCalls.incrementAndGet();
             sentContentTypes.add(secret.contentType());
+            checkContentType(secret.contentType());
             // Stores nothing either way: KWallet answers success and drops it.
             if (isLocked(path) && !reproduces(ProviderBug.KWALLET_DROPS_THE_SECRET_FOR_A_LOCKED_ITEM)) {
                 throw new org.freedesktop.Secret.Error.IsLocked("fake: the item is locked");
@@ -878,6 +987,7 @@ public final class FakeSecretService {
 
         @Override
         public <A> void Set(String iface, String property, A value) {
+            reachable();
             // Changes nothing: the tests need to see which properties were set, not the new values.
             if (refuseItemPropertyChanges) throw new IllegalStateException("fake: the item is locked");
             if (isLocked(path) && !takesChangesWhileLocked()) {
@@ -902,7 +1012,7 @@ public final class FakeSecretService {
     }
 
     private final class SessionImpl implements WireSession {
-        @Override public void Close() { closeSessionCalls.incrementAndGet(); }
+        @Override public void Close() { alive(); closeSessionCalls.incrementAndGet(); }
         @Override public String getObjectPath() { return SESSION_PATH; }
         @Override public boolean isRemote() { return false; }
     }
@@ -935,6 +1045,14 @@ public final class FakeSecretService {
      * queues them.
      */
     private final Deque<FakePrompt> unlockDialogs = new ArrayDeque<>();
+    /**
+     * A dismissed unlock prompt whose dialog is still on the screen, as gnome-keyring 51 leaves it
+     * ({@link ProviderBug#GNOME_KEYRING_STRANDS_THE_UNLOCKS_BEHIND_A_DISMISSED_DIALOG}). The
+     * prompts that wait do not move while it is up.
+     */
+    private FakePrompt dismissedDialog;
+    /** Set when no unlock prompt that waits will ever be resumed, for the same bug. */
+    private boolean unlocksStuck;
     private final List<String> promptCalls = Collections.synchronizedList(new ArrayList<>());
     private final List<String> promptWindowIds = Collections.synchronizedList(new ArrayList<>());
     private final List<String> dismissCalls = Collections.synchronizedList(new ArrayList<>());
@@ -963,6 +1081,7 @@ public final class FakeSecretService {
 
         @Override
         public void Prompt(String windowId) {
+            alive();
             promptCalls.add(prompt.path);
             promptWindowIds.add(windowId);
             synchronized (promptLock) {
@@ -978,13 +1097,37 @@ public final class FakeSecretService {
 
         @Override
         public void Dismiss() {
+            alive();
             dismissCalls.add(prompt.path);
             synchronized (promptLock) {
                 if (prompt.completed) return;
-                boolean shown = unlockDialogs.peekFirst() == prompt;
+                FakePrompt inProgress = unlockInProgress();
+                if (prompt.unlocksCollection && inProgress != null) {
+                    if (inProgress == prompt
+                            ? reproduces(ProviderBug.GNOME_KEYRING_ABORTS_ON_A_DISMISSED_UNLOCK_DIALOG)
+                            : reproduces(ProviderBug.GNOME_KEYRING_ABORTS_ON_A_DISMISSED_WAITING_UNLOCK)) {
+                        aborted = true;
+                        throw new org.freedesktop.dbus.errors.NoReply(
+                                "fake: perform_next_unlock: assertion failed: (!self->current)");
+                    }
+                    if (inProgress == prompt
+                            && reproduces(ProviderBug.GNOME_KEYRING_STRANDS_THE_UNLOCKS_BEHIND_A_DISMISSED_DIALOG)) {
+                        unlockDialogs.removeFirst();
+                        complete(prompt, true, noResult());
+                        dismissedDialog = prompt;
+                        return;
+                    }
+                }
+                boolean shown = inProgress == prompt;
                 unlockDialogs.remove(prompt);
                 if (pendingPrompt == prompt) clearPendingApproval();
-                complete(prompt, true, noResult());
+                if (reproduces(ProviderBug.OO7_DISMISS_SENDS_NO_COMPLETED)) {
+                    // Gone, without a word.
+                    prompt.completed = true;
+                    connection.unExportObject(prompt.path);
+                } else {
+                    complete(prompt, true, noResult());
+                }
                 if (shown) showNextDialog();
             }
         }
@@ -1001,10 +1144,37 @@ public final class FakeSecretService {
      */
     private void showNextDialog() {
         FakePrompt next;
-        while ((next = unlockDialogs.peekFirst()) != null && !collectionLocked) {
+        while ((next = unlockInProgress()) != null && !collectionLocked) {
             unlockDialogs.removeFirst();
             complete(next, false, unlockedCollection());
         }
+    }
+
+    /**
+     * The unlock prompt in progress: the first one that waits, whose dialog is on the screen. None
+     * while the dialog of a dismissed prompt is up, or when the waiting ones are stuck. The caller
+     * holds {@link #promptLock}.
+     */
+    private FakePrompt unlockInProgress() {
+        return dismissedDialog == null && !unlocksStuck ? unlockDialogs.peekFirst() : null;
+    }
+
+    /**
+     * Answers the dialog that gnome-keyring 51 leaves up for a dismissed unlock prompt, if there is
+     * one. The answer unlocks the collection when the user gives the password, and the dismissed
+     * prompt's call, completing then, takes the first waiting prompt off the queue in its own
+     * place, never to resume it. Any prompt that waits behind that one waits for good. The caller
+     * holds {@link #promptLock}.
+     *
+     * @return whether there was such a dialog
+     */
+    private boolean answerDismissedDialog(boolean approved) {
+        if (dismissedDialog == null) return false;
+        dismissedDialog = null;
+        if (approved) collectionLocked = false;
+        unlockDialogs.pollFirst();
+        unlocksStuck = !unlockDialogs.isEmpty();
+        return true;
     }
 
     /** Ends {@code prompt} and announces how. The caller holds {@link #promptLock}. */

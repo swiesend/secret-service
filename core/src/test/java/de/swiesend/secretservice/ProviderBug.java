@@ -18,6 +18,50 @@ public enum ProviderBug {
     // ---- gnome-keyring -----------------------------------------------------------------------
 
     /**
+     * A client's {@code Dismiss} of an unlock prompt whose dialog is on the screen aborts the
+     * daemon: {@code perform_next_unlock: assertion failed: (!self->current)}. Every client loses
+     * its session, and the daemon that D-Bus starts next has the login keyring locked. Also
+     * reported as GNOME #64 and #144, Launchpad #1891800 and #2107534, and Fedora 2417856, 2484409
+     * and 2499356; reproduced here on 40 and 46.1. Fixed by commit 4eacdcf0. The library dismisses
+     * a prompt that nobody answers within its timeout, 120 seconds by default, which meets it.
+     */
+    GNOME_KEYRING_ABORTS_ON_A_DISMISSED_UNLOCK_DIALOG(Provider.GNOME_KEYRING, Status.FIXED,
+            "3.0.3 to 50.0; fixed in 51.0", "https://gitlab.gnome.org/GNOME/gnome-keyring/-/issues/37", Fake.ON_REQUEST),
+
+    /**
+     * A client's {@code Dismiss} of an unlock prompt while another unlock prompt's dialog is on the
+     * screen aborts the daemon as well: a prompt that waits behind that dialog, or one that was
+     * never shown. Its completion takes the first prompt off the unlock queue, the one whose dialog
+     * shows, and asserts that nothing is in progress there; the fix of #37 clears only the
+     * dismissed prompt's own state. Reproduced here on 40, 46.1 and 51.1. The library dismisses a
+     * prompt that nobody answers within its timeout, also one that waits behind another
+     * application's dialog, and with prompting disabled it dismisses an unlock prompt that it does
+     * not show.
+     */
+    GNOME_KEYRING_ABORTS_ON_A_DISMISSED_WAITING_UNLOCK(Provider.GNOME_KEYRING, Status.UNREPORTED,
+            "3.0.3 to 51.1", null, Fake.ON_REQUEST),
+
+    /**
+     * Since the fix of #37, a client's {@code Dismiss} of an unlock prompt whose dialog is on the
+     * screen leaves the dialog there, and the unlock prompt that waits behind it never completes,
+     * also once the user answers the dialog. The dismissed prompt's call completes when the user
+     * answers, and it takes the waiting prompt off the unlock queue in its own place, without
+     * resuming it ("unlock prompt queue is out of sync with prompts"); a prompt that waits behind
+     * that one is never resumed either. The answer still unlocks the collection, and an unlock
+     * prompt that comes later works. Reproduced here on 51.1.
+     */
+    GNOME_KEYRING_STRANDS_THE_UNLOCKS_BEHIND_A_DISMISSED_DIALOG(Provider.GNOME_KEYRING, Status.UNREPORTED,
+            "51.0 and 51.1", null, Fake.ON_REQUEST),
+
+    /**
+     * {@code GetSecret} gives every secret the content type {@code text/plain}: gnome-keyring stores
+     * none (read from its code, {@code gkd-secret-secret.c}). The library reads {@code text/plain}
+     * as UTF-8, as libsecret writes it ({@code SecretContentTypeTest}).
+     */
+    GNOME_KEYRING_GIVES_EVERY_SECRET_AS_TEXT_PLAIN(Provider.GNOME_KEYRING, Status.UNREPORTED,
+            "46.1 and 51.1", null, Fake.ON_REQUEST),
+
+    /**
      * Any client reads the secrets of an unlocked collection, without a prompt. gnome-keyring's
      * developers dispute it: the desktop's applications all run as the same user. The library asks
      * the user before it reads all secrets of a collection or deletes from it: it locks the
@@ -81,6 +125,30 @@ public enum ProviderBug {
     // ---- KeePassXC ---------------------------------------------------------------------------
 
     /**
+     * The items of a locked database are not on the bus: {@code SearchItems} and {@code Items} give
+     * none, and their paths are unknown objects. The specification lists the locked items as such.
+     * The library unlocks the collection before it lists or reads ({@code SearchResultTest}).
+     */
+    KEEPASSXC_HIDES_THE_ITEMS_OF_A_LOCKED_DATABASE(Provider.KEEPASSXC, Status.UNREPORTED,
+            "2.7.6 and 2.7.12", null, Fake.ON_REQUEST),
+
+    /**
+     * {@code SearchItems} with no attributes finds no item, where gnome-keyring and KWallet find
+     * every item; the specification leaves it open. The library lists all items through
+     * {@code Items} ({@code SearchResultTest}).
+     */
+    KEEPASSXC_AN_EMPTY_SEARCH_FINDS_NOTHING(Provider.KEEPASSXC, Status.UNREPORTED,
+            "2.7.6 and 2.7.12", null, Fake.ON_REQUEST),
+
+    /**
+     * A secret stored as {@code text/plain} with a charset comes back as {@code text/plain}, its
+     * charset dropped: KeePassXC keeps it in the entry's password field. The library reads
+     * {@code text/plain} as UTF-8 ({@code SecretContentTypeTest}).
+     */
+    KEEPASSXC_DROPS_THE_CHARSET(Provider.KEEPASSXC, Status.UNREPORTED,
+            "2.7.6 and 2.7.12", null, Fake.ON_REQUEST),
+
+    /**
      * A new label or new attributes for an item that the user has not allowed the client to read
      * are taken: KeePassXC checks only whether the database is locked, where the specification
      * answers {@code IsLocked}. It refuses the secret. The library unlocks a locked item before it
@@ -130,6 +198,30 @@ public enum ProviderBug {
      */
     KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS(Provider.KWALLET, Status.FIXED,
             "5 and 6 up to 6.24; fixed in 6.25", "https://bugs.kde.org/show_bug.cgi?id=514194", Fake.ON_REQUEST),
+
+    /**
+     * The client's public key is read as a signed number (QCA's {@code BigInteger}), so that a key
+     * whose top bit is set arrives changed, and the two sides of the session have keys of their
+     * own. The library sends the key with the sign byte that {@code BigInteger.toByteArray()} gives
+     * it ({@code SharedSecretTest}).
+     */
+    KWALLET_READS_THE_PUBLIC_KEY_AS_SIGNED(Provider.KWALLET, Status.FIXED,
+            "5 and 6 up to 6.24; fixed in 6.25", "https://bugs.kde.org/show_bug.cgi?id=514194", Fake.ON_REQUEST),
+
+    /**
+     * A client's public key of fewer than 128 bytes is refused, and about one key in 256 is that
+     * short without its leading zero byte. The library pads every key to the prime's 128 bytes
+     * ({@code PublicKeyEncodingTest}).
+     */
+    KWALLET_REFUSES_A_SHORT_PUBLIC_KEY(Provider.KWALLET, Status.FIXED,
+            "5 and 6 up to 6.24; fixed in 6.25", "https://bugs.kde.org/show_bug.cgi?id=514194", Fake.ON_REQUEST),
+
+    /**
+     * {@code Lock} of a wallet that is closed already answers with an error. The library reads
+     * {@code Locked} before it locks ({@code CollectionLockPromptTest}).
+     */
+    KWALLET_REFUSES_TO_LOCK_A_LOCKED_WALLET(Provider.KWALLET, Status.UNREPORTED,
+            "5.115 and 6.24", null, Fake.ON_REQUEST),
 
     /**
      * Reading a locked item answers with an empty secret, encrypted, instead of {@code IsLocked}.
@@ -207,6 +299,30 @@ public enum ProviderBug {
             "5.115 and 6.24", null, Fake.NOT_REPRODUCED),
 
     // ---- oo7 ---------------------------------------------------------------------------------
+
+    /**
+     * A secret whose content type is not exactly {@code text/plain} or
+     * {@code application/octet-stream} is refused, {@code text/plain; charset=utf-8} too. The
+     * library sends {@code text/plain} ({@code SecretContentTypeTest}).
+     */
+    OO7_REFUSES_A_CONTENT_TYPE_WITH_PARAMETERS(Provider.OO7, Status.FIXED,
+            "0.6.0; 0.7 strips the parameters", null, Fake.ON_REQUEST),
+
+    /**
+     * {@code CreateItem} without the {@code Attributes} property makes the handler panic, and the
+     * call never gets a reply (read from its code: the properties are unwrapped). The library
+     * always sends the attributes, an empty map for none ({@code CreateItemPropertiesTest}).
+     */
+    OO7_PANICS_ON_CREATE_ITEM_WITHOUT_ATTRIBUTES(Provider.OO7, Status.UNREPORTED,
+            "0.6.0 and 0.7.0 beta", null, Fake.ON_REQUEST),
+
+    /**
+     * {@code Dismiss} removes the prompt and sends no {@code Completed}, where the specification ends
+     * a dismissed prompt with one (read from its code). The library waits for no answer after it
+     * dismisses a prompt ({@code PromptResultTest}).
+     */
+    OO7_DISMISS_SENDS_NO_COMPLETED(Provider.OO7, Status.UNREPORTED,
+            "0.6.0 and 0.7.0 beta", null, Fake.ON_REQUEST),
 
     /**
      * Any client reads the secrets of an unlocked collection, without a prompt, as on

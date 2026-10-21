@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -61,11 +62,32 @@ class SecretContentTypeTest {
     }
 
     @Test
+    void gnomeKeyringsTextPlainIsDecodedAsUtf8() throws Exception {
+        // gnome-keyring stores no content type and gives every secret as "text/plain"; libsecret
+        // stores a password as UTF-8 there.
+        CollectionInterface collection = harness.start(false);
+        harness.fake().reproduce(ProviderBug.GNOME_KEYRING_GIVES_EVERY_SECRET_AS_TEXT_PLAIN);
+        harness.fake().setStoredSecret("pässwörd", StandardCharsets.UTF_8, "application/octet-stream");
+
+        assertEquals(Optional.of("pässwörd"), collection.withSecret(FakeSecretService.ITEM_PATH, String::new));
+    }
+
+    @Test
+    void keePassXcsTextPlainWithoutItsCharsetIsDecodedAsUtf8() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        harness.fake().reproduce(ProviderBug.KEEPASSXC_DROPS_THE_CHARSET);
+        harness.fake().setStoredSecret("pässwörd", StandardCharsets.UTF_8, "text/plain; charset=utf-8");
+
+        assertEquals(Optional.of("pässwörd"), collection.withSecret(FakeSecretService.ITEM_PATH, String::new));
+    }
+
+    @Test
     void aSecretIsStoredAsTextPlain() throws Exception {
         // libsecret reads a password only under "text/plain", from KWallet too, which hands back
         // the content type it was given; oo7 0.6 refuses "text/plain; charset=utf-8". With prompting
         // disabled, as the fake creates an item through a prompt: CreateItem itself carries the secret.
         CollectionInterface collection = harness.start(false);
+        harness.fake().reproduce(ProviderBug.OO7_REFUSES_A_CONTENT_TYPE_WITH_PARAMETERS);
         assertTrue(collection.disablePrompt());
 
         collection.createItem("new", "pässwörd");
