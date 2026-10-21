@@ -68,10 +68,11 @@ class LockedItemSecretTest {
 
     @Test
     void aBulkReadSkipsALockedItem() throws Exception {
-        // The item is locked on its own, as KeePassXC locks one. The bulk read unlocks the
-        // collection, and no item.
+        // The item is locked on its own, as KeePassXC locks one, and the user dismisses the
+        // dialog that would unlock it.
         CollectionInterface collection = harness.start(true);
         harness.fake().setReadLockedItemsAsEmpty(true);
+        harness.fake().setDismissPrompts(true);
 
         Optional<Map<String, char[]>> secrets = collection.getSecrets();
 

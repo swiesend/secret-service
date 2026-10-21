@@ -3,21 +3,16 @@ package de.swiesend.secretservice;
 import de.swiesend.secretservice.handlers.Messaging;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.messages.DBusSignal;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
 import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
-import static de.swiesend.secretservice.Static.ObjectPaths.PROMPT;
 
 public class Prompt extends Messaging implements de.swiesend.secretservice.interfaces.Prompt {
 
     public static final List<Class<? extends DBusSignal>> signals = Arrays.asList(Completed.class);
-
-    private static final Logger log = LoggerFactory.getLogger(Prompt.class);
 
     public Prompt(Service service) {
         super(service.getConnection(), signals,
@@ -39,21 +34,10 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
         final String path = prompt.getPath();
         objectPath = path;
 
-        String windowID = "";
-
-        if (path.startsWith(PROMPT + "/")) {
-            try {
-                // NOTE: If the windowID starts with the prefix 'p' or 'u' followed by numerics only,
-                //       then it comes from the gnome-keyring. KeePassXC generates random alphanumeric ids.
-                windowID = path.substring(path.lastIndexOf("/") + 1);
-            } catch (IndexOutOfBoundsException | NullPointerException e) {
-                log.warn(String.format("No proper window ID. Continuing with window ID: \"%s\"", windowID));
-            }
-        } else {
-            log.warn(String.format("No proper prompt path. Continuing with window ID: \"%s\"", windowID));
-        }
-
-        return msg.send(serviceName, path, interfaceName, "Prompt", "s", windowID).isPresent();
+        // The window_id names the caller's window, over which the provider shows its dialog: an X11
+        // window for KeePassXC, "x11:" or "wayland:" and a handle for oo7. The library knows no
+        // window of the caller's, and the empty id says so, as libsecret and secret-service-rs send.
+        return msg.send(serviceName, path, interfaceName, "Prompt", "s", "").isPresent();
     }
 
     /**

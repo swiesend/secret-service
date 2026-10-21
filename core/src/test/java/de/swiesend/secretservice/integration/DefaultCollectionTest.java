@@ -8,8 +8,11 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -71,6 +74,46 @@ class DefaultCollectionTest {
                 });
 
         assertFalse(other.isDefault());
+    }
+
+    @Test
+    void aMissingDefaultCollectionIsLogged() throws Exception {
+        // ReadAlias answers "/" for no such alias, as the fake does unless a test sets one.
+        harness.start(false);
+        SessionInterface session = harness.service().openSession().orElseThrow();
+
+        String log = logOf(() -> session.defaultCollection().orElseThrow().close());
+
+        assertTrue(log.contains("The provider names no default collection"), log);
+    }
+
+    @Test
+    void aDefaultCollectionIsNotLoggedAsMissing() throws Exception {
+        // The counterpart of the test above.
+        harness.start(false);
+        harness.fake().setDefaultAlias(FakeSecretService.COLLECTION_PATH);
+        SessionInterface session = harness.service().openSession().orElseThrow();
+
+        String log = logOf(() -> session.defaultCollection().orElseThrow().close());
+
+        assertFalse(log.contains("names no default collection"), log);
+    }
+
+    private interface Action {
+        void run() throws Exception;
+    }
+
+    /** What the library logs while {@code action} runs, as slf4j-simple writes it to System.err. */
+    private static String logOf(Action action) throws Exception {
+        PrintStream original = java.lang.System.err;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        java.lang.System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            action.run();
+        } finally {
+            java.lang.System.setErr(original);
+        }
+        return captured.toString(StandardCharsets.UTF_8);
     }
 
     @Test

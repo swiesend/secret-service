@@ -8,13 +8,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A secret's content type comes from the application that stored it. The library reads the secret
- * whatever that content type says.
+ * whatever that content type says, and stores its own under "text/plain".
  */
 class SecretContentTypeTest {
 
@@ -56,5 +58,20 @@ class SecretContentTypeTest {
         harness.fake().setStoredSecret("pässwörd", StandardCharsets.UTF_8, "text/plain");
 
         assertEquals(Optional.of("pässwörd"), collection.withSecret(FakeSecretService.ITEM_PATH, String::new));
+    }
+
+    @Test
+    void aSecretIsStoredAsTextPlain() throws Exception {
+        // libsecret reads a password only under "text/plain", from KWallet too, which hands back
+        // the content type it was given; oo7 0.6 refuses "text/plain; charset=utf-8". With prompting
+        // disabled, as the fake creates an item through a prompt: CreateItem itself carries the secret.
+        CollectionInterface collection = harness.start(false);
+        assertTrue(collection.disablePrompt());
+
+        collection.createItem("new", "pässwörd");
+        assertTrue(collection.updateItem(FakeSecretService.ITEM_PATH, null, "pässwörd", null));
+
+        assertEquals(List.of("text/plain", "text/plain"), harness.fake().sentContentTypes(),
+                "the secrets of CreateItem and SetSecret");
     }
 }
