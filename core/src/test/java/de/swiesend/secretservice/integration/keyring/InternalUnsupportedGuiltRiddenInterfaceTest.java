@@ -75,7 +75,7 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Asserts nothing: the call only creates the change-password prompt, and showing it needs a user")
     public void changeWithPrompt() throws InterruptedException {
         assertDoesNotThrow(() -> iugri.changeWithPrompt(collection.getPath()));
         Thread.sleep(1000L);
@@ -112,8 +112,10 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
         service.lock(lock);
         Thread.sleep(100L); // await signal: Service.CollectionChanged
 
-        assertDoesNotThrow(() -> iugri.unlockWithMasterPassword(collection.getPath(), original));
+        // The call reports failure by its result, never by throwing.
+        assertTrue(iugri.unlockWithMasterPassword(collection.getPath(), original));
         Thread.sleep(100L); // await signal: Service.CollectionChanged
+        assertFalse(collection.isLocked(), "the master password unlocked the collection");
     }
 
     @Test

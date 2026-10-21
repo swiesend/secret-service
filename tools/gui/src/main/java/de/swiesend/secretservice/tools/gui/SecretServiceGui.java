@@ -38,7 +38,7 @@ import java.util.concurrent.CountDownLatch;
  * <p>This is a developer tool, intentionally kept out of the library jar and the test
  * suite. Build the core library, then launch it from the repository root with:
  * <pre>{@code
- *   mvn -q -DskipTests install
+ *   mvn -q -DskipTests -Dgpg.skip=true install
  *   mvn -f tools/gui/pom.xml exec:java
  * }</pre>
  *

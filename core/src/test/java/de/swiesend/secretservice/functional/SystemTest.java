@@ -34,7 +34,7 @@ class SystemTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Passes alone, fails in the full run: System.connect() returns dbus-java's shared connection, which other tests keep open")
     void disconnect() throws InterruptedException {
         assertTrue(system.getConnection().isConnected());
         assertTrue(system.disconnect());

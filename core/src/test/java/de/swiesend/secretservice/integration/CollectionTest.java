@@ -93,7 +93,7 @@ public class CollectionTest {
     }
 
     @Test
-    @Disabled
+    @Disabled("Reads the user's login keyring, whose label depends on the desktop's language")
     public void getLabel() {
         Collection collection = new Collection("login", context.service.getConnection());
         String response = collection.getLabel().get();

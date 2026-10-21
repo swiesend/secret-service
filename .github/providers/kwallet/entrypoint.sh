@@ -43,9 +43,42 @@ if ! wait_for_secrets 45; then
 fi
 echo "KWallet Secret Service ready (provider: KWallet)"
 
-# Run the provided command, defaulting to the system-test profile.
+# Wait for a collection, as the keepassxc entrypoint does, and for the same reason: without one
+# every test in ProviderSystemTest skips through its Assumptions, and the leg passed while it
+# asserted nothing about KWallet. It is continue-on-error in system-tests.yml, so the truth colours
+# one non-blocking job red instead of claiming coverage that does not exist.
+#
+# Headless, kwalletd5 creates no wallet: opening kdewallet above brings up its "new wallet"
+# dialog, which nobody answers under Xvfb. KWALLET_REQUIRE_COLLECTION=false keeps the container
+# usable for debugging.
+REQUIRE_COLLECTION="${KWALLET_REQUIRE_COLLECTION:-true}"
+collections=""
+for _ in $(seq 1 15); do
+    collections="$(dbus-send --session --print-reply --dest=org.freedesktop.secrets \
+        /org/freedesktop/secrets org.freedesktop.DBus.Properties.Get \
+        string:org.freedesktop.Secret.Service string:Collections 2>/dev/null \
+        | grep -o '/org/freedesktop/secrets/collection/[^"]*' || true)"
+    [ -n "$collections" ] && break
+    sleep 1
+done
+if [ -n "$collections" ]; then
+    echo "Exposed collections:"
+    echo "$collections"
+else
+    echo "KWallet exposes no collection, so every test would skip. kwalletd5.log:"
+    cat /tmp/kwalletd5.log || true
+    if [ "$REQUIRE_COLLECTION" != "false" ]; then
+        echo "Refusing to report a pass for a run that asserts nothing."
+        echo "Set KWALLET_REQUIRE_COLLECTION=false to continue anyway (debugging)."
+        exit 1
+    fi
+    echo "KWALLET_REQUIRE_COLLECTION=false — continuing without coverage."
+fi
+
+# Run the provided command, defaulting to the system-test profile on this container's own,
+# throwaway wallet. ProviderSystemTest uses only the collection it is told to.
 if [ $# -eq 0 ]; then
-    exec mvn -B test -Psystem-test
+    exec mvn -B test -Psystem-test -Dsecret-service.system-test.collection=kdewallet
 else
     exec "$@"
 fi

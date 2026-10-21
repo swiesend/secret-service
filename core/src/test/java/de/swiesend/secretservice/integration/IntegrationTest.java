@@ -18,12 +18,14 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static de.swiesend.secretservice.integration.test.Context.label;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class IntegrationTest {
@@ -57,9 +59,11 @@ public class IntegrationTest {
         byte[] encBase64 = Base64.getEncoder().encode(encrypted.getSecretValue());
         log.info(label("encrypted secret (base64)", new String(encBase64)));
 
+        // Compared as chars and erased, never logged or made into a String: the README points to
+        // this test as the example of transport encryption.
         char[] decrypted = encryptedSession.decrypt(encrypted).get();
-        log.info(label("         decrypted secret", new String(decrypted)));
-        assertEquals(plain, new String(decrypted));
+        assertArrayEquals(plain.toCharArray(), decrypted);
+        Arrays.fill(decrypted, '\0');
 
         Service service = transportEncryption.getService();
         Session session = transportEncryption.getSession();
@@ -105,8 +109,8 @@ public class IntegrationTest {
         assertEquals(encrypted.getContentType(), actual.getContentType());
 
         decrypted = encryptedSession.decrypt(actual).get();
-        log.info(label("  decrypted remote secret", new String(decrypted)));
-        assertEquals(plain, new String(decrypted));
+        assertArrayEquals(plain.toCharArray(), decrypted);
+        Arrays.fill(decrypted, '\0');
 
         // finally close and clear the private key
         transportEncryption.close();
