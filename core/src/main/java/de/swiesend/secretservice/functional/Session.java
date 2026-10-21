@@ -8,7 +8,6 @@ import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,7 +20,9 @@ public class Session implements SessionInterface {
     private static final Logger log = LoggerFactory.getLogger(Session.class);
     public TransportEncryption.EncryptedSession encryptedSession = null;
 
-    private List<CollectionInterface> collections = new ArrayList<>();
+    // Copy-on-write: a collection removes itself when it closes, also while close() below closes
+    // them all, and on whichever thread closes it.
+    private List<CollectionInterface> collections = new java.util.concurrent.CopyOnWriteArrayList<>();
     private UUID id = null;
     private ServiceInterface service = null;
 
@@ -99,6 +100,11 @@ public class Session implements SessionInterface {
                 });
     }
 
+    /** Forgets a collection, which {@link Collection#close()} calls: a closed one has nothing to close. */
+    void forget(CollectionInterface collection) {
+        this.collections.remove(collection);
+    }
+
     @Override
     public void close() throws Exception {
         if (!isClosed) {
@@ -107,6 +113,10 @@ public class Session implements SessionInterface {
             }
             // Erases the transport session key as well as closing the D-Bus session.
             encryptedSession.close();
+            // The service keeps the sessions it has to close; this one is closed.
+            if (service instanceof SecretService secretService) {
+                secretService.unregisterSession(this);
+            }
         }
         log.trace("closed session");
         isClosed = true;

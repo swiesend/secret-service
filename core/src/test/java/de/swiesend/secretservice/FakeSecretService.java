@@ -39,8 +39,9 @@ import javax.crypto.spec.DHPublicKeySpec;
  * the collection therefore cannot read the secret, exactly as on a real KeePassXC.</p>
  *
  * <p>Only the members the read path touches are implemented, and {@code Item.Delete},
- * {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a provider: it does
- * no access control and keeps its secret in a field.</p>
+ * {@code Item.SetSecret}, setting the item's properties, {@code Collection.Delete},
+ * {@code ReadAlias}, {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a
+ * provider: it does no access control and keeps its secret in a field.</p>
  */
 public final class FakeSecretService {
 
@@ -56,6 +57,16 @@ public final class FakeSecretService {
     /** What the fake item holds. */
     public static final String SECRET_VALUE = "the-locked-secret";
 
+    /**
+     * RFC 2409, section 6.2: the prime of the group that the specification prescribes. The fake's
+     * own copy, as a provider has one, independent of the library's.
+     */
+    private static final BigInteger SECOND_OAKLEY_GROUP_PRIME = new BigInteger(
+            "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22"
+                    + "514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6"
+                    + "F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381"
+                    + "FFFFFFFFFFFFFFFF", 16);
+
     // ---- wire interfaces -------------------------------------------------------------------
     // The library's own de.swiesend.secretservice.interfaces.* declare Optional<...> returns, which
     // are not valid D-Bus types; they exist to be used as client proxies, with the marshalling done
@@ -70,18 +81,44 @@ public final class FakeSecretService {
         Pair<List<DBusPath>, DBusPath> Lock(List<DBusPath> objects);
         Pair<List<DBusPath>, List<DBusPath>> SearchItems(Map<String, String> attributes);
         Pair<DBusPath, DBusPath> CreateCollection(Map<String, Variant<?>> properties, String alias);
+        DBusPath ReadAlias(String name);
     }
 
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
         Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, Secret secret, boolean replace);
+        DBusPath Delete();
     }
 
     @DBusInterfaceName(Static.Interfaces.ITEM)
     public interface WireItem extends DBusInterface {
         DBusPath Delete();
-        Secret GetSecret(DBusPath session);
+        WireSecret GetSecret(DBusPath session);
+        void SetSecret(Secret secret);
+    }
+
+    /**
+     * A secret as it goes over the bus, {@code (oayays)}, with the content type as given. The
+     * library's {@link Secret} would rewrite a content type it cannot parse, and the client would
+     * never see it.
+     */
+    public static final class WireSecret extends org.freedesktop.dbus.Struct {
+        @org.freedesktop.dbus.annotations.Position(0)
+        private final DBusPath session;
+        @org.freedesktop.dbus.annotations.Position(1)
+        private final byte[] parameters;
+        @org.freedesktop.dbus.annotations.Position(2)
+        private final byte[] value;
+        @org.freedesktop.dbus.annotations.Position(3)
+        private final String contentType;
+
+        public WireSecret(DBusPath session, byte[] parameters, byte[] value, String contentType) {
+            this.session = session;
+            this.parameters = parameters;
+            this.value = value;
+            this.contentType = contentType;
+        }
     }
 
     @DBusInterfaceName(Static.Interfaces.SESSION)
@@ -239,6 +276,58 @@ public final class FakeSecretService {
 
     private volatile boolean itemDeleted;
 
+    /** The item properties that {@code Set} changed, in call order. */
+    public List<String> itemPropertySets() {
+        return List.copyOf(itemPropertySets);
+    }
+
+    private final List<String> itemPropertySets = Collections.synchronizedList(new ArrayList<>());
+
+    /** Makes {@code Set} on the item fail, as a provider refuses to change an item it keeps locked. */
+    public void setRefuseItemPropertyChanges(boolean refuse) { this.refuseItemPropertyChanges = refuse; }
+    private volatile boolean refuseItemPropertyChanges;
+
+    /** How often {@code SetSecret} was called on the item. */
+    public int setSecretCalls() {
+        return setSecretCalls.get();
+    }
+
+    /**
+     * Points the {@code default} alias at {@code path}, as a provider names its default collection.
+     * Without it, {@code ReadAlias} answers "/", for no such collection.
+     */
+    public void setDefaultAlias(String path) { this.defaultAlias = path; }
+    private volatile String defaultAlias;
+
+    /**
+     * The content type that {@code GetSecret} gives the secret, as the application that stored it
+     * chose it. The specification's own default, with its unusual spelling, unless set.
+     */
+    public void setSecretContentType(String contentType) { this.secretContentType = contentType; }
+    private volatile String secretContentType = "text/plain; charset=utf8";
+
+    /**
+     * The secret that {@code GetSecret} hands out instead of {@link #SECRET_VALUE}: {@code value},
+     * encoded in {@code encoding}, under {@code contentType}.
+     */
+    public void setStoredSecret(String value, java.nio.charset.Charset encoding, String contentType) {
+        this.secretValue = value;
+        this.secretEncoding = encoding;
+        this.secretContentType = contentType;
+    }
+
+    private volatile String secretValue = SECRET_VALUE;
+    private volatile java.nio.charset.Charset secretEncoding = StandardCharsets.UTF_8;
+
+    /** How often {@code Delete} was called on the collection. */
+    public int collectionDeleteCalls() {
+        return collectionDeleteCalls.get();
+    }
+
+    private final java.util.concurrent.atomic.AtomicInteger collectionDeleteCalls = new java.util.concurrent.atomic.AtomicInteger();
+
+    private final java.util.concurrent.atomic.AtomicInteger setSecretCalls = new java.util.concurrent.atomic.AtomicInteger();
+
     public void export() throws Exception {
         connection.exportObject(SERVICE_PATH, new ServiceImpl());
         connection.exportObject(COLLECTION_PATH, new CollectionImpl());
@@ -258,8 +347,7 @@ public final class FakeSecretService {
             // so the fake has to do the real exchange.
             try {
                 byte[] clientY = Static.Utils.toByteArray(input.getValue());
-                BigInteger prime = new BigInteger(1, Static.RFC_2409.SecondOakleyGroup.PRIME);
-                DHParameterSpec params = new DHParameterSpec(prime, BigInteger.valueOf(2), 1024);
+                DHParameterSpec params = new DHParameterSpec(SECOND_OAKLEY_GROUP_PRIME, BigInteger.valueOf(2), 1024);
 
                 KeyPairGenerator gen = KeyPairGenerator.getInstance("DiffieHellman");
                 gen.initialize(params);
@@ -302,9 +390,8 @@ public final class FakeSecretService {
             }
             if (dismissPrompts) {
                 // A REAL prompt path, and a Completed(dismissed=true) to go with it. Answering "/"
-                // instead would send the client down Prompt.await's getLastHandledSignal branch,
-                // where no signal is ever handled -- so every test hit the "no prompt result" path
-                // and the dismissal branch had no coverage at all.
+                // instead would leave the client no prompt to await -- so every test would hit the
+                // "no prompt result" path, and the dismissal branch would have no coverage at all.
                 //
                 // No Prompt object is exported: declaring @DBusInterfaceName for
                 // org.freedesktop.Secret.Prompt registers a JVM-wide interface->class mapping that
@@ -380,6 +467,12 @@ public final class FakeSecretService {
         }
 
         @Override
+        public DBusPath ReadAlias(String name) {
+            String target = "default".equals(name) ? defaultAlias : null;
+            return new DBusPath(target == null ? "/" : target);
+        }
+
+        @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             if ("Collections".equals(property)) {
@@ -412,6 +505,13 @@ public final class FakeSecretService {
         }
 
         @Override
+        public DBusPath Delete() {
+            // Counted, not carried out: the collection and its item stay for the rest of the test.
+            collectionDeleteCalls.incrementAndGet();
+            return new DBusPath("/");
+        }
+
+        @Override
         @SuppressWarnings("unchecked")
         public <A> A Get(String iface, String property) {
             switch (property) {
@@ -440,7 +540,7 @@ public final class FakeSecretService {
         }
 
         @Override
-        public Secret GetSecret(DBusPath session) {
+        public WireSecret GetSecret(DBusPath session) {
             if (itemLocked || collectionLocked) {
                 // What a provider does for a locked item -- including one locked only because its
                 // collection is. The client must not get here.
@@ -451,8 +551,8 @@ public final class FakeSecretService {
                 new SecureRandom().nextBytes(iv);
                 Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
-                byte[] ct = c.doFinal(SECRET_VALUE.getBytes(StandardCharsets.UTF_8));
-                return new Secret(new DBusPath(SESSION_PATH), iv, ct, "text/plain; charset=utf8");
+                byte[] ct = c.doFinal(secretValue.getBytes(secretEncoding));
+                return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
             }
@@ -471,7 +571,18 @@ public final class FakeSecretService {
             }
         }
 
-        @Override public <A> void Set(String iface, String property, A value) { }
+        @Override
+        public void SetSecret(Secret secret) {
+            setSecretCalls.incrementAndGet();
+        }
+
+        @Override
+        public <A> void Set(String iface, String property, A value) {
+            // Changes nothing: the tests need to see which properties were set, not the new values.
+            if (refuseItemPropertyChanges) throw new IllegalStateException("fake: the item is locked");
+            itemPropertySets.add(property);
+        }
+
         @Override public Map<String, Variant<?>> GetAll(String iface) { return Map.of(); }
         @Override public String getObjectPath() { return ITEM_PATH; }
         @Override public boolean isRemote() { return false; }

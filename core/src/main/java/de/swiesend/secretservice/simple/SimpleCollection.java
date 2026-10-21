@@ -169,10 +169,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Checks if all services are provided by the system:<br>
+     * Checks if the system provides the services this class needs:<br>
      * <code>org.freedesktop.DBus</code><br>
-     * <code>org.freedesktop.secrets</code><br>
-     * <code>org.gnome.keyring</code>
+     * <code>org.freedesktop.secrets</code>, running or startable by D-Bus, which this check then
+     * starts, and able to open an encrypted session.
+     * <p>
+     * <code>org.gnome.keyring</code> is optional: without it, a collection opened with a password
+     * is created and unlocked through the provider's dialog.
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
      * @deprecated see class-level deprecation notice.
@@ -280,7 +283,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
                     return true;
                 }
             }
-        } catch (IOException | RejectedExecutionException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            // The caller's to handle, as the thread's owner: often a shutdown in progress.
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for the D-Bus connection to close.");
+            return false;
+        } catch (IOException | RejectedExecutionException e) {
             log.error("Failed to disconnect properly from the D-Bus.", e);
             return false;
         }
@@ -398,11 +406,16 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
     /**
      * Delete this collection.
+     *
+     * @throws SecurityException if it is a default collection, or the user or the provider refused.
      */
     @Override
     public void delete() throws SecurityException {
-        if (!delegate.delete()) {
+        if (delegate.isDefault()) {
             throw new SecurityException("Default collections may not be deleted with the simple API.");
+        }
+        if (!delegate.delete()) {
+            throw new SecurityException("The collection was not deleted. The user may have dismissed the prompt, or the provider refused.");
         }
     }
 
@@ -440,13 +453,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Updates an item with the provided properties.
+     * Updates an item with the provided properties. A property that is {@code null} stays as it is.
      *
      * @param objectPath The DBus object path of the item
-     * @param label      The displayable label of the new item
-     * @param password   The password of the new item
-     * @param attributes The attributes of the new item
-     * @throws IllegalArgumentException The object path, label and password are non-nullable.
+     * @param label      The displayable label of the new item, or null
+     * @param password   The password of the new item, or null
+     * @param attributes The attributes of the new item, or null
+     * @throws IllegalArgumentException The object path is null or empty.
      */
     @Override
     public void updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) throws IllegalArgumentException {

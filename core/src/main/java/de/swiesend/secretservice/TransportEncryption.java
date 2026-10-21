@@ -71,8 +71,8 @@ public class TransportEncryption implements AutoCloseable {
 
         try {
             // create dh parameter specification with prime, generator and bits
-            BigInteger prime = fromBinary(Static.RFC_2409.SecondOakleyGroup.PRIME);
-            BigInteger generator = fromBinary(Static.RFC_2409.SecondOakleyGroup.GENERATOR);
+            BigInteger prime = Static.RFC_2409.SecondOakleyGroup.prime();
+            BigInteger generator = Static.RFC_2409.SecondOakleyGroup.generator();
             dhParameters = new DHParameterSpec(prime, generator, PRIVATE_VALUE_BITS);
 
             // generate DH keys from specification
@@ -263,7 +263,10 @@ public class TransportEncryption implements AutoCloseable {
 
         public Optional<Secret> encrypt(byte[] plain, Charset charset) {
 
-            if (Static.Utils.isNullOrEmpty(plain)) return Optional.empty();
+            // Only null: an empty secret is encrypted like any other, as in every release. The
+            // functional API refuses an empty item secret itself, and a collection's password may
+            // be empty.
+            if (plain == null) return Optional.empty();
 
             try {
                 if (service == null) {
@@ -321,7 +324,8 @@ public class TransportEncryption implements AutoCloseable {
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
                 cipher.init(Cipher.DECRYPT_MODE, key, ivSpec);
                 decrypted = cipher.doFinal(secret.getSecretValue());
-                return Optional.of(Secret.toChars(decrypted));
+                // In the charset that the secret's content type names; UTF-8 where it names none.
+                return Optional.of(Secret.toChars(decrypted, secret.getCharset()));
             } catch (InvalidAlgorithmParameterException |
                      InvalidKeyException |
                      NoSuchPaddingException |

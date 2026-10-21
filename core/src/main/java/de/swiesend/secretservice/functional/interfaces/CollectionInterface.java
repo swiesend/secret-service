@@ -48,7 +48,23 @@ public interface CollectionInterface extends AutoCloseable {
      */
     Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes);
 
+    /**
+     * Delete this collection, unless it is a default collection; see {@link #isDefault()}.
+     *
+     * @return whether the collection was deleted
+     */
     boolean delete();
+
+    /**
+     * Whether this is a default collection, which {@link #delete()} does not delete: the one the
+     * provider's {@code default} alias points to, or gnome-keyring's login or session collection.
+     * <p>
+     * The default body answers {@code false}, for an implementation whose {@code delete()} refuses
+     * no collection. It keeps an implementation that does not declare this method compiling.
+     */
+    default boolean isDefault() {
+        return false;
+    }
 
     boolean deleteItem(String objectPath);
 
@@ -193,6 +209,16 @@ public interface CollectionInterface extends AutoCloseable {
      */
     boolean unlockWithUserPermission();
 
+    /**
+     * Update an item's label, secret and attributes. A part that is {@code null} stays as it is.
+     *
+     * @param objectPath the item's object path
+     * @param label      the new label, or {@code null}
+     * @param password   the new secret, or {@code null}; an empty one is refused, as by
+     *                   {@link #createItem(String, CharSequence, Map)}
+     * @param attributes the attributes that replace the item's, or {@code null}
+     * @return whether every part that was given has been changed
+     */
     boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes);
 
     boolean lockItem(String objectPath);

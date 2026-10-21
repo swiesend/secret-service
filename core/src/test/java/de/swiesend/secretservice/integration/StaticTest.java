@@ -31,6 +31,14 @@ public class StaticTest {
     }
 
     @Test
+    public void isNullOrEmptyBytes() {
+        assertTrue(Utils.isNullOrEmpty((byte[]) null));
+        assertTrue(Utils.isNullOrEmpty(new byte[0]));
+        assertFalse(Utils.isNullOrEmpty(new byte[]{0}), "a zero byte is a byte");
+        assertFalse(Utils.isNullOrEmpty(new byte[]{' '}), "and so is a space: bytes are not text");
+    }
+
+    @Test
     public void isNullOrEmptyCharSeq() {
         CharSequence nullCharSeq = null;
         assertTrue(Utils.isNullOrEmpty(nullCharSeq));

@@ -153,18 +153,38 @@ public class SignalHandler implements DBusSigHandler {
         return Arrays.stream(handled)
                 .filter(signal -> signal != null)
                 .filter(signal -> signal.getClass().equals(s))
-                .filter(signal -> {
-                    String sigPath = signal.getPath();
-                    if (path == null || "/".equals(path)) return true;
-                    if (sigPath == null) return false;
-                    if (sigPath.equals(path)) return true;
-                    // Item signals may be emitted with the item's object path
-                    // (e.g. /org/freedesktop/secrets/collection/<id>/<item>). Accept
-                    // signals that start with the requested collection path + '/'.
-                    return sigPath.startsWith(path + "/");
-                })
+                .filter(signal -> isOnPath(signal, path))
                 .map(signal -> (S) signal)
                 .collect(Collectors.toList());
+    }
+
+    private static boolean isOnPath(DBusSignal signal, String path) {
+        String sigPath = signal.getPath();
+        if (path == null || "/".equals(path)) return true;
+        if (sigPath == null) return false;
+        if (sigPath.equals(path)) return true;
+        // Item signals may be emitted with the item's object path
+        // (e.g. /org/freedesktop/secrets/collection/<id>/<item>). Accept
+        // signals that start with the requested collection path + '/'.
+        return sigPath.startsWith(path + "/");
+    }
+
+    /**
+     * The newest signal of class {@code s} on {@code path} among those handled after the first
+     * {@code since}, or null. The buffer holds the newest signal first.
+     */
+    @SuppressWarnings("unchecked")
+    private <S extends DBusSignal> S newestSince(int since, Class<S> s, String path) {
+        synchronized (handled) {
+            int fresh = Math.min(count - since, bufferSize);
+            for (int i = 0; i < fresh; i++) {
+                DBusSignal signal = handled[i];
+                if (signal != null && signal.getClass().equals(s) && isOnPath(signal, path)) {
+                    return (S) signal;
+                }
+            }
+            return null;
+        }
     }
 
     public int getCount() {
@@ -222,51 +242,60 @@ public class SignalHandler implements DBusSigHandler {
         final Future<S> handler = executor.submit((Callable) () -> {
             int current = init;
             int last = init;
-            List<S> signals = null;
             while (true) {
                 if (Thread.currentThread().isInterrupted()) return null;
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
                 current = getCount();
                 if (current != last) {
-                    signals = getHandledSignals(signal, path);
-                    if (signals != null && !signals.isEmpty()) {
-                        return signals.get(0);
+                    // Only what arrived since the await began: an older signal on the same path
+                    // answered an earlier operation, perhaps one the user refused.
+                    S received = newestSince(init, signal, path);
+                    if (received != null) {
+                        return received;
                     }
                     last = current;
                 }
             }
         });
 
+        S received = null;
+        String gaveUp = "it was interrupted";
         try {
             long start = System.nanoTime();
             long nanos = timeout.toNanos();
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {
-                    return handler.get();
+                    received = handler.get();
+                    break;
                 } else if (now - start > nanos) {
-                    throw new TimeoutException();
+                    gaveUp = "it exceeded the timeout of " + timeout.getSeconds() + " seconds";
+                    break;
                 }
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
             }
-        } catch (CancellationException | ExecutionException | InterruptedException | TimeoutException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            maybePrompt.ifPresentOrElse(
-                    (prompt) -> {
-                        prompt.dismiss();
-                        log.warn("Cancelled the prompt (" + path + ") manually after exceeding the timeout of " + timeout.getSeconds() + " seconds.");
-                    },
-                    () -> {
-                        log.warn("Cancelled the action, but could not dismiss the prompt.", e);
-                    });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (CancellationException | ExecutionException e) {
+            gaveUp = "waiting failed: " + e;
         } finally {
             handler.cancel(true);
             executor.shutdownNow();
         }
 
-        return null;
+        if (received == null) {
+            // Timed out or interrupted, also before the wait began: a prompt still open would
+            // wait for an answer that nobody collects.
+            final String reason = gaveUp;
+            maybePrompt.ifPresentOrElse(
+                    (prompt) -> {
+                        prompt.dismiss();
+                        log.warn("Cancelled the prompt ({}) because {}.", path, reason);
+                    },
+                    // The caller reports the missing signal, as createItem does.
+                    () -> log.debug("Stopped waiting for the signal because {}.", reason));
+        }
+        return received;
     }
 
 }

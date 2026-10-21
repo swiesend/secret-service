@@ -7,6 +7,7 @@ import org.freedesktop.dbus.annotations.Position;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CoderResult;
 import java.nio.charset.CodingErrorAction;
@@ -20,7 +21,7 @@ import static java.util.Objects.requireNonNull;
 public final class Secret extends Struct implements AutoCloseable {
 
     // NOTE: the specification defines the default content_type differently with "text/plain; charset=utf8"
-    //  see: https://standards.freedesktop.org/secret-service/0.2/ch14.html
+    //  see: https://specifications.freedesktop.org/secret-service/0.2/types.html
     public static final String TEXT_PLAIN_CHARSET_UTF_8 = "text/plain; charset=utf-8";
     public static final String TEXT_PLAIN = "text/plain";
     private static final String CHARSET = "charset=";
@@ -137,11 +138,31 @@ public final class Secret extends Struct implements AutoCloseable {
     }
 
     static public char[] toChars(byte[] bytes) {
+        return toChars(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Decodes {@code bytes} in {@code charset}, or in UTF-8, the specification's default, when it
+     * is null, and erases {@code bytes}. Into one buffer sized for the worst case: a decoder that
+     * outgrows its first buffer copies into a larger one and drops the first without erasing it.
+     */
+    static public char[] toChars(byte[] bytes, Charset charset) {
+        // The same replacement for malformed input as Charset.decode.
+        CharsetDecoder decoder = (charset == null ? StandardCharsets.UTF_8 : charset).newDecoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
         ByteBuffer encoded = ByteBuffer.wrap(bytes);
-        CharBuffer decoded = StandardCharsets.UTF_8.decode(encoded);
-        final char[] chars = new char[decoded.remaining()];
-        decoded.get(chars);
+        final CharBuffer decoded = CharBuffer.allocate(
+                Math.toIntExact((long) Math.ceil(bytes.length * (double) decoder.maxCharsPerByte())));
         try {
+            CoderResult result = decoder.decode(encoded, decoded, true);
+            if (result.isUnderflow()) result = decoder.flush(decoded);
+            if (!result.isUnderflow()) {
+                throw new IllegalStateException("The " + decoder.charset() + " decoder outgrew its worst-case buffer: " + result);
+            }
+            decoded.flip();
+            final char[] chars = new char[decoded.remaining()];
+            decoded.get(chars);
             return chars;
         } finally {
             clear(encoded);
@@ -205,7 +226,16 @@ public final class Secret extends Struct implements AutoCloseable {
         }
 
         if (filtered.size() == 2 && filtered.get(1).startsWith(CHARSET)) {
-            charset = Charset.forName(filtered.get(1).substring(CHARSET.length()).toUpperCase());
+            try {
+                // As it is: charset names are case-insensitive, and upper-casing in the default
+                // locale turned the i of iso-8859-1 into a dotted capital I under a Turkish one,
+                // which no charset name may contain.
+                charset = Charset.forName(filtered.get(1).substring(CHARSET.length()));
+            } catch (IllegalArgumentException e) {
+                // An illegal or unsupported name, from the application that stored the secret. It
+                // must not make the secret unreadable: read it as having no charset.
+                charset = null;
+            }
         } else {
             charset = null;
         }
