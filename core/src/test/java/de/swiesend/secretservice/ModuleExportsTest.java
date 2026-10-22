@@ -80,6 +80,39 @@ class ModuleExportsTest {
         assertEquals(Set.of(), leaks, "exported API that names a type of an unexported package");
     }
 
+    @Test
+    void thePublicImplementationsOfExportedInterfacesAreExported() throws Exception {
+        // An exported interface of the low-level API is of no use on the module path without its
+        // implementation: gnome-keyring's own interface, which unlocks a collection with its
+        // password, had its one implementation in an unexported package.
+        Path classes = Path.of(Secret.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        ModuleDescriptor module = ModuleFinder.of(classes).find("de.swiesend.secretservice")
+                .orElseThrow(() -> new AssertionError("no module descriptor in " + classes))
+                .descriptor();
+        Set<String> exported = module.exports().stream()
+                .filter(e -> !e.isQualified())
+                .map(ModuleDescriptor.Exports::source)
+                .collect(Collectors.toSet());
+
+        Set<String> hidden = new TreeSet<>();
+        for (String pkg : module.packages()) {
+            if (exported.contains(pkg)) continue;
+            try (Stream<Path> files = Files.list(classes.resolve(pkg.replace('.', '/')))) {
+                for (Path file : (Iterable<Path>) files::iterator) {
+                    String name = file.getFileName().toString();
+                    if (!name.endsWith(".class") || name.equals("package-info.class")) continue;
+                    Class<?> c = Class.forName(pkg + "." + name.substring(0, name.length() - 6), false,
+                            ModuleExportsTest.class.getClassLoader());
+                    if (!Modifier.isPublic(c.getModifiers()) || !isVisible(c)) continue;
+                    for (Class<?> i : c.getInterfaces()) {
+                        if (exported.contains(i.getPackageName())) hidden.add(c.getName() + " implements " + i.getName());
+                    }
+                }
+            }
+        }
+        assertEquals(Set.of(), hidden, "an implementation of an exported interface in an unexported package");
+    }
+
     /** Public, and every enclosing class public too. */
     private static boolean isVisible(Class<?> c) {
         for (Class<?> e = c.getEnclosingClass(); e != null; e = e.getEnclosingClass()) {

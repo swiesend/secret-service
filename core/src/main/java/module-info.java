@@ -11,6 +11,9 @@ module de.swiesend.secretservice {
     exports de.swiesend.secretservice.functional;
     exports de.swiesend.secretservice.functional.interfaces;
     exports de.swiesend.secretservice.gnome.keyring.interfaces;
+    // The low-level implementation of the interface above, which unlocks a collection with its
+    // password: a module-path application has no other.
+    exports de.swiesend.secretservice.gnome.keyring;
     // Extended or returned by exported classes: the low-level classes extend handlers.Messaging,
     // whose getSignalHandler() and getMessageHandler() return handler types, and SimpleCollection
     // extends the class of the same name in simple.interfaces.
