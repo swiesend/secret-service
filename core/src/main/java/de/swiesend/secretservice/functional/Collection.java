@@ -11,7 +11,6 @@ import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -506,6 +505,9 @@ public class Collection implements CollectionInterface {
                 dismissPrompt(pair.b);
                 return Optional.empty();
             }
+            // The items before the prompt: where its result names no item, the new one is the one
+            // that is there afterwards only.
+            Set<String> before = itemPaths();
             de.swiesend.secretservice.interfaces.Prompt.Completed completed =
                     prompt.await(pair.b, service.getTimeout());
             if (completed == null || completed.dismissed) {
@@ -519,18 +521,24 @@ public class Collection implements CollectionInterface {
                 return Optional.of(fromResult);
             }
 
-            // Fallback: wait for the ItemCreated signal scoped to this collection (gnome-keyring)
-            de.swiesend.secretservice.Collection.ItemCreated sig = collection
-                    .getSignalHandler()
-                    .await(de.swiesend.secretservice.Collection.ItemCreated.class,
-                            collection.getObjectPath(), () -> null, Duration.ofSeconds(5));
-            if (sig != null && sig.item != null) {
-                return Optional.of(sig.item.getPath());
+            // The item that is new. Not from ItemCreated: the provider sends it before the prompt's
+            // Completed, and a wait begun afterwards takes no signal that came before it.
+            Set<String> added = itemPaths();
+            added.removeAll(before);
+            if (added.size() == 1) {
+                return Optional.of(added.iterator().next());
             }
-
-            log.warn("Did not observe ItemCreated signal for collection {} after prompt.", collection.getObjectPath());
+            log.warn("The prompt for a new item in collection {} named no item, and {} items are new.",
+                    collection.getObjectPath(), added.size());
             return Optional.empty();
         }
+    }
+
+    /** The paths of the collection's items, none where they cannot be read. */
+    private Set<String> itemPaths() {
+        return collection.getItems()
+                .map(items -> (Set<String>) new HashSet<>(Static.Convert.toStrings(items)))
+                .orElseGet(HashSet::new);
     }
 
     /**
@@ -560,17 +568,25 @@ public class Collection implements CollectionInterface {
         return null;
     }
 
-    /** Unwraps a DBusPath, String, or nested List thereof into a path string. */
+    /**
+     * Unwraps a DBusPath, String, or nested List thereof into a path string. "/" and "" name no
+     * item.
+     */
     private static String pathFromObject(Object o) {
-        if (o instanceof DBusPath p)  return p.getPath();
-        if (o instanceof String s)    return s;
+        if (o instanceof DBusPath p)  return itemPath(p.getPath());
+        if (o instanceof String s)    return itemPath(s);
         if (o instanceof List<?> inner) {
             for (Object elem : inner) {
-                if (elem instanceof DBusPath p) return p.getPath();
-                if (elem instanceof String s)   return s;
+                String path = elem instanceof DBusPath p ? itemPath(p.getPath())
+                        : elem instanceof String s ? itemPath(s) : null;
+                if (path != null) return path;
             }
         }
         return null;
+    }
+
+    private static String itemPath(String path) {
+        return path == null || path.isEmpty() || "/".equals(path) ? null : path;
     }
 
     @Override

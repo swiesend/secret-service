@@ -415,6 +415,14 @@ public final class FakeSecretService {
     /** Where the fake reports an item created through its CreateItem prompt. */
     public static final String CREATED_ITEM_PATH = COLLECTION_PATH + "/2";
 
+    /**
+     * Makes the {@code CreateItem} prompt answer with a result that names no item, and list the
+     * new item among the collection's once the prompt is answered.
+     */
+    public void setCreateItemNamesNoPath(boolean none) { this.createItemNamesNoPath = none; }
+    private volatile boolean createItemNamesNoPath;
+    private volatile boolean createdItemListed;
+
     /** Labels that {@code CreateItem} was called with, in order. */
     public List<String> createItemCalls() {
         return List.copyOf(createItemCalls);
@@ -683,6 +691,7 @@ public final class FakeSecretService {
     private List<DBusPath> items() {
         List<DBusPath> items = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
         if (secondItemLocked != null) items.add(new DBusPath(SECOND_ITEM_PATH));
+        if (createdItemListed) items.add(new DBusPath(CREATED_ITEM_PATH));
         return items;
     }
 
@@ -936,7 +945,10 @@ public final class FakeSecretService {
             checkContentType(secret.contentType());
             // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
             // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
-            FakePrompt prompt = awaitApproval(() -> { }, new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o"));
+            // Or, on request, a result that names no item, and the item among the collection's.
+            FakePrompt prompt = createItemNamesNoPath
+                    ? awaitApproval(() -> createdItemListed = true, null)
+                    : awaitApproval(() -> { }, new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o"));
             return new Pair<>(new DBusPath("/"), new DBusPath(prompt.path));
         }
 
