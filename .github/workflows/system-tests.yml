@@ -38,10 +38,12 @@ jobs:
       # docker-options: for the provider's container. oo7-daemon keeps CAP_IPC_LOCK, to lock
       # its memory, and exits where it cannot.
       # image: the directory under .github/providers/, where it is not the provider's name.
-      # dialogs-answered: whether the container answers the provider's dialogs, which the
-      # tests with a second client need.
+      # dialogs-answered: whether the container answers the provider's dialogs, or the provider
+      # shows none that the tests with a second client meet: KWallet unlocks without one there,
+      # oo7's container answers its prompts, and KeePassXC asks only with ConfirmAccessItem.
       # default-collection: "throwaway" where the default collection belongs to the container's
-      # own keyring, so that the tests may lock it and write into it.
+      # own keyring, so that the tests may lock it and write into it: every container's but the
+      # plain gnome-keyring one, which nobody answers the unlock dialog of.
       # default-suite: whether the leg runs the default suite too, with the two flags above, for
       # its tests that need a user.
       matrix:
@@ -62,13 +64,19 @@ jobs:
             experimental: true
             collection: kdewallet
             lockable: true
+            dialogs-answered: true
+            default-collection: throwaway
           - provider: kwallet6
             experimental: true
             collection: kdewallet
             lockable: true
+            dialogs-answered: true
+            default-collection: throwaway
           - provider: keepassxc
             experimental: true
             collection: test
+            dialogs-answered: true
+            default-collection: throwaway
           # KeePassXC as it is set up by default: it asks the user before it gives a client
           # access to an item. The container answers its dialogs through xdotool.
           - provider: keepassxc-confirm
@@ -76,11 +84,14 @@ jobs:
             experimental: true
             collection: test
             dialogs-answered: true
+            default-collection: throwaway
             docker-options: -e KPXC_CONFIRM_ACCESS_ITEM=true -e KPXC_ANSWER_ACCESS_REQUESTS=true
           - provider: oo7
             experimental: true
             collection: login
             lockable: true
+            dialogs-answered: true
+            default-collection: throwaway
             docker-options: --cap-add IPC_LOCK
     name: system-tests (${{ matrix.provider }})
     continue-on-error: ${{ matrix.experimental }}
