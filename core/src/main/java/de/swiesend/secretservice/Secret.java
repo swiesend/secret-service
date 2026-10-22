@@ -14,6 +14,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -98,14 +99,16 @@ public final class Secret extends Struct implements AutoCloseable {
         this.charset = charset;
     }
 
+    // Lower-cased in Locale.ROOT: in a Turkish locale the I of ISO-8859-1 becomes a dotless i,
+    // which no charset name may contain.
     static public String createContentType(String mimeType, Charset charset) {
-        return mimeType + "; " + CHARSET + charset.name().toLowerCase();
+        return mimeType + "; " + CHARSET + charset.name().toLowerCase(Locale.ROOT);
     }
 
     /** The content type of text in {@code charset}: "text/plain" for UTF-8, with the charset otherwise. */
     static public String createContentType(Charset charset) {
         if (StandardCharsets.UTF_8.equals(charset)) return TEXT_PLAIN;
-        return TEXT_PLAIN + "; " + CHARSET + charset.name().toLowerCase();
+        return TEXT_PLAIN + "; " + CHARSET + charset.name().toLowerCase(Locale.ROOT);
     }
 
     static public byte[] toBytes(CharSequence passphrase) {

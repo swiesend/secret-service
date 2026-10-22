@@ -102,6 +102,19 @@ public class SecretTest {
     }
 
     @Test
+    public void aCharsetIsNamedAlikeInEveryLocale() {
+        // Lower-cased in a Turkish locale, the I of ISO-8859-1 and US-ASCII becomes a dotless i.
+        Locale before = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            assertEquals("text/plain; charset=iso-8859-1", Secret.createContentType(StandardCharsets.ISO_8859_1));
+            assertEquals("text/plain; charset=us-ascii", Secret.createContentType("text/plain", StandardCharsets.US_ASCII));
+        } finally {
+            Locale.setDefault(before);
+        }
+    }
+
+    @Test
     public void getContentType() {
         Secret secret = new Secret(session, parameters.getBytes(), value.getBytes());
         assertEquals("text/plain", secret.getContentType());
