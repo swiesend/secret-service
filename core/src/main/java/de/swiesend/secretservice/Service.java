@@ -70,8 +70,21 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
         return unlocked;
     }
 
-    /** The prompts that {@link #unlock} gave. */
-    private final Set<String> unlockPrompts = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /**
+     * The prompts that {@link #unlock} gave, the {@value #UNLOCK_PROMPTS} most recent ones, for
+     * {@link Prompt#await}, which asks about a prompt that its caller was just given. A Service that
+     * lives as long as the application, as {@code SimpleCollection}'s does, kept one for every
+     * unlock.
+     */
+    private final Set<String> unlockPrompts = java.util.Collections.newSetFromMap(
+            java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Boolean>() {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Boolean> eldest) {
+                    return size() > UNLOCK_PROMPTS;
+                }
+            }));
+
+    private static final int UNLOCK_PROMPTS = 128;
 
     /** Whether {@code prompt} is one that {@link #unlock} gave. */
     boolean gaveUnlockPrompt(DBusPath prompt) {
