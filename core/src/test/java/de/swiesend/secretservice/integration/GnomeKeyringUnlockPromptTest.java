@@ -72,11 +72,40 @@ class GnomeKeyringUnlockPromptTest {
             assertNull(prompt.await(unlock, Duration.ofSeconds(5)));
 
             assertTrue(Thread.interrupted(), "the interrupt is kept for the caller");
+            settle();
             assertEquals(List.of(), fake.dismissCalls(), "the prompt was left open");
             assertFalse(fake.hasAborted());
         } finally {
             Thread.interrupted();
         }
+    }
+
+    @Test
+    void anInterruptedWaitLeavesTheLaterUnlockPromptsOpenToo() throws Exception {
+        // The provider is told on an interrupted thread too, and the answer is kept.
+        FakeSecretService fake = gnomeKeyring();
+        DBusPath first = unlockPrompt();
+        try {
+            Thread.currentThread().interrupt();
+            assertNull(prompt.await(first, Duration.ofSeconds(5)));
+        } finally {
+            Thread.interrupted();
+        }
+        DBusPath second = unlockPrompt();
+
+        assertNull(prompt.await(second, Duration.ofSeconds(1)), "nobody answered");
+
+        settle();
+        assertEquals(List.of(), fake.dismissCalls());
+        assertFalse(fake.hasAborted());
+    }
+
+    /**
+     * Gives a {@code Dismiss} that went out the time to reach the fake: on an interrupted thread,
+     * the call returns before its reply, and the fake records it on a thread of its own.
+     */
+    private static void settle() throws InterruptedException {
+        Thread.sleep(500);
     }
 
     @Test
