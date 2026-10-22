@@ -141,12 +141,17 @@ public class MessageHandler {
         return Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
     }
 
+    /**
+     * All properties of {@code iface} at {@code path}, as one variant of signature {@code a{sv}},
+     * whose value is the map from each property's name to its value.
+     */
     public Optional<Variant> getAllProperties(String service, String path, String iface) {
         Optional<Object[]> maybeResponse = send(service, path, Static.DBus.Interfaces.DBUS_PROPERTIES,
-                "GetAll", "ss", iface);
+                "GetAll", "s", iface);
         if (!maybeResponse.isPresent()) return Optional.empty();
         Object[] response = maybeResponse.get();
-        return Static.Utils.isNullOrEmpty(response) ? Optional.empty() : Optional.ofNullable((Variant) response[0]);
+        if (Static.Utils.isNullOrEmpty(response) || !(response[0] instanceof java.util.Map)) return Optional.empty();
+        return Optional.of(new Variant<>(response[0], "a{sv}"));
     }
 
     public boolean setProperty(String service, String path, String iface, String property, Variant value) {

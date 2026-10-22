@@ -1101,7 +1101,13 @@ public final class FakeSecretService {
                     : reproduces(ProviderBug.KEEPASSXC_CHANGES_AN_ITEM_IT_HAS_NOT_ALLOWED);
         }
 
-        @Override public Map<String, Variant<?>> GetAll(String iface) { return Map.of(); }
+        @Override
+        public Map<String, Variant<?>> GetAll(String iface) {
+            reachable();
+            return Map.of("Label", new Variant<>((String) Get(iface, "Label")),
+                    "Locked", new Variant<>((Boolean) Get(iface, "Locked")));
+        }
+
         @Override public String getObjectPath() { return path; }
         @Override public boolean isRemote() { return false; }
     }
