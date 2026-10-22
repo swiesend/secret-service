@@ -105,6 +105,24 @@ class UserPermissionTest {
     }
 
     @Test
+    void aCollectionWithAStoredPasswordThatIsTheDefaultIsUnlockedWithIt() throws Exception {
+        // The user made it the default since: the alias points to it, and its id is its own.
+        harness.startAsGnomeKeyring(false);
+        FakeSecretService fake = harness.fake();
+        fake.setDefaultAlias(FakeSecretService.COLLECTION_PATH);
+        fake.setRequirePromptForCollectionUnlock(true);
+        harness.service().setTimeout(Duration.ofSeconds(1));
+        try (CollectionInterface collection = harness.service().openSession().orElseThrow()
+                .collection(FakeSecretService.COLLECTION_LABEL, Optional.of("password")).orElseThrow()) {
+            fake.lockCollection();
+
+            assertTrue(collection.getSecret(FakeSecretService.ITEM_PATH).isPresent());
+            assertEquals(1, fake.masterPasswordUnlocks(), "with the stored password");
+            assertEquals(java.util.List.of(), fake.promptCalls(), "not through the dialog");
+        }
+    }
+
+    @Test
     void aLockWhoseReplyComesTooLateCountsAsTheProviderTellsIt() throws Exception {
         // A busy provider locks, and its reply comes after the library's two-second reply timeout.
         CollectionInterface collection = harness.start(false);

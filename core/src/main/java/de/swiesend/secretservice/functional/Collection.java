@@ -375,15 +375,21 @@ public class Collection implements CollectionInterface {
     }
 
     /**
+     * Whether this is the collection that {@link #openDefault} opened, gnome-keyring's login or
+     * session collection, or the alias path itself. These unlock through the provider's dialog
+     * only, never with a stored password, as in 3.0.0-alpha; a collection that the default alias
+     * points to since keeps its password.
+     */
+    private boolean unlocksThroughTheDialogOnly() {
+        return openedAsDefault || Arrays.asList(null, "login", "session", "default").contains(collection.getId());
+    }
+
+    /**
      * Whether this is a default collection, or {@code unknown} when the provider's default alias
      * cannot be read: no reply, an error, or a call on an interrupted thread.
      */
     private boolean isDefault(boolean unknown) {
-        // The collection that openDefault() opened, whatever the alias names since.
-        if (openedAsDefault) return true;
-        // gnome-keyring's login and session collections, and the alias path itself.
-        List<String> defaults = Arrays.asList(null, "login", "session", "default");
-        if (defaults.contains(collection.getId())) return true;
+        if (unlocksThroughTheDialogOnly()) return true;
         // On every provider, the collection the default alias points to, which is how KWallet
         // and KeePassXC name their default.
         Optional<DBusPath> alias = service.getService().readAlias("default");
@@ -1254,7 +1260,7 @@ public class Collection implements CollectionInterface {
         if (collection != null && collection.isLocked()) {
             // The stored password works only through gnome-keyring's own interface. On any other
             // provider the prompt is the only way to unlock, password or not.
-            if (encryptedCollectionPassword.isEmpty() || isDefault() || !service.isGnomeKeyringAvailable()) {
+            if (encryptedCollectionPassword.isEmpty() || unlocksThroughTheDialogOnly() || !service.isGnomeKeyringAvailable()) {
                 // Not asked at all: gnome-keyring answers with a prompt that only its dialog
                 // completes, and performPrompt() would dismiss it unshown, which aborts gnome-keyring
                 // while another application's unlock dialog is on the screen.
@@ -1288,7 +1294,7 @@ public class Collection implements CollectionInterface {
 
     /** Whether {@link #unlock()} takes the stored-password branch, which shows no dialog. */
     private boolean canUnlockWithoutPrompt() {
-        return encryptedCollectionPassword.isPresent() && !isDefault() && service.isGnomeKeyringAvailable();
+        return encryptedCollectionPassword.isPresent() && !unlocksThroughTheDialogOnly() && service.isGnomeKeyringAvailable();
     }
 
     @Override
