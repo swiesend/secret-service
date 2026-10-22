@@ -168,6 +168,20 @@ public class SecretTest {
     }
 
     @Test
+    public void aCharsetIsReadQuotedInAnyCaseAndAmongOtherParameters() {
+        // RFC 2045: a parameter's name is case-insensitive, and its value may be quoted.
+        for (String contentType : new String[]{
+                "text/plain; charset=\"iso-8859-1\"",
+                "text/plain; CHARSET=ISO-8859-1",
+                "text/plain; format=flowed; charset=iso-8859-1",
+                "text/plain;Charset = \"ISO-8859-1\""}) {
+            Secret secret = new Secret(session, parameters.getBytes(), value.getBytes(), contentType);
+            assertEquals(StandardCharsets.ISO_8859_1, secret.getCharset(), contentType);
+            assertEquals("text/plain", secret.getMimeType(), contentType);
+        }
+    }
+
+    @Test
     public void aContentTypeWithAnUnknownOrIllegalCharsetHasNone() {
         // Another application's content type: the secret stays readable.
         for (String contentType : new String[]{"text/plain; charset=x-no-such-charset", "text/plain; charset=x@y"}) {

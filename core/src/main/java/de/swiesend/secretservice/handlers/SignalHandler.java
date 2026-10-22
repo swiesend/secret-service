@@ -38,6 +38,32 @@ public class SignalHandler implements DBusSigHandler {
      * @param sourcePath the D-Bus object path to scope signal reception to,
      *                   or {@code null}/{@code "/"} for global (unscoped) registration
      */
+    /**
+     * Held while the library adds or removes a signal handler. dbus-java 5.2.0 removes a signal's
+     * match rule once its last handler is gone, and a handler that is added meanwhile for the same
+     * signal joins the queue that goes, without a match rule of its own: it never gets a signal.
+     */
+    private static final Object REGISTRATION = new Object();
+
+    /**
+     * Adds {@code handler} for {@code type} on {@code connection}, as
+     * {@link DBusConnection#addSigHandler(Class, DBusSigHandler)} does, and removes it on
+     * {@code close()}, both under the lock that the library's other handlers are added and removed
+     * under.
+     */
+    public static <T extends DBusSignal> AutoCloseable addSigHandler(DBusConnection connection, Class<T> type,
+                                                                     DBusSigHandler<T> handler) throws DBusException {
+        AutoCloseable registration;
+        synchronized (REGISTRATION) {
+            registration = connection.addSigHandler(type, handler);
+        }
+        return () -> {
+            synchronized (REGISTRATION) {
+                registration.close();
+            }
+        };
+    }
+
     public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath) {
         if (this.connection == null) {
             this.connection = connection;
@@ -50,7 +76,7 @@ public class SignalHandler implements DBusSigHandler {
                     // parameter is the sender/bus name, not the object path). We perform
                     // path-scoping in `handle()` to avoid InvalidBusNameException when
                     // a path-like string is provided.
-                    AutoCloseable reg = connection.addSigHandler(sc, this);
+                    AutoCloseable reg = addSigHandler(connection, sc, this);
                     registrations.add(reg);
                 }
             } catch (DBusException e) {
@@ -216,7 +242,22 @@ public class SignalHandler implements DBusSigHandler {
         }
     }
 
+    /**
+     * {@code timeout} in nanoseconds: none for a negative one, and at most {@link Long#MAX_VALUE},
+     * some 292 years, where {@link Duration#toNanos()} would overflow.
+     */
+    private static long nanos(Duration timeout) {
+        if (timeout.isNegative()) return 0;
+        try {
+            return timeout.toNanos();
+        } catch (ArithmeticException e) {
+            return Long.MAX_VALUE;
+        }
+    }
+
     public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
+        // Before the action, which shows the prompt: it would wait for an answer that nobody collects.
+        Objects.requireNonNull(timeout, "timeout must not be null");
         final int init = count;
 
         Optional<Prompt> maybePrompt = Optional.empty();
@@ -265,7 +306,7 @@ public class SignalHandler implements DBusSigHandler {
         String gaveUp = "it was interrupted";
         try {
             long start = System.nanoTime();
-            long nanos = timeout.toNanos();
+            long nanos = nanos(timeout);
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {

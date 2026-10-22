@@ -7,10 +7,12 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -65,6 +67,78 @@ class UserPermissionTest {
                 "without the dialog the user cannot confirm access, so the read is refused");
         assertFalse(fake.isCollectionLocked(),
                 "and the collection was not locked, which nothing could have undone");
+    }
+
+    @Test
+    void aCollectionWithAStoredPasswordIsLockedForTheFirstBulkReadOnly() throws Exception {
+        // The stored password unlocks it again, and counts as the permission once, as the
+        // dialog's answer does.
+        harness.startAsGnomeKeyring(false);
+        FakeSecretService fake = harness.fake();
+        try (CollectionInterface collection = harness.service().openSession().orElseThrow()
+                .collection(FakeSecretService.COLLECTION_LABEL, Optional.of("password")).orElseThrow()) {
+
+            assertTrue(collection.getSecrets().isPresent());
+            assertTrue(collection.getSecrets().isPresent());
+
+            assertEquals(1, fake.lockCalls().size(), "locked once, not for every read");
+            assertEquals(1, fake.masterPasswordUnlocks());
+        }
+    }
+
+    @Test
+    void aStoredPasswordThatDoesNotUnlockTheCollectionAgainAsksThroughTheDialog() throws Exception {
+        // A stale password, after the user changed the collection's: the call locked the collection,
+        // and does not leave it locked for every application.
+        harness.startAsGnomeKeyring(false);
+        FakeSecretService fake = harness.fake();
+        fake.setRefuseMasterPassword(true);
+        fake.setRequirePromptForCollectionUnlock(true);
+        try (CollectionInterface collection = harness.service().openSession().orElseThrow()
+                .collection(FakeSecretService.COLLECTION_LABEL, Optional.of("stale")).orElseThrow()) {
+            Thread user = approveWhenPrompted(fake);
+
+            assertTrue(collection.getSecrets().isPresent(), "the user unlocked it through the dialog");
+            user.join(5_000);
+            assertFalse(fake.isCollectionLocked());
+        }
+    }
+
+    @Test
+    void aCollectionWithAStoredPasswordThatIsTheDefaultIsUnlockedWithIt() throws Exception {
+        // The user made it the default since: the alias points to it, and its id is its own.
+        harness.startAsGnomeKeyring(false);
+        FakeSecretService fake = harness.fake();
+        fake.setDefaultAlias(FakeSecretService.COLLECTION_PATH);
+        fake.setRequirePromptForCollectionUnlock(true);
+        harness.service().setTimeout(Duration.ofSeconds(1));
+        try (CollectionInterface collection = harness.service().openSession().orElseThrow()
+                .collection(FakeSecretService.COLLECTION_LABEL, Optional.of("password")).orElseThrow()) {
+            fake.lockCollection();
+
+            assertTrue(collection.getSecret(FakeSecretService.ITEM_PATH).isPresent());
+            assertEquals(1, fake.masterPasswordUnlocks(), "with the stored password");
+            assertEquals(java.util.List.of(), fake.promptCalls(), "not through the dialog");
+        }
+    }
+
+    @Test
+    void aLockWhoseReplyComesTooLateCountsAsTheProviderTellsIt() throws Exception {
+        // A busy provider locks, and its reply comes after the library's two-second reply timeout.
+        CollectionInterface collection = harness.start(false);
+        harness.fake().setLockReplyDelay(Duration.ofSeconds(3));
+
+        assertTrue(collection.lock(), "the collection is locked");
+    }
+
+    @Test
+    void aPermissionWhoseLockReplyComesTooLateUnlocksTheCollectionAgain() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setLockReplyDelay(Duration.ofSeconds(3));
+
+        assertTrue(collection.unlockWithUserPermission());
+        assertFalse(fake.isCollectionLocked(), "it is not left locked for every application");
     }
 
     /** Answers the provider's prompt from another thread, as the user would. */

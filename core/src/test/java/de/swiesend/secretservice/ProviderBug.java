@@ -142,6 +142,18 @@ public enum ProviderBug {
     GNOME_KEYRING_SIGNALS_ONLY_FROM_THE_COLLECTION_NOT_ITS_ALIAS(Provider.GNOME_KEYRING, Status.UNREPORTED,
             "46.1 and 51.1", null, Fake.NOT_REPRODUCED),
 
+    /**
+     * An item of a keyring that gnome-keyring loaded locked shows an empty {@code Label}, and each
+     * attribute as {@code gkr:compat:hashed:<name>} with the MD5 of its value, but
+     * {@code xdg:schema}; its own label and attributes show once the keyring is unlocked. The
+     * specification takes neither to be secret. The library answers neither for such an item, as
+     * for a read that fails, and its search does not match the hashes. Tried on 40; 46.1 and 51.1
+     * have the same code. Found through keyring-rs, which could not tell such items apart
+     * (open-source-cooperative/keyring-rs#204).
+     */
+    GNOME_KEYRING_HASHES_THE_METADATA_OF_A_LOCKED_KEYRING(Provider.GNOME_KEYRING, Status.UNREPORTED,
+            "40, 46.1 and 51.1", null, Fake.ON_REQUEST),
+
     // ---- KeePassXC ---------------------------------------------------------------------------
 
     /**

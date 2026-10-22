@@ -316,6 +316,8 @@ public class ServiceTest {
         // Read as declared: a Secret, not the struct as it arrived.
         Secret secret = result.values().iterator().next();
         assertEquals(context.session.getPath().getPath(), secret.getSession().getPath());
+        // Keyed by the item's path, whoever sent it.
+        assertNotNull(result.get(new DBusPath(items.get(0).getPath())), "found by the item's path");
     }
 
     @Test

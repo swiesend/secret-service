@@ -11,7 +11,6 @@ import org.freedesktop.dbus.types.Variant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -375,15 +374,21 @@ public class Collection implements CollectionInterface {
     }
 
     /**
+     * Whether this is the collection that {@link #openDefault} opened, gnome-keyring's login or
+     * session collection, or the alias path itself. These unlock through the provider's dialog
+     * only, never with a stored password, as in 3.0.0-alpha; a collection that the default alias
+     * points to since keeps its password.
+     */
+    private boolean unlocksThroughTheDialogOnly() {
+        return openedAsDefault || Arrays.asList(null, "login", "session", "default").contains(collection.getId());
+    }
+
+    /**
      * Whether this is a default collection, or {@code unknown} when the provider's default alias
      * cannot be read: no reply, an error, or a call on an interrupted thread.
      */
     private boolean isDefault(boolean unknown) {
-        // The collection that openDefault() opened, whatever the alias names since.
-        if (openedAsDefault) return true;
-        // gnome-keyring's login and session collections, and the alias path itself.
-        List<String> defaults = Arrays.asList(null, "login", "session", "default");
-        if (defaults.contains(collection.getId())) return true;
+        if (unlocksThroughTheDialogOnly()) return true;
         // On every provider, the collection the default alias points to, which is how KWallet
         // and KeePassXC name their default.
         Optional<DBusPath> alias = service.getService().readAlias("default");
@@ -500,6 +505,9 @@ public class Collection implements CollectionInterface {
                 dismissPrompt(pair.b);
                 return Optional.empty();
             }
+            // The items before the prompt: where its result names no item, the new one is the one
+            // that is there afterwards only.
+            Set<String> before = itemPaths();
             de.swiesend.secretservice.interfaces.Prompt.Completed completed =
                     prompt.await(pair.b, service.getTimeout());
             if (completed == null || completed.dismissed) {
@@ -513,18 +521,24 @@ public class Collection implements CollectionInterface {
                 return Optional.of(fromResult);
             }
 
-            // Fallback: wait for the ItemCreated signal scoped to this collection (gnome-keyring)
-            de.swiesend.secretservice.Collection.ItemCreated sig = collection
-                    .getSignalHandler()
-                    .await(de.swiesend.secretservice.Collection.ItemCreated.class,
-                            collection.getObjectPath(), () -> null, Duration.ofSeconds(5));
-            if (sig != null && sig.item != null) {
-                return Optional.of(sig.item.getPath());
+            // The item that is new. Not from ItemCreated: the provider sends it before the prompt's
+            // Completed, and a wait begun afterwards takes no signal that came before it.
+            Set<String> added = itemPaths();
+            added.removeAll(before);
+            if (added.size() == 1) {
+                return Optional.of(added.iterator().next());
             }
-
-            log.warn("Did not observe ItemCreated signal for collection {} after prompt.", collection.getObjectPath());
+            log.warn("The prompt for a new item in collection {} named no item, and {} items are new.",
+                    collection.getObjectPath(), added.size());
             return Optional.empty();
         }
+    }
+
+    /** The paths of the collection's items, none where they cannot be read. */
+    private Set<String> itemPaths() {
+        return collection.getItems()
+                .map(items -> (Set<String>) new HashSet<>(Static.Convert.toStrings(items)))
+                .orElseGet(HashSet::new);
     }
 
     /**
@@ -554,17 +568,25 @@ public class Collection implements CollectionInterface {
         return null;
     }
 
-    /** Unwraps a DBusPath, String, or nested List thereof into a path string. */
+    /**
+     * Unwraps a DBusPath, String, or nested List thereof into a path string. "/" and "" name no
+     * item.
+     */
     private static String pathFromObject(Object o) {
-        if (o instanceof DBusPath p)  return p.getPath();
-        if (o instanceof String s)    return s;
+        if (o instanceof DBusPath p)  return itemPath(p.getPath());
+        if (o instanceof String s)    return itemPath(s);
         if (o instanceof List<?> inner) {
             for (Object elem : inner) {
-                if (elem instanceof DBusPath p) return p.getPath();
-                if (elem instanceof String s)   return s;
+                String path = elem instanceof DBusPath p ? itemPath(p.getPath())
+                        : elem instanceof String s ? itemPath(s) : null;
+                if (path != null) return path;
             }
         }
         return null;
+    }
+
+    private static String itemPath(String path) {
+        return path == null || path.isEmpty() || "/".equals(path) ? null : path;
     }
 
     @Override
@@ -716,7 +738,39 @@ public class Collection implements CollectionInterface {
     public Optional<Map<String, String>> getAttributes(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
-        return getItem(objectPath).flatMap(item -> item.getAttributes());
+        return getItem(objectPath).flatMap(item -> attributesOf(item, objectPath));
+    }
+
+    // gnome-keyring, for an item of a keyring that it loaded locked, shows each attribute under this
+    // prefix with the MD5 of its value, and an empty label: the real ones are encrypted with the
+    // secrets (keyring-rs #204). xdg:schema stays as it is.
+    private static final String HASHED_ATTRIBUTE_PREFIX = "gkr:compat:hashed:";
+
+    /** Whether these are gnome-keyring's hashes of a locked item's attributes, not its attributes. */
+    static boolean hashedAttributes(Map<String, String> attributes) {
+        return attributes.keySet().stream().anyMatch(key -> key.startsWith(HASHED_ATTRIBUTE_PREFIX));
+    }
+
+    /** The item's attributes, unless the provider shows only their hashes. */
+    private Optional<Map<String, String>> attributesOf(Item item, String objectPath) {
+        return item.getAttributes().filter(attributes -> {
+            if (!hashedAttributes(attributes)) return true;
+            log.debug("The attributes of {} are hidden while it is locked: the provider shows only their hashes.",
+                    objectPath);
+            return false;
+        });
+    }
+
+    /**
+     * The item's label, unless the item is locked and shows an empty one: gnome-keyring hides a
+     * locked keyring's labels so. A locked item of KeePassXC keeps its label, which stays.
+     */
+    private Optional<String> labelOf(Item item, String objectPath) {
+        return item.getLabel().filter(label -> {
+            if (!label.isEmpty() || !item.isLocked()) return true;
+            log.debug("The label of {} is hidden while it is locked.", objectPath);
+            return false;
+        });
     }
 
     @Override
@@ -776,11 +830,11 @@ public class Collection implements CollectionInterface {
     // Without unlock(): search() has asked once, through getItems(). The public getItemLabel() and
     // getAttributes() unlock first, and after a refused unlock that is one more dialog per item.
     private Optional<String> itemLabel(String path) {
-        return getItem(path).flatMap(item -> item.getLabel());
+        return getItem(path).flatMap(item -> labelOf(item, path));
     }
 
     private Optional<Map<String, String>> itemAttributes(String path) {
-        return getItem(path).flatMap(item -> item.getAttributes());
+        return getItem(path).flatMap(item -> attributesOf(item, path));
     }
 
     private boolean matchesSubstring(String path, String lq, SearchMode mode) {
@@ -820,8 +874,7 @@ public class Collection implements CollectionInterface {
     public Optional<String> getItemLabel(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
-        return getItem(objectPath)
-                .flatMap(item -> item.getLabel());
+        return getItem(objectPath).flatMap(item -> labelOf(item, objectPath));
     }
 
     @Override
@@ -1175,6 +1228,12 @@ public class Collection implements CollectionInterface {
         if (collection.isLocked()) return Locking.LOCKED;
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
+            // No reply in time is no refusal: a busy provider locks all the same, and answers
+            // late. Its Locked property tells.
+            if (awaitUntil(() -> collection.lockedState().orElse(false))) {
+                log.info("Locked collection {}, though its Lock call got no answer", collection.getObjectPath());
+                return Locking.LOCKED;
+            }
             log.error("D-Bus lock call failed for collection {}", collection.getObjectPath());
             return Locking.FAILED;
         }
@@ -1217,7 +1276,7 @@ public class Collection implements CollectionInterface {
         if (collection != null && collection.isLocked()) {
             // The stored password works only through gnome-keyring's own interface. On any other
             // provider the prompt is the only way to unlock, password or not.
-            if (encryptedCollectionPassword.isEmpty() || isDefault() || !service.isGnomeKeyringAvailable()) {
+            if (encryptedCollectionPassword.isEmpty() || unlocksThroughTheDialogOnly() || !service.isGnomeKeyringAvailable()) {
                 // Not asked at all: gnome-keyring answers with a prompt that only its dialog
                 // completes, and performPrompt() would dismiss it unshown, which aborts gnome-keyring
                 // while another application's unlock dialog is on the screen.
@@ -1251,13 +1310,14 @@ public class Collection implements CollectionInterface {
 
     /** Whether {@link #unlock()} takes the stored-password branch, which shows no dialog. */
     private boolean canUnlockWithoutPrompt() {
-        return encryptedCollectionPassword.isPresent() && !isDefault() && service.isGnomeKeyringAvailable();
+        return encryptedCollectionPassword.isPresent() && !unlocksThroughTheDialogOnly() && service.isGnomeKeyringAvailable();
     }
 
     @Override
     public boolean unlockWithUserPermission() {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
+        boolean lockedHere = false;
         if (!isUnlockedOnceWithUserPermission) {
             // With prompting disabled, only gnome-keyring's stored-password unlock can undo the
             // lock below. Without it the collection would stay locked for every application on
@@ -1267,9 +1327,11 @@ public class Collection implements CollectionInterface {
                 log.debug("Prompting is disabled, and nothing could unlock the collection again; not locking it.");
                 return false;
             }
+            boolean lockedBefore = collection.isLocked();
             switch (lock(false)) {
                 case LOCKED -> {
-                    // unlock() below brings up the provider's dialog.
+                    // unlock() below brings up the provider's dialog, or uses the stored password.
+                    lockedHere = !lockedBefore;
                 }
                 case NEEDS_A_PROMPT -> {
                     // The provider locks only through a prompt: KeePassXC. Carrying it out would lock
@@ -1286,10 +1348,21 @@ public class Collection implements CollectionInterface {
             }
         }
         unlock();
+        if (lockedHere && isPrompting && collection.isLocked() && canUnlockWithoutPrompt()) {
+            // A stored password that does not unlock the collection, which this call locked:
+            // through gnome-keyring's dialog then, rather than leaving the collection locked for
+            // every application.
+            log.warn("The stored password did not unlock collection {}; asking through the dialog.",
+                    collection.getObjectPath());
+            unlockThroughGnomeKeyring(lockable());
+        }
         if (collection.isLocked()) {
             log.error("The collection was not unlocked with user permission.");
             return false;
         }
+        // Once per collection object, also where the stored password unlocked it: the next call
+        // does not lock it again.
+        isUnlockedOnceWithUserPermission = true;
         return true;
     }
 

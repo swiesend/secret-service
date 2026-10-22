@@ -51,6 +51,17 @@ class CreateItemPromptTest {
     }
 
     @Test
+    void anItemWhosePromptNamesNoneIsTheNewOneAmongTheCollectionsItems() throws Exception {
+        // A provider whose CreateItem prompt answers without the item's path.
+        CollectionInterface collection = harness.start(false);
+        harness.fake().setCreateItemNamesNoPath(true);
+        Thread approver = approveWhenPrompted(harness.fake());
+
+        assertEquals(Optional.of(FakeSecretService.CREATED_ITEM_PATH), collection.createItem("new", "secret"));
+        approver.join(5_000);
+    }
+
+    @Test
     void createItemDismissesThePromptWhenPromptingIsDisabled() throws Exception {
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();

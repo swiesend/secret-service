@@ -14,10 +14,10 @@ public interface ServiceInterface extends AutoCloseable {
     Logger log = LoggerFactory.getLogger(ServiceInterface.class);
 
     /**
-     * Checks if all necessary D-Bus services are provided by the system:<br>
-     * <code>org.freedesktop.DBus</code><br>
-     * <code>org.freedesktop.secrets</code><br>
-     * <code>org.gnome.keyring</code>
+     * Checks if the necessary D-Bus services are provided by the system,
+     * <code>org.freedesktop.DBus</code> and <code>org.freedesktop.secrets</code>, and that the
+     * provider opens a session with the library's transport encryption. Without
+     * <code>org.gnome.keyring</code>, which only gnome-keyring provides, it logs a warning and goes on.
      *
      * @return true if the secret service is available, otherwise false and will log an error message.
      */

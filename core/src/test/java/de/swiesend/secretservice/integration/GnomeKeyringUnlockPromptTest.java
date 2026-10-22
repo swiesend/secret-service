@@ -334,6 +334,19 @@ class GnomeKeyringUnlockPromptTest {
         user.join(5_000);
     }
 
+    @Test
+    void aServiceKeepsOnlyTheUnlockPromptsOfItsRecentUnlocks() throws Exception {
+        // A Service that lives as long as the application, as SimpleCollection's does.
+        gnomeKeyring();
+        de.swiesend.secretservice.Service service = harness.service().getService();
+        for (int i = 0; i < 300; i++) unlockPrompt();
+
+        java.lang.reflect.Field field = de.swiesend.secretservice.Service.class.getDeclaredField("unlockPrompts");
+        field.setAccessible(true);
+        int kept = ((java.util.Set<?>) field.get(service)).size();
+        assertTrue(kept > 0 && kept <= 128, kept + " unlock prompts kept");
+    }
+
     /** Waits until the fake has seen {@code count} calls of Prompt. */
     private static void awaitPromptCalls(FakeSecretService fake, int count) throws InterruptedException {
         long deadline = java.lang.System.nanoTime() + 5_000_000_000L;

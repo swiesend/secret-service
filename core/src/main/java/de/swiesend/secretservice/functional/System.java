@@ -43,6 +43,11 @@ public class System implements SystemInterface {
             // container, the builder throws AddressResolvingException; for a malformed address,
             // InvalidBusAddressException, an IllegalStateException.
             log.warn(String.format("Could not communicate properly with the D-Bus: [%s]: %s", e.getClass().getSimpleName(), e.getMessage()));
+        } catch (ExceptionInInitializerError | NoClassDefFoundError e) {
+            // dbus-java's TransportBuilder fails its own static initializer where it finds no
+            // transport, as in a shaded jar without the service files, or two of them; after that
+            // its class cannot be loaded at all. The service is unavailable then, as without a bus.
+            log.warn("No D-Bus transport could be loaded.", e);
         }
         return Optional.empty();
     }

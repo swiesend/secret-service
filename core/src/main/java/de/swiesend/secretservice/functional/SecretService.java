@@ -122,7 +122,8 @@ public class SecretService implements ServiceInterface {
 
     @Override
     public void setTimeout(Duration timeout) {
-        this.timeout = timeout;
+        // Each prompt wait reads it once its prompt is on the screen.
+        this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
     }
 
     @Override

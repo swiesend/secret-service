@@ -107,6 +107,12 @@ public final class FakeSecretService {
         DBusPath ReadAlias(String name);
     }
 
+    /** gnome-keyring's own interface, on the service's object, for a collection's stored password. */
+    @DBusInterfaceName("org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface")
+    public interface WireGnomeKeyring extends DBusInterface {
+        void UnlockWithMasterPassword(DBusPath collection, WireSecret master);
+    }
+
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
@@ -316,6 +322,19 @@ public final class FakeSecretService {
     public void setSearchReplyDelay(java.time.Duration delay) { this.searchReplyDelay = delay; }
     private volatile java.time.Duration searchReplyDelay = java.time.Duration.ZERO;
 
+    /** Makes gnome-keyring's {@code UnlockWithMasterPassword} refuse the password, as a wrong one. */
+    public void setRefuseMasterPassword(boolean refuse) { this.refuseMasterPassword = refuse; }
+    private volatile boolean refuseMasterPassword;
+
+    /** How often a stored password was given to unlock the collection. */
+    public int masterPasswordUnlocks() { return masterPasswordUnlocks.get(); }
+    private final java.util.concurrent.atomic.AtomicInteger masterPasswordUnlocks =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Makes {@code Service.Lock} reply only after {@code delay}, once it has locked. */
+    public void setLockReplyDelay(java.time.Duration delay) { this.lockReplyDelay = delay; }
+    private volatile java.time.Duration lockReplyDelay = java.time.Duration.ZERO;
+
     /** State change the outstanding Lock or CreateItem prompt would authorise; applied only on approval. */
     private volatile Runnable pendingApproval;
     /** The prompt that {@link #pendingApproval} belongs to. */
@@ -395,6 +414,14 @@ public final class FakeSecretService {
 
     /** Where the fake reports an item created through its CreateItem prompt. */
     public static final String CREATED_ITEM_PATH = COLLECTION_PATH + "/2";
+
+    /**
+     * Makes the {@code CreateItem} prompt answer with a result that names no item, and list the
+     * new item among the collection's once the prompt is answered.
+     */
+    public void setCreateItemNamesNoPath(boolean none) { this.createItemNamesNoPath = none; }
+    private volatile boolean createItemNamesNoPath;
+    private volatile boolean createdItemListed;
 
     /** Labels that {@code CreateItem} was called with, in order. */
     public List<String> createItemCalls() {
@@ -565,6 +592,34 @@ public final class FakeSecretService {
     public void setRefuseReadAlias(boolean refuse) { this.refuseReadAlias = refuse; }
     private volatile boolean refuseReadAlias;
 
+    /** The attributes that the first item shows; it has none unless a test gives it some. */
+    public void setItemAttributes(Map<String, String> attributes) { this.itemAttributes = Map.copyOf(attributes); }
+    private volatile Map<String, String> itemAttributes = Map.of();
+
+    /** Whether the item shows gnome-keyring's hashes for its label and attributes. */
+    private boolean hashesItsMetadata(String path) {
+        return isLocked(path) && reproduces(ProviderBug.GNOME_KEYRING_HASHES_THE_METADATA_OF_A_LOCKED_KEYRING);
+    }
+
+    /** {@code attributes} as gnome-keyring shows them for a locked keyring: hashed, but xdg:schema. */
+    private static Map<String, String> hashed(Map<String, String> attributes) {
+        Map<String, String> hashed = new HashMap<>();
+        try {
+            for (Map.Entry<String, String> attribute : attributes.entrySet()) {
+                if ("xdg:schema".equals(attribute.getKey())) {
+                    hashed.put(attribute.getKey(), attribute.getValue());
+                    continue;
+                }
+                byte[] digest = java.security.MessageDigest.getInstance("MD5")
+                        .digest(attribute.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                hashed.put("gkr:compat:hashed:" + attribute.getKey(), java.util.HexFormat.of().formatHex(digest));
+            }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        return hashed;
+    }
+
     /**
      * The content type that {@code GetSecret} gives the secret, as the application that stored it
      * chose it. The specification's own default, with its unusual spelling, unless set.
@@ -636,6 +691,7 @@ public final class FakeSecretService {
     private List<DBusPath> items() {
         List<DBusPath> items = new ArrayList<>(List.of(new DBusPath(ITEM_PATH)));
         if (secondItemLocked != null) items.add(new DBusPath(SECOND_ITEM_PATH));
+        if (createdItemListed) items.add(new DBusPath(CREATED_ITEM_PATH));
         return items;
     }
 
@@ -655,7 +711,18 @@ public final class FakeSecretService {
 
     // ---- implementations -------------------------------------------------------------------
 
-    private final class ServiceImpl implements WireService, Properties {
+    private final class ServiceImpl implements WireService, WireGnomeKeyring, Properties {
+
+        @Override
+        public void UnlockWithMasterPassword(DBusPath collection, WireSecret master) {
+            alive();
+            masterPasswordUnlocks.incrementAndGet();
+            // The fake decrypts no password: it takes it as right, unless told otherwise.
+            if (refuseMasterPassword) {
+                throw new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: The password was incorrect.");
+            }
+            if (COLLECTION_PATH.equals(collection.getPath())) collectionLocked = false;
+        }
 
         @Override
         public Pair<Variant<byte[]>, DBusPath> OpenSession(String algorithm, Variant<?> input) {
@@ -787,6 +854,14 @@ public final class FakeSecretService {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
                 if (COLLECTION_PATH.equals(p.getPath())) collectionLocked = true;
             }
+            // Locked already, as a busy provider has locked when its reply comes late.
+            if (!lockReplyDelay.isZero()) {
+                try {
+                    Thread.sleep(lockReplyDelay.toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
         }
 
@@ -870,7 +945,10 @@ public final class FakeSecretService {
             checkContentType(secret.contentType());
             // Through a prompt, as KeePassXC creates every item. The fake stores nothing: answering
             // the prompt reports CREATED_ITEM_PATH in its result, where KeePassXC reports the item.
-            FakePrompt prompt = awaitApproval(() -> { }, new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o"));
+            // Or, on request, a result that names no item, and the item among the collection's.
+            FakePrompt prompt = createItemNamesNoPath
+                    ? awaitApproval(() -> createdItemListed = true, null)
+                    : awaitApproval(() -> { }, new Variant<>(new DBusPath(CREATED_ITEM_PATH), "o"));
             return new Pair<>(new DBusPath("/"), new DBusPath(prompt.path));
         }
 
@@ -978,8 +1056,14 @@ public final class FakeSecretService {
                 // gnome-keyring reports an item as locked whenever its collection is locked, so
                 // the fake does too when asked to. This is what makes the regression reproducible.
                 case "Locked":     return (A) Boolean.valueOf(isLocked(path));
-                case "Attributes": return (A) new Variant<>(new HashMap<String, String>(), "a{ss}");
-                case "Label":      return (A) (ITEM_PATH.equals(path) ? "fake-item" : "fake-item-2");
+                case "Attributes": {
+                    Map<String, String> shown = ITEM_PATH.equals(path) ? itemAttributes : Map.of();
+                    if (hashesItsMetadata(path)) shown = hashed(shown);
+                    return (A) new Variant<>(new HashMap<>(shown), "a{ss}");
+                }
+                case "Label":
+                    if (hashesItsMetadata(path)) return (A) "";
+                    return (A) (ITEM_PATH.equals(path) ? "fake-item" : "fake-item-2");
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
             }
         }
@@ -1017,7 +1101,13 @@ public final class FakeSecretService {
                     : reproduces(ProviderBug.KEEPASSXC_CHANGES_AN_ITEM_IT_HAS_NOT_ALLOWED);
         }
 
-        @Override public Map<String, Variant<?>> GetAll(String iface) { return Map.of(); }
+        @Override
+        public Map<String, Variant<?>> GetAll(String iface) {
+            reachable();
+            return Map.of("Label", new Variant<>((String) Get(iface, "Label")),
+                    "Locked", new Variant<>((Boolean) Get(iface, "Locked")));
+        }
+
         @Override public String getObjectPath() { return path; }
         @Override public boolean isRemote() { return false; }
     }
