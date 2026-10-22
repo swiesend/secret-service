@@ -565,6 +565,34 @@ public final class FakeSecretService {
     public void setRefuseReadAlias(boolean refuse) { this.refuseReadAlias = refuse; }
     private volatile boolean refuseReadAlias;
 
+    /** The attributes that the first item shows; it has none unless a test gives it some. */
+    public void setItemAttributes(Map<String, String> attributes) { this.itemAttributes = Map.copyOf(attributes); }
+    private volatile Map<String, String> itemAttributes = Map.of();
+
+    /** Whether the item shows gnome-keyring's hashes for its label and attributes. */
+    private boolean hashesItsMetadata(String path) {
+        return isLocked(path) && reproduces(ProviderBug.GNOME_KEYRING_HASHES_THE_METADATA_OF_A_LOCKED_KEYRING);
+    }
+
+    /** {@code attributes} as gnome-keyring shows them for a locked keyring: hashed, but xdg:schema. */
+    private static Map<String, String> hashed(Map<String, String> attributes) {
+        Map<String, String> hashed = new HashMap<>();
+        try {
+            for (Map.Entry<String, String> attribute : attributes.entrySet()) {
+                if ("xdg:schema".equals(attribute.getKey())) {
+                    hashed.put(attribute.getKey(), attribute.getValue());
+                    continue;
+                }
+                byte[] digest = java.security.MessageDigest.getInstance("MD5")
+                        .digest(attribute.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                hashed.put("gkr:compat:hashed:" + attribute.getKey(), java.util.HexFormat.of().formatHex(digest));
+            }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        return hashed;
+    }
+
     /**
      * The content type that {@code GetSecret} gives the secret, as the application that stored it
      * chose it. The specification's own default, with its unusual spelling, unless set.
@@ -978,8 +1006,14 @@ public final class FakeSecretService {
                 // gnome-keyring reports an item as locked whenever its collection is locked, so
                 // the fake does too when asked to. This is what makes the regression reproducible.
                 case "Locked":     return (A) Boolean.valueOf(isLocked(path));
-                case "Attributes": return (A) new Variant<>(new HashMap<String, String>(), "a{ss}");
-                case "Label":      return (A) (ITEM_PATH.equals(path) ? "fake-item" : "fake-item-2");
+                case "Attributes": {
+                    Map<String, String> shown = ITEM_PATH.equals(path) ? itemAttributes : Map.of();
+                    if (hashesItsMetadata(path)) shown = hashed(shown);
+                    return (A) new Variant<>(new HashMap<>(shown), "a{ss}");
+                }
+                case "Label":
+                    if (hashesItsMetadata(path)) return (A) "";
+                    return (A) (ITEM_PATH.equals(path) ? "fake-item" : "fake-item-2");
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
             }
         }

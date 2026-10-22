@@ -716,7 +716,39 @@ public class Collection implements CollectionInterface {
     public Optional<Map<String, String>> getAttributes(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
-        return getItem(objectPath).flatMap(item -> item.getAttributes());
+        return getItem(objectPath).flatMap(item -> attributesOf(item, objectPath));
+    }
+
+    // gnome-keyring, for an item of a keyring that it loaded locked, shows each attribute under this
+    // prefix with the MD5 of its value, and an empty label: the real ones are encrypted with the
+    // secrets (keyring-rs #204). xdg:schema stays as it is.
+    private static final String HASHED_ATTRIBUTE_PREFIX = "gkr:compat:hashed:";
+
+    /** Whether these are gnome-keyring's hashes of a locked item's attributes, not its attributes. */
+    static boolean hashedAttributes(Map<String, String> attributes) {
+        return attributes.keySet().stream().anyMatch(key -> key.startsWith(HASHED_ATTRIBUTE_PREFIX));
+    }
+
+    /** The item's attributes, unless the provider shows only their hashes. */
+    private Optional<Map<String, String>> attributesOf(Item item, String objectPath) {
+        return item.getAttributes().filter(attributes -> {
+            if (!hashedAttributes(attributes)) return true;
+            log.debug("The attributes of {} are hidden while it is locked: the provider shows only their hashes.",
+                    objectPath);
+            return false;
+        });
+    }
+
+    /**
+     * The item's label, unless the item is locked and shows an empty one: gnome-keyring hides a
+     * locked keyring's labels so. A locked item of KeePassXC keeps its label, which stays.
+     */
+    private Optional<String> labelOf(Item item, String objectPath) {
+        return item.getLabel().filter(label -> {
+            if (!label.isEmpty() || !item.isLocked()) return true;
+            log.debug("The label of {} is hidden while it is locked.", objectPath);
+            return false;
+        });
     }
 
     @Override
@@ -776,11 +808,11 @@ public class Collection implements CollectionInterface {
     // Without unlock(): search() has asked once, through getItems(). The public getItemLabel() and
     // getAttributes() unlock first, and after a refused unlock that is one more dialog per item.
     private Optional<String> itemLabel(String path) {
-        return getItem(path).flatMap(item -> item.getLabel());
+        return getItem(path).flatMap(item -> labelOf(item, path));
     }
 
     private Optional<Map<String, String>> itemAttributes(String path) {
-        return getItem(path).flatMap(item -> item.getAttributes());
+        return getItem(path).flatMap(item -> attributesOf(item, path));
     }
 
     private boolean matchesSubstring(String path, String lq, SearchMode mode) {
@@ -820,8 +852,7 @@ public class Collection implements CollectionInterface {
     public Optional<String> getItemLabel(String objectPath) {
         if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
         unlock();
-        return getItem(objectPath)
-                .flatMap(item -> item.getLabel());
+        return getItem(objectPath).flatMap(item -> labelOf(item, objectPath));
     }
 
     @Override
