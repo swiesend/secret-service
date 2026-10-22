@@ -19,7 +19,7 @@ mvn package                # Build JAR
 mvn clean -Pcoverage test  # Run tests with JaCoCo coverage
 ```
 
-Maven 3.6.0+ is enforced. No Gradle support.
+Maven 3.6.3+ is enforced, by `maven-enforcer-plugin` in `core/pom.xml`. No Gradle support.
 
 ## Project Structure
 
