@@ -112,6 +112,44 @@ class UpdateItemTest {
     }
 
     @Test
+    void setItemLabelSendsNoLabelToALockedItem() throws Exception {
+        // As for updateItem: KWallet keeps a label that it gets for an item of a closed wallet.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KWALLET_TAKES_THE_LABEL_OF_A_LOCKED_ITEM);
+        fake.lockCollection();
+        fake.setRefuseCollectionUnlock(true);
+
+        assertFalse(collection.setItemLabel(FakeSecretService.ITEM_PATH, "renamed"), "a locked item is not changed");
+        assertEquals(List.of(), fake.itemPropertySets());
+    }
+
+    @Test
+    void setItemLabelUnlocksALockedItemFirst() throws Exception {
+        // KeePassXC takes a new label for an item that it keeps locked for the client.
+        CollectionInterface collection = harness.start(true);
+        FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KEEPASSXC_CHANGES_AN_ITEM_IT_HAS_NOT_ALLOWED);
+        fake.setRequirePromptForItemOps(true);
+
+        assertTrue(collection.setItemLabel(FakeSecretService.ITEM_PATH, "renamed"));
+        assertEquals(List.of(FakeSecretService.ITEM_PATH), fake.unlockCalls(), "the item was unlocked through its prompt");
+        assertEquals(List.of("Label"), fake.itemPropertySets());
+    }
+
+    @Test
+    void setItemLabelWithPromptingDisabledLeavesALockedItem() throws Exception {
+        CollectionInterface collection = harness.start(true);
+        FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KEEPASSXC_CHANGES_AN_ITEM_IT_HAS_NOT_ALLOWED);
+        assertTrue(collection.disablePrompt());
+
+        assertFalse(collection.setItemLabel(FakeSecretService.ITEM_PATH, "renamed"));
+        assertEquals(List.of(), fake.unlockCalls(), "no unlock, which needs the prompt");
+        assertEquals(List.of(), fake.itemPropertySets());
+    }
+
+    @Test
     void withPromptingDisabledALockedItemIsNotChanged() throws Exception {
         CollectionInterface collection = harness.start(true);
         FakeSecretService fake = harness.fake();

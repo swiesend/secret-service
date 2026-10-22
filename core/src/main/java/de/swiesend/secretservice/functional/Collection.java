@@ -832,6 +832,12 @@ public class Collection implements CollectionInterface {
             return false;
         }
         unlock();
+        // As in updateItem: a locked item cannot be modified, and KWallet and KeePassXC take a new
+        // label for one all the same.
+        if (!unlockItemIfLocked(objectPath)) {
+            log.info("Item {} stayed locked, so its label is not changed.", objectPath);
+            return false;
+        }
         return getItem(objectPath)
                 .map(item -> item.setLabel(label))
                 .orElse(false);
