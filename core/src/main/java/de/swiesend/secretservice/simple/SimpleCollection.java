@@ -150,6 +150,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
             } else {
                 log.warn("Could not communicate properly with the D-Bus [" + e.getClass().getSimpleName() + "]: " + e.getMessage());
             }
+        } catch (ExceptionInInitializerError | NoClassDefFoundError e) {
+            // dbus-java's TransportBuilder fails its own static initializer where it finds no
+            // transport, as in a shaded jar without the service files, or two of them; after that
+            // its class cannot be loaded at all.
+            log.warn("No D-Bus transport could be loaded.", e);
         }
         return null;
     }
@@ -303,7 +308,13 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         Thread daemonThread = new Thread(() -> disconnect());
         daemonThread.setName("secret-service:disconnect-shutdown");
         daemonThread.setDaemon(true);
-        Runtime.getRuntime().addShutdownHook(daemonThread);
+        try {
+            Runtime.getRuntime().addShutdownHook(daemonThread);
+        } catch (IllegalStateException e) {
+            // The JVM shuts down already, where the class is first loaded from another shutdown
+            // hook; in the static initializer, the exception would make the class unusable.
+            log.debug("The JVM shuts down; no hook to close the D-Bus connection.");
+        }
         return daemonThread;
     }
 
