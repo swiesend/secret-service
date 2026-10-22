@@ -124,7 +124,10 @@ public enum ProviderBug {
     /**
      * {@code CreateItem} with {@code replace} replaces the most recently changed item whose
      * attributes include the new item's, also one that has more attributes; the specification
-     * replaces an item with the same attributes. Not reproduced: the library never asks to replace.
+     * replaces an item with the same attributes. For an empty map of attributes, that is any item
+     * of the collection. Not reproduced: the library never asks to replace, and its low-level
+     * {@code Item.createProperties(label, null)} gives no map at all, for which gnome-keyring
+     * replaces nothing.
      */
     GNOME_KEYRING_REPLACES_AN_ITEM_WITH_MORE_ATTRIBUTES(Provider.GNOME_KEYRING, Status.UNREPORTED,
             "46.1 and 51.1", null, Fake.NOT_REPRODUCED),
@@ -373,10 +376,13 @@ public enum ProviderBug {
 
     /**
      * {@code Item.Delete} deletes, on disk, every item whose attributes include the deleted item's
-     * (read from its code). Not reproduced: the library cannot keep it from doing so.
+     * (read from its code). oo7 adds a content type to every item, so an item that was created
+     * without attributes takes every item of its content type along. On a provider that it does not
+     * know to delete by path, the library refuses a delete that would take other items along,
+     * unless the caller deletes those too.
      */
     OO7_DELETE_REMOVES_EVERY_ITEM_WITH_THE_ATTRIBUTES(Provider.OO7, Status.UNREPORTED,
-            "0.6.0 and 0.7.0 beta", null, Fake.NOT_REPRODUCED),
+            "0.6.0 and 0.7.0 beta", null, Fake.ON_REQUEST),
 
     /**
      * {@code SetSecret} and a new label or attributes change the item in memory only, and are lost

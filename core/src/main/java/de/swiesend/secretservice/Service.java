@@ -79,16 +79,25 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     }
 
     /**
-     * Whether gnome-keyring serves the secrets, as {@link ProviderDetector} tells. Asked once: the
-     * provider that serves the secrets does not change while the session's objects live.
+     * Whether gnome-keyring may serve the secrets: it does, as {@link ProviderDetector} tells, or
+     * the detector cannot tell, for no reply. Asked until it tells: the provider that serves the
+     * secrets does not change while the session's objects live.
      */
-    boolean isGnomeKeyring() {
+    boolean mayBeGnomeKeyring() {
         Boolean known = gnomeKeyring;
-        if (known == null) {
-            known = ProviderDetector.detectProvider(getConnection()) == ProviderDetector.Provider.GNOME_KEYRING;
+        if (known != null) return known;
+        // With the interrupt flag cleared, and set again after: on an interrupted thread, dbus-java
+        // gives up on every reply at once, and the detector could not tell.
+        boolean interrupted = Thread.interrupted();
+        try {
+            ProviderDetector.Provider provider = ProviderDetector.detectProvider(getConnection());
+            if (provider == ProviderDetector.Provider.UNAVAILABLE) return true;
+            known = provider == ProviderDetector.Provider.GNOME_KEYRING;
             gnomeKeyring = known;
+            return known;
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
         }
-        return known;
     }
 
     private volatile Boolean gnomeKeyring;

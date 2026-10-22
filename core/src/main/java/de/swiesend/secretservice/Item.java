@@ -34,7 +34,12 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
      *
      * @param label         The displayable label of the item.
      *
-     * @param attributes    String-valued attributes of the item.
+     * @param attributes    String-valued attributes of the item, or {@code null} for none: the
+     *                      properties have no {@code Attributes} then. An empty map is not the
+     *                      same. With {@code replace}, gnome-keyring takes an item whose attributes
+     *                      include the new item's for the one to replace, which every item does for
+     *                      an empty map. oo7 fails a {@code CreateItem} without the property, and
+     *                      gives no answer; the functional {@code createItem} sends an empty map.
      *
      *                      <p>
      *                          <b>Note:</b>
@@ -75,9 +80,9 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
     public static Map<String, Variant> createProperties(String label, Map<String, String> attributes) {
         Map<String, Variant> properties = new HashMap<>();
         properties.put(LABEL, new Variant(label));
-        // Always, empty when there are none: oo7 takes an item to have attributes, and its CreateItem
-        // fails without an answer when the property is missing.
-        properties.put(ATTRIBUTES, new Variant(attributes == null ? new HashMap<String, String>() : attributes, "a{ss}"));
+        if (attributes != null) {
+            properties.put(ATTRIBUTES, new Variant(attributes, "a{ss}"));
+        }
         return properties;
     }
 

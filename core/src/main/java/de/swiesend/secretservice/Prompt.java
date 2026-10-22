@@ -69,8 +69,9 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
             // came from another prompt, perhaps another application's.
             return null;
         }
-        // Before the wait: after an interrupt, the provider may not be asked any more.
-        boolean leftOpen = service.gaveUnlockPrompt(path) && service.isGnomeKeyring();
+        // Before the wait, which an interrupt ends. Left open also where the provider cannot be
+        // told: a prompt left open does no harm on another provider.
+        boolean leftOpen = service.gaveUnlockPrompt(path) && service.mayBeGnomeKeyring();
         Completed completed = sh.await(
                 Completed.class,
                 path.getPath(),

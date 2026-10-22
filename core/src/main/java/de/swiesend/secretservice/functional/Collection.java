@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 // Note: de.swiesend.secretservice.interfaces.Prompt.Completed is referenced fully-qualified
 // below to avoid a name clash with the low-level Prompt class in this package.
@@ -45,6 +46,12 @@ public class Collection implements CollectionInterface {
     private boolean clearSessionAtClose = false;
 
     private boolean isPrompting = true;
+
+    /** Whether {@link #openDefault} opened this collection: it is the default then. */
+    private boolean openedAsDefault = false;
+
+    /** Whether {@link #delete()} deletes this collection also when it is a default collection. */
+    private boolean deletingTheDefaultAllowed = false;
 
     private boolean isClosed = false;
 
@@ -95,6 +102,7 @@ public class Collection implements CollectionInterface {
         c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
         c.label = c.collection.getLabel();
         c.id = c.collection.getId();
+        c.openedAsDefault = true;
         return Optional.of(c);
     }
 
@@ -359,23 +367,33 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean isDefault() {
         if (connection != null && connection.isConnected()) {
-            // gnome-keyring's login and session collections, and the alias path itself.
-            List<String> defaults = Arrays.asList(null, "login", "session", "default");
-            if (defaults.contains(collection.getId())) return true;
-            // On every provider, the collection the default alias points to, which is how KWallet
-            // and KeePassXC name their default.
-            return defaultCollectionPath()
-                    .map(path -> path.getPath().equals(collection.getObjectPath()))
-                    .orElse(false);
+            return isDefault(false);
         } else {
             log.error("No D-Bus connection: Cannot check if the collection is the default collection.");
             return false;
         }
     }
 
-    /** The collection that the "default" alias points to, unless the provider names none. */
-    private Optional<DBusPath> defaultCollectionPath() {
-        return namedCollection(service.getService().readAlias("default"));
+    /**
+     * Whether this is a default collection, or {@code unknown} when the provider's default alias
+     * cannot be read: no reply, an error, or a call on an interrupted thread.
+     */
+    private boolean isDefault(boolean unknown) {
+        // The collection that openDefault() opened, whatever the alias names since.
+        if (openedAsDefault) return true;
+        // gnome-keyring's login and session collections, and the alias path itself.
+        List<String> defaults = Arrays.asList(null, "login", "session", "default");
+        if (defaults.contains(collection.getId())) return true;
+        // On every provider, the collection the default alias points to, which is how KWallet
+        // and KeePassXC name their default.
+        Optional<DBusPath> alias = service.getService().readAlias("default");
+        if (alias.isEmpty()) {
+            log.debug("Could not read the provider's default alias.");
+            return unknown;
+        }
+        return namedCollection(alias)
+                .map(path -> path.getPath().equals(collection.getObjectPath()))
+                .orElse(false);
     }
 
     /** The collection that ReadAlias answered with, unless it answered "/", for none. */
@@ -455,7 +473,11 @@ public class Collection implements CollectionInterface {
         }
 
         try (encrypted) {
-            Map<String, Variant> properties = Item.createProperties(label, attributes);
+            // An empty map where there are none: oo7 takes an item to have attributes, and its
+            // CreateItem fails without an answer when the property is missing. No replace, which
+            // would match every item of the collection for an empty map on gnome-keyring.
+            Map<String, Variant> properties = Item.createProperties(label,
+                    attributes == null ? new HashMap<String, String>() : attributes);
             Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
             if (pair == null || pair.a == null) {
                 log.error("createItem D-Bus call returned no result in collection {}.", collection.getObjectPath());
@@ -547,8 +569,11 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean delete() {
-        if (isDefault()) {
-            log.error("The default collection shall only be deleted with the low-level API.");
+        // Refused also when the default alias cannot be read: the collection may be the user's
+        // default then, which gnome-keyring and KWallet delete without asking.
+        if (!deletingTheDefaultAllowed && isDefault(true)) {
+            log.error("The default collection is deleted only after allowDeletingTheDefault(), or "
+                    + "with the low-level API.");
             return false;
         }
 
@@ -565,11 +590,17 @@ public class Collection implements CollectionInterface {
         }
 
         unlockWithUserPermission();
-        return deleteItemAsked(objectPath);
+        return deleteItemAsked(objectPath, Set.of(), new HashSet<>());
     }
 
-    /** Deletes the item after {@link #unlockWithUserPermission()} has been asked. */
-    private boolean deleteItemAsked(String objectPath) {
+    /**
+     * Deletes the item after {@link #unlockWithUserPermission()} has been asked.
+     *
+     * @param mayGoAlong the items that may be deleted with it, where the provider deletes by
+     *                   attributes: those that the caller deletes as well
+     * @param wentAlong  receives the items that the provider deleted with it
+     */
+    private boolean deleteItemAsked(String objectPath, Set<String> mayGoAlong, Set<String> wentAlong) {
         // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
         // prompting is disabled. KWallet answers Delete on a closed wallet with "/" and deletes
         // nothing, which the check below would report as done.
@@ -585,6 +616,18 @@ public class Collection implements CollectionInterface {
         }
         Item item = maybeItem.get();
 
+        Optional<Set<String>> along = deletedAlong(item, objectPath);
+        if (along.isEmpty()) {
+            log.error("Not deleting item {}: the provider may delete every item that has its attributes, "
+                    + "and they could not be compared.", objectPath);
+            return false;
+        }
+        if (!mayGoAlong.containsAll(along.get())) {
+            log.error("Not deleting item {}: the provider would delete {} other items with it, as they "
+                    + "have its attributes.", objectPath, along.get().size());
+            return false;
+        }
+
         Optional<DBusPath> maybePromptPath = item.delete();
         if (maybePromptPath.isEmpty()) {
             log.error("Could not delete item: {}", objectPath);
@@ -595,11 +638,47 @@ public class Collection implements CollectionInterface {
         // has deleted the item. That holds for every provider, not only for gnome-keyring, which
         // was the one case accepted. Only a real prompt can still be dismissed, time out, or be
         // refused.
-        if (!requiresPrompt(promptPath)) {
-            return true;
-        }
-        return performPrompt(promptPath).isPresent();
+        boolean deleted = !requiresPrompt(promptPath) || performPrompt(promptPath).isPresent();
+        if (deleted) wentAlong.addAll(along.get());
+        return deleted;
     }
+
+    /**
+     * The other items that deleting {@code item} deletes as well: none where the provider deletes
+     * an item by its path, as the specification says and gnome-keyring, KeePassXC and KWallet do.
+     * oo7 deletes every item whose attributes include the deleted item's, on disk, and it adds a
+     * content type to every item, so that an item made without attributes takes every other item
+     * of that content type along. A provider that the library does not know may do the same.
+     *
+     * @return the other items that have all of the item's attributes, or empty when that cannot
+     *         be told
+     */
+    private Optional<Set<String>> deletedAlong(Item item, String objectPath) {
+        if (deletesByPath()) return Optional.of(Set.of());
+        Optional<Map<String, String>> attributes = item.getAttributes();
+        if (attributes.isEmpty()) return Optional.empty();
+        Optional<List<DBusPath>> matches = collection.searchItems(attributes.get());
+        if (matches == null || matches.isEmpty()) return Optional.empty();
+        Set<String> others = new HashSet<>(Static.Convert.toStrings(matches.get()));
+        others.remove(objectPath);
+        return Optional.of(others);
+    }
+
+    /** Whether the provider deletes an item by its path; see {@link #deletedAlong}. */
+    private boolean deletesByPath() {
+        Boolean known = deletesByPath;
+        if (known == null) {
+            ProviderDetector.Provider provider = detectProvider();
+            known = provider == ProviderDetector.Provider.GNOME_KEYRING
+                    || provider == ProviderDetector.Provider.KEEPASSXC
+                    || provider == ProviderDetector.Provider.KWALLET;
+            // Asked again while the provider cannot be told: no reply, or an interrupted thread.
+            if (provider != ProviderDetector.Provider.UNAVAILABLE) deletesByPath = known;
+        }
+        return known;
+    }
+
+    private Boolean deletesByPath;
 
     @Override
     public boolean deleteItems(List<String> objectPaths) {
@@ -616,8 +695,15 @@ public class Collection implements CollectionInterface {
 
         boolean allDeleted = true;
 
+        // Where the provider deletes by attributes, an item may take others of the list along.
+        Set<String> requested = new HashSet<>();
         for (String item : objectPaths) {
-            boolean success = !Static.Utils.isNullOrEmpty(item) && deleteItemAsked(item);
+            if (!Static.Utils.isNullOrEmpty(item)) requested.add(item);
+        }
+        Set<String> wentAlong = new HashSet<>();
+        for (String item : objectPaths) {
+            boolean success = !Static.Utils.isNullOrEmpty(item)
+                    && (wentAlong.contains(item) || deleteItemAsked(item, requested, wentAlong));
             if (!success) {
                 allDeleted = false;
             }
@@ -746,6 +832,12 @@ public class Collection implements CollectionInterface {
             return false;
         }
         unlock();
+        // As in updateItem: a locked item cannot be modified, and KWallet and KeePassXC take a new
+        // label for one all the same.
+        if (!unlockItemIfLocked(objectPath)) {
+            log.info("Item {} stayed locked, so its label is not changed.", objectPath);
+            return false;
+        }
         return getItem(objectPath)
                 .map(item -> item.setLabel(label))
                 .orElse(false);
@@ -1019,8 +1111,12 @@ public class Collection implements CollectionInterface {
      * again: see {@link UnlockPrompts}.
      */
     private UnlockPrompts.Unlock unlockThroughGnomeKeyring(List<DBusPath> objects) {
+        String unlocks = collectionOf(objects.get(0));
+        // The Locked property of the collection that the prompt unlocks, where it is this one.
+        Supplier<Optional<Boolean>> lockedState = unlocks.equals(collection.getObjectPath())
+                ? collection::lockedState : Optional::empty;
         return UnlockPrompts.of(connection).unlock(service.getService(), prompt, objects,
-                collectionOf(objects.get(0)), service.getTimeout());
+                unlocks, service.getTimeout(), lockedState);
     }
 
     /** The collection that gnome-keyring unlocks for {@code object}: itself, or the item's own. */
@@ -1452,6 +1548,18 @@ public class Collection implements CollectionInterface {
 
     public boolean enablePrompt() {
         isPrompting = true;
+        return true;
+    }
+
+    @Override
+    public boolean allowDeletingTheDefault() {
+        deletingTheDefaultAllowed = true;
+        return true;
+    }
+
+    @Override
+    public boolean refuseDeletingTheDefault() {
+        deletingTheDefaultAllowed = false;
         return true;
     }
 }

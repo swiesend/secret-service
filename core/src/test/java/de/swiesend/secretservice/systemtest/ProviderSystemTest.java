@@ -66,24 +66,37 @@ public class ProviderSystemTest {
     /** Whether this test created the collection and may therefore delete it on teardown. */
     private boolean ownsCollection;
 
+    /**
+     * Whether the run has a provider to test: one that is not there, or that the library cannot
+     * reach, fails the tests then, where it skips them otherwise. CI sets it on every leg, so that
+     * a leg cannot pass with every test skipped.
+     */
+    static final boolean REQUIRED = Boolean.getBoolean("secret-service.system-test.required");
+
+    /** Skips the test where {@code condition} fails, or fails it where the run is {@link #REQUIRED}. */
+    private static void require(boolean condition, String message) {
+        if (REQUIRED) assertTrue(condition, message);
+        else Assumptions.assumeTrue(condition, message);
+    }
+
     @BeforeEach
     void setUp() {
         system = System.connect().orElse(null);
-        Assumptions.assumeTrue(system != null, "Could not connect to D-Bus");
+        require(system != null, "Could not connect to D-Bus");
 
         Provider provider = ProviderDetector.detectProvider(system.getConnection());
         log.info("Running provider system test against: {}", provider);
-        Assumptions.assumeTrue(provider != Provider.UNAVAILABLE,
+        require(provider != Provider.UNAVAILABLE,
                 "No Secret Service provider available on the session bus");
 
         service = SecretService.create(Optional.of(system)).orElse(null);
-        Assumptions.assumeTrue(service != null, "SecretService not available");
+        require(service != null, "SecretService not available");
 
         session = service.openSession().orElse(null);
-        Assumptions.assumeTrue(session != null, "Could not open session");
+        require(session != null, "Could not open session");
 
         collection = resolveTestCollection(session, provider);
-        Assumptions.assumeTrue(collection != null,
+        require(collection != null,
                 "Collection '" + COLLECTION + "' not available for provider " + provider);
     }
 

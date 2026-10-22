@@ -561,6 +561,10 @@ public final class FakeSecretService {
     public void setDefaultAlias(String path) { this.defaultAlias = path; }
     private volatile String defaultAlias;
 
+    /** Makes {@code ReadAlias} answer with an error, as for an alias that the client cannot read. */
+    public void setRefuseReadAlias(boolean refuse) { this.refuseReadAlias = refuse; }
+    private volatile boolean refuseReadAlias;
+
     /**
      * The content type that {@code GetSecret} gives the secret, as the application that stored it
      * chose it. The specification's own default, with its unusual spelling, unless set.
@@ -824,6 +828,7 @@ public final class FakeSecretService {
         @Override
         public DBusPath ReadAlias(String name) {
             alive();
+            if (refuseReadAlias) throw new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: ReadAlias refused");
             String target = "default".equals(name) ? defaultAlias : null;
             return new DBusPath(target == null ? "/" : target);
         }
@@ -918,10 +923,16 @@ public final class FakeSecretService {
             }
             // Deleted at once, answering "/" for "no prompt necessary", as gnome-keyring does. The
             // fake does not own org.gnome.keyring, so the client sees a provider other than
-            // gnome-keyring giving that answer.
-            if (ITEM_PATH.equals(path)) itemDeleted = true;
-            else secondItemLocked = null;
-            connection.unExportObject(path);
+            // gnome-keyring giving that answer. oo7 deletes every item that has the deleted one's
+            // attributes: every item here, as the fake's items have none.
+            List<String> deleted = reproduces(ProviderBug.OO7_DELETE_REMOVES_EVERY_ITEM_WITH_THE_ATTRIBUTES)
+                    ? items().stream().map(DBusPath::getPath).filter(FakeSecretService.this::hasItem).toList()
+                    : List.of(path);
+            for (String gone : deleted) {
+                if (ITEM_PATH.equals(gone)) itemDeleted = true;
+                else secondItemLocked = null;
+                connection.unExportObject(gone);
+            }
             return new DBusPath("/");
         }
 

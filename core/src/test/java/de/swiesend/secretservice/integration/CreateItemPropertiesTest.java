@@ -19,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * oo7 takes every item to have attributes: its {@code CreateItem} unwraps the {@code Attributes}
  * property, and without it the call fails with no answer. {@code createItem(label, secret)} sent no
- * attributes.
+ * attributes. The low-level {@code Item.createProperties(label, null)} still sends none, as in
+ * 3.0.0-alpha.
  *
  * <p>Against {@link FakeSecretService}, which records the properties of {@code CreateItem}. With
  * prompting disabled: the fake creates an item through a prompt, and the properties are in
@@ -61,5 +62,15 @@ class CreateItemPropertiesTest {
         collection.createItem("new", "secret", Map.of("application", "test"));
 
         assertEquals(List.of(Set.of(Item.LABEL, Item.ATTRIBUTES)), harness.fake().createItemPropertyNames());
+    }
+
+    @Test
+    void theLowLevelPropertiesOfAnItemWithoutAttributesHaveNone() {
+        // An empty map is not the same: with replace, gnome-keyring takes any item of the
+        // collection for the one to replace, as every item's attributes include none.
+        assertEquals(Set.of(Item.LABEL),
+                de.swiesend.secretservice.Item.createProperties("new", null).keySet());
+        assertEquals(Set.of(Item.LABEL, Item.ATTRIBUTES),
+                de.swiesend.secretservice.Item.createProperties("new", Map.of()).keySet());
     }
 }
