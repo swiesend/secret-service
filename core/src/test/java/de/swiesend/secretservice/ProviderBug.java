@@ -124,7 +124,10 @@ public enum ProviderBug {
     /**
      * {@code CreateItem} with {@code replace} replaces the most recently changed item whose
      * attributes include the new item's, also one that has more attributes; the specification
-     * replaces an item with the same attributes. Not reproduced: the library never asks to replace.
+     * replaces an item with the same attributes. For an empty map of attributes, that is any item
+     * of the collection. Not reproduced: the library never asks to replace, and its low-level
+     * {@code Item.createProperties(label, null)} gives no map at all, for which gnome-keyring
+     * replaces nothing.
      */
     GNOME_KEYRING_REPLACES_AN_ITEM_WITH_MORE_ATTRIBUTES(Provider.GNOME_KEYRING, Status.UNREPORTED,
             "46.1 and 51.1", null, Fake.NOT_REPRODUCED),

@@ -472,7 +472,11 @@ public class Collection implements CollectionInterface {
         }
 
         try (encrypted) {
-            Map<String, Variant> properties = Item.createProperties(label, attributes);
+            // An empty map where there are none: oo7 takes an item to have attributes, and its
+            // CreateItem fails without an answer when the property is missing. No replace, which
+            // would match every item of the collection for an empty map on gnome-keyring.
+            Map<String, Variant> properties = Item.createProperties(label,
+                    attributes == null ? new HashMap<String, String>() : attributes);
             Pair<DBusPath, DBusPath> pair = collection.createItem(properties, encrypted, false).orElse(null);
             if (pair == null || pair.a == null) {
                 log.error("createItem D-Bus call returned no result in collection {}.", collection.getObjectPath());
