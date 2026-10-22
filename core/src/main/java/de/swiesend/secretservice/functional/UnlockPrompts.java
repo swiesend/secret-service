@@ -88,7 +88,7 @@ final class UnlockPrompts {
     private UnlockPrompts(DBusConnection connection) {
         boolean registered = false;
         try {
-            connection.addSigHandler(Prompt.Completed.class, this::completed);
+            de.swiesend.secretservice.handlers.SignalHandler.addSigHandler(connection, Prompt.Completed.class, this::completed);
             registered = true;
         } catch (DBusException e) {
             log.warn("Cannot follow the unlock prompts of gnome-keyring; each unlock asks anew.", e);

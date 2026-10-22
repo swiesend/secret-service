@@ -38,6 +38,32 @@ public class SignalHandler implements DBusSigHandler {
      * @param sourcePath the D-Bus object path to scope signal reception to,
      *                   or {@code null}/{@code "/"} for global (unscoped) registration
      */
+    /**
+     * Held while the library adds or removes a signal handler. dbus-java 5.2.0 removes a signal's
+     * match rule once its last handler is gone, and a handler that is added meanwhile for the same
+     * signal joins the queue that goes, without a match rule of its own: it never gets a signal.
+     */
+    private static final Object REGISTRATION = new Object();
+
+    /**
+     * Adds {@code handler} for {@code type} on {@code connection}, as
+     * {@link DBusConnection#addSigHandler(Class, DBusSigHandler)} does, and removes it on
+     * {@code close()}, both under the lock that the library's other handlers are added and removed
+     * under.
+     */
+    public static <T extends DBusSignal> AutoCloseable addSigHandler(DBusConnection connection, Class<T> type,
+                                                                     DBusSigHandler<T> handler) throws DBusException {
+        AutoCloseable registration;
+        synchronized (REGISTRATION) {
+            registration = connection.addSigHandler(type, handler);
+        }
+        return () -> {
+            synchronized (REGISTRATION) {
+                registration.close();
+            }
+        };
+    }
+
     public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath) {
         if (this.connection == null) {
             this.connection = connection;
@@ -50,7 +76,7 @@ public class SignalHandler implements DBusSigHandler {
                     // parameter is the sender/bus name, not the object path). We perform
                     // path-scoping in `handle()` to avoid InvalidBusNameException when
                     // a path-like string is provided.
-                    AutoCloseable reg = connection.addSigHandler(sc, this);
+                    AutoCloseable reg = addSigHandler(connection, sc, this);
                     registrations.add(reg);
                 }
             } catch (DBusException e) {
