@@ -4,7 +4,7 @@ This is the unified instruction file for all AI agents (Claude Code, GitHub Copi
 
 ## Project Overview
 
-**secret-service** is a Java library for storing secrets in a keyring over D-Bus, implementing the [freedesktop.org Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/). It is the Java equivalent of the `libsecret` C library, compatible with GNOME Linux systems (gnome-keyring, KeePassXC).
+**secret-service** is a Java library for storing secrets in a keyring over D-Bus, implementing the [freedesktop.org Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2/). It is the Java equivalent of the `libsecret` C library, tested against gnome-keyring, KeePassXC, KWallet 5 and 6, and oo7.
 
 - **Group/Artifact:** `de.swiesend:secret-service`
 - **License:** MIT
@@ -69,7 +69,7 @@ core/src/test/java/
 
 ### Connection Ownership Model
 
-- `System.connect()` creates an **owned** connection — `close()` disconnects it.
+- `System.connect()` takes a share of dbus-java's **shared** connection, which every `System.connect()` in the JVM gets — `close()` gives up this System's share, once, and the last share closes the connection.
 - `System.wrap(DBusConnection)` wraps an **existing** connection without ownership — `close()` is a no-op. Used by `SimpleCollection` to share its static connection with the functional layer.
 - `SimpleCollection` wraps its static connection via `System.wrap()` so both layers share one D-Bus connection. The static `disconnect()` / shutdown hook owns the lifecycle.
 
@@ -101,6 +101,7 @@ module de.swiesend.secretservice {
     exports de.swiesend.secretservice.functional;
     exports de.swiesend.secretservice.functional.interfaces;
     exports de.swiesend.secretservice.gnome.keyring.interfaces;
+    exports de.swiesend.secretservice.gnome.keyring;
     exports de.swiesend.secretservice.handlers;
     exports de.swiesend.secretservice.simple.interfaces;
 }
@@ -135,7 +136,7 @@ All public API boundary methods validate parameters:
 
 ## Code Conventions
 
-- **Logging:** SLF4J via `LoggerFactory.getLogger(getClass())` per class
+- **Logging:** SLF4J via `LoggerFactory.getLogger(<DeclaringClass>.class)` per class — not `getClass()`, which names the runtime subclass, so that a consumer's configured logger name fails to match. No label or secret in a log message: a label often describes the secret it guards.
 - **Resource cleanup:** Use `AutoCloseable` / try-with-resources. Sensitive byte arrays cleared with `Arrays.fill(bytes, (byte) 0)`
 - **Naming:** Standard Java conventions (PascalCase classes, camelCase methods, `get`/`set`/`is` prefixes)
 - **Error handling:** Custom exceptions in `errors/` package. D-Bus exceptions caught and logged via `MessageHandler`
@@ -156,14 +157,16 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Tests tagged `@Tag("system-test")` are excluded from the default `mvn test` and run via the
   `system-test` profile (`mvn test -Psystem-test`). `ProviderSystemTest` is provider-agnostic and
   runs against whichever provider serves `org.freedesktop.secrets` (gnome-keyring, KeePassXC,
-  KWallet), skipping cleanly (`Assumptions`) when a provider/collection is absent. The
-  `system-tests.yml` workflow runs it against all three providers, KWallet in versions 5 and 6
-  (the KWallet/KeePassXC legs are non-blocking), and against gnome-keyring with its dialogs shown
-  and answered through xdotool (`gnome-keyring-dialogs`, non-blocking too).
+  KWallet, oo7), skipping cleanly (`Assumptions`) when a provider/collection is absent, or
+  failing instead with `-Dsecret-service.system-test.required=true`, which every CI leg passes. The
+  `system-tests.yml` workflow runs it against gnome-keyring, KWallet 5 and 6, KeePassXC as it
+  comes and with per-item confirmation (`keepassxc-confirm`), oo7, and gnome-keyring with its
+  dialogs shown and answered through xdotool (`gnome-keyring-dialogs`); only the gnome-keyring
+  leg is required.
 - The standalone developer GUI lives in the separate `tools/gui` project (not in the test suite or
   the core jar). Launch it with `mvn -DskipTests -Dgpg.skip=true install` then
   `mvn -f tools/gui/pom.xml exec:java`.
-- `DBusConnection.isConnected()` is **unreliable after `close()`** in dbus-java 4.x — do not assert on post-close connection state.
+- `DBusConnection.isConnected()` was **unreliable after `close()`** in dbus-java 4.x, and `System.connect()`'s shared connection stays open while another holder has a share — do not assert on post-close connection state.
 - Use `Thread.sleep()` (not `Thread.currentThread().sleep()`) for D-Bus signal waits.
 - A test that needs a user to answer a dialog runs only with `-Dsecret-service.system-test.dialogs-answered=true`, and one that also locks or writes into the default collection only with `-Dsecret-service.system-test.default-collection=throwaway` as well: `@EnabledIfSystemProperty` on the flags of `integration.test.Dialogs`, with its reason as `disabledReason`. The `gnome-keyring-dialogs` CI leg sets both; never set the second where the default collection is a user's. Its container also exports `SECRET_SERVICE_DIALOG_CONTROL`, through which a test holds the dialog answerer back, as a user who is away (`Dialogs.hold()`, `release()`), and has it cancel the dialog on the screen (`Dialogs.cancelTheDialog()`); such a test runs only there (`@EnabledIfEnvironmentVariable`).
 - The other `@Disabled` tests touch the user's own keyring, need a dialog that the CI leg does not answer, or depend on timing or on the rest of the run; the annotation string says which. Give every new one its reason.
@@ -174,7 +177,7 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Transport encryption uses DH key exchange + AES-128-CBC (not optional for production use)
 - Secrets are wrapped in `AutoCloseable` types that clear sensitive data on close
 - Byte arrays holding secrets are zeroed after use
-- The library mitigates CVE-2018-19358 (gnome-keyring hands an unlocked keyring to every client) for reading all secrets and deleting items: `unlockWithUserPermission()` locks the collection, then unlocks it through the provider's dialog. Reading a single secret is not gated, and KeePassXC, which locks only through a prompt, confirms access itself
+- The library mitigates CVE-2018-19358 (gnome-keyring hands an unlocked keyring to every client) for reading all secrets and deleting items: `unlockWithUserPermission()` locks the collection, then unlocks it through the provider's dialog, or on gnome-keyring with the password that the collection was opened with. Reading a single secret is not gated, and KeePassXC, which locks only through a prompt, confirms access itself
 - `withSecret()` callback API guarantees zeroing even on exception paths
 
 ## Git Conventions
@@ -182,7 +185,7 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Commit messages: capitalized, descriptive subject line. Reference issues with `Resolves: #N` or link format
 - Branches:
   - **`main`** — Production branch
-  - **`develop-2.x.x`** — Long-lived development branch for the next release
+  - **`develop-2.x.x`** — The 2.x line
   - **`develop-3.x.x`** — The 3.x line, for fixes to 3.x once 4.0 is on `main`; the workflows run on it too
   - **Feature branches** — Slash notation (e.g., `claude/feature-name`)
 
