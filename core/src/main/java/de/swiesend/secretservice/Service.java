@@ -157,7 +157,10 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
                 Map<DBusPath, Secret> secrets = new LinkedHashMap<>();
                 for (Map.Entry<?, ?> entry : ((Map<?, ?>) response[0]).entrySet()) {
                     Object value = entry.getValue();
-                    secrets.put((DBusPath) entry.getKey(),
+                    // Keyed by the path alone: dbus-java gives a path that it decodes the sender
+                    // as its source, which DBusPath.equals compares, so that a lookup with
+                    // new DBusPath(path) found nothing.
+                    secrets.put(new DBusPath(((DBusPath) entry.getKey()).getPath()),
                             value instanceof Secret secret ? secret : Item.toSecret((Object[]) value));
                 }
                 return Optional.of(secrets);
