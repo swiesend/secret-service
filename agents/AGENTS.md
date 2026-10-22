@@ -180,6 +180,7 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Branches:
   - **`main`** — Production branch
   - **`develop-2.x.x`** — Long-lived development branch for the next release
+  - **`develop-3.x.x`** — The 3.x line, for fixes to 3.x once 4.0 is on `main`; the workflows run on it too
   - **Feature branches** — Slash notation (e.g., `claude/feature-name`)
 
 ## Versioning

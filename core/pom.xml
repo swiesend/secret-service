@@ -64,6 +64,9 @@
 
         <!-- test dependencies -->
         <junit-jupiter.version>5.10.5</junit-jupiter.version>
+
+        <!-- The release whose API the api-check profile compares the build with. -->
+        <api-check.baseline>3.0.0-alpha</api-check.baseline>
     </properties>
 
     <dependencies>
@@ -146,6 +149,68 @@
                         <configuration combine.self="override">
                             <groups>system-test</groups>
                         </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <!--
+            mvn -Papi-check -DskipTests -Dgpg.skip=true verify: compares the jar's public API with
+            the release that api-check.baseline names. It fails on a change that breaks a compiled
+            application, binary incompatible, and reports one that breaks only its compilation,
+            source incompatible, in core/target/japicmp/. Needs Maven 3.8.1 or later.
+        -->
+        <profile>
+            <id>api-check</id>
+            <build>
+                <plugins>
+                    <!-- The release's jar, from Maven Central. Maven would resolve it to this project's
+                         own jar while the version is the same, until the release sets the next one. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>api-check-baseline</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <mkdir dir="${project.build.directory}/api-check"/>
+                                        <get src="https://repo1.maven.org/maven2/de/swiesend/secret-service/${api-check.baseline}/secret-service-${api-check.baseline}.jar"
+                                             dest="${project.build.directory}/api-check/secret-service-${api-check.baseline}.jar"
+                                             skipexisting="true"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>com.github.siom79.japicmp</groupId>
+                        <artifactId>japicmp-maven-plugin</artifactId>
+                        <version>0.26.3</version>
+                        <configuration>
+                            <oldVersion>
+                                <file>
+                                    <path>${project.build.directory}/api-check/secret-service-${api-check.baseline}.jar</path>
+                                </file>
+                            </oldVersion>
+                            <parameter>
+                                <onlyModified>true</onlyModified>
+                                <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                                <breakBuildOnSourceIncompatibleModifications>false</breakBuildOnSourceIncompatibleModifications>
+                            </parameter>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>cmp</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

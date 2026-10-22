@@ -83,12 +83,14 @@ cp /providers/keepassxc/test.kdbx "$DB"
 
 # Whether KeePassXC asks for confirmation before releasing an item's secret.
 #
-# With confirmation ON, KeePassXC reports items as individually locked and prompts per
-# item — the behaviour the freedesktop spec anticipates and the one gnome-keyring never
-# exhibits. Nothing here answers the dialog; that would need xdotool and would be
-# flaky. The suite instead asserts the library refuses cleanly when prompting is
-# disabled, which needs no interaction and so stays deterministic.
+# With confirmation ON, KeePassXC keeps each item locked for a client until the user allows
+# that client's access in its Access Request dialog, one dialog per Unlock call — the
+# behaviour the freedesktop spec anticipates and the one gnome-keyring never exhibits.
+# KPXC_ANSWER_ACCESS_REQUESTS=true answers each dialog through xdotool, as a user who allows
+# the request; otherwise nothing answers it, and a client that needs it waits.
 CONFIRM_ACCESS_ITEM="${KPXC_CONFIRM_ACCESS_ITEM:-false}"
+ANSWER_ACCESS_REQUESTS="${KPXC_ANSWER_ACCESS_REQUESTS:-false}"
+ANSWER_LOG="$LOG_DIR/access-requests.log"
 
 mkdir -p "$HOME/.config/keepassxc"
 cat > "$HOME/.config/keepassxc/keepassxc.ini" << KPXCINI
@@ -221,6 +223,29 @@ if [ "$collection_status" -ne 0 ]; then
         exit 1
     fi
     echo "KPXC_REQUIRE_COLLECTION=false — continuing without coverage."
+fi
+
+# Answers each Access Request dialog as a user who allows it: Return on its default button,
+# "Allow Selected", with every entry selected, as KeePassXC opens it. One line per dialog.
+answer_access_requests() {
+    local seen=" " win
+    while true; do
+        for win in $(xdotool search --name "Access Request" 2>/dev/null); do
+            case "$seen" in *" $win "*) continue ;; esac
+            seen="$seen$win "
+            sleep 0.5
+            xdotool windowactivate --sync "$win" 2>/dev/null || true
+            sleep 0.2
+            xdotool key Return
+            echo "answered access request window $win at $(date +%T)"
+        done
+        sleep 0.3
+    done
+}
+
+if [ "$ANSWER_ACCESS_REQUESTS" = "true" ]; then
+    answer_access_requests > "$ANSWER_LOG" 2>&1 &
+    echo "Answering KeePassXC's access requests (log: $ANSWER_LOG)."
 fi
 
 # Run the provided command, defaulting to the system-test profile.

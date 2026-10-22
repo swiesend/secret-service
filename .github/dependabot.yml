@@ -1,0 +1,18 @@
+# Keeps the pinned actions of the workflows current: once a week, in one pull request, for releases
+# that are at least seven days old, which leaves a compromised release time to be found.
+#
+# GitHub Actions only. The library pins dbus-java at 5.2.0 on purpose (see the README), and Maven
+# updates would propose its newer releases every week. Security advisories for the Maven
+# dependencies come from Dependabot alerts, a setting of the repository.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
