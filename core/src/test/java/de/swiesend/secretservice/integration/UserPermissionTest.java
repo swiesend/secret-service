@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 
@@ -65,6 +66,25 @@ class UserPermissionTest {
                 "without the dialog the user cannot confirm access, so the read is refused");
         assertFalse(fake.isCollectionLocked(),
                 "and the collection was not locked, which nothing could have undone");
+    }
+
+    @Test
+    void aLockWhoseReplyComesTooLateCountsAsTheProviderTellsIt() throws Exception {
+        // A busy provider locks, and its reply comes after the library's two-second reply timeout.
+        CollectionInterface collection = harness.start(false);
+        harness.fake().setLockReplyDelay(Duration.ofSeconds(3));
+
+        assertTrue(collection.lock(), "the collection is locked");
+    }
+
+    @Test
+    void aPermissionWhoseLockReplyComesTooLateUnlocksTheCollectionAgain() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setLockReplyDelay(Duration.ofSeconds(3));
+
+        assertTrue(collection.unlockWithUserPermission());
+        assertFalse(fake.isCollectionLocked(), "it is not left locked for every application");
     }
 
     /** Answers the provider's prompt from another thread, as the user would. */

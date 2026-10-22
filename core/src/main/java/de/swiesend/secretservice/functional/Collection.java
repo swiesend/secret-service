@@ -1206,6 +1206,12 @@ public class Collection implements CollectionInterface {
         if (collection.isLocked()) return Locking.LOCKED;
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
+            // No reply in time is no refusal: a busy provider locks all the same, and answers
+            // late. Its Locked property tells.
+            if (awaitUntil(() -> collection.lockedState().orElse(false))) {
+                log.info("Locked collection {}, though its Lock call got no answer", collection.getObjectPath());
+                return Locking.LOCKED;
+            }
             log.error("D-Bus lock call failed for collection {}", collection.getObjectPath());
             return Locking.FAILED;
         }

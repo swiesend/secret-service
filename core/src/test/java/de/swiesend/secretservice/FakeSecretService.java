@@ -316,6 +316,10 @@ public final class FakeSecretService {
     public void setSearchReplyDelay(java.time.Duration delay) { this.searchReplyDelay = delay; }
     private volatile java.time.Duration searchReplyDelay = java.time.Duration.ZERO;
 
+    /** Makes {@code Service.Lock} reply only after {@code delay}, once it has locked. */
+    public void setLockReplyDelay(java.time.Duration delay) { this.lockReplyDelay = delay; }
+    private volatile java.time.Duration lockReplyDelay = java.time.Duration.ZERO;
+
     /** State change the outstanding Lock or CreateItem prompt would authorise; applied only on approval. */
     private volatile Runnable pendingApproval;
     /** The prompt that {@link #pendingApproval} belongs to. */
@@ -814,6 +818,14 @@ public final class FakeSecretService {
             for (DBusPath p : objects) {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
                 if (COLLECTION_PATH.equals(p.getPath())) collectionLocked = true;
+            }
+            // Locked already, as a busy provider has locked when its reply comes late.
+            if (!lockReplyDelay.isZero()) {
+                try {
+                    Thread.sleep(lockReplyDelay.toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
         }
