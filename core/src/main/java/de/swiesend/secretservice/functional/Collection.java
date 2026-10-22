@@ -46,6 +46,12 @@ public class Collection implements CollectionInterface {
 
     private boolean isPrompting = true;
 
+    /** Whether {@link #openDefault} opened this collection: it is the default then. */
+    private boolean openedAsDefault = false;
+
+    /** Whether {@link #delete()} deletes this collection also when it is a default collection. */
+    private boolean deletingTheDefaultAllowed = false;
+
     private boolean isClosed = false;
 
     private Collection() {
@@ -95,6 +101,7 @@ public class Collection implements CollectionInterface {
         c.collection = new de.swiesend.secretservice.Collection(c.path, c.connection);
         c.label = c.collection.getLabel();
         c.id = c.collection.getId();
+        c.openedAsDefault = true;
         return Optional.of(c);
     }
 
@@ -359,23 +366,33 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean isDefault() {
         if (connection != null && connection.isConnected()) {
-            // gnome-keyring's login and session collections, and the alias path itself.
-            List<String> defaults = Arrays.asList(null, "login", "session", "default");
-            if (defaults.contains(collection.getId())) return true;
-            // On every provider, the collection the default alias points to, which is how KWallet
-            // and KeePassXC name their default.
-            return defaultCollectionPath()
-                    .map(path -> path.getPath().equals(collection.getObjectPath()))
-                    .orElse(false);
+            return isDefault(false);
         } else {
             log.error("No D-Bus connection: Cannot check if the collection is the default collection.");
             return false;
         }
     }
 
-    /** The collection that the "default" alias points to, unless the provider names none. */
-    private Optional<DBusPath> defaultCollectionPath() {
-        return namedCollection(service.getService().readAlias("default"));
+    /**
+     * Whether this is a default collection, or {@code unknown} when the provider's default alias
+     * cannot be read: no reply, an error, or a call on an interrupted thread.
+     */
+    private boolean isDefault(boolean unknown) {
+        // The collection that openDefault() opened, whatever the alias names since.
+        if (openedAsDefault) return true;
+        // gnome-keyring's login and session collections, and the alias path itself.
+        List<String> defaults = Arrays.asList(null, "login", "session", "default");
+        if (defaults.contains(collection.getId())) return true;
+        // On every provider, the collection the default alias points to, which is how KWallet
+        // and KeePassXC name their default.
+        Optional<DBusPath> alias = service.getService().readAlias("default");
+        if (alias.isEmpty()) {
+            log.debug("Could not read the provider's default alias.");
+            return unknown;
+        }
+        return namedCollection(alias)
+                .map(path -> path.getPath().equals(collection.getObjectPath()))
+                .orElse(false);
     }
 
     /** The collection that ReadAlias answered with, unless it answered "/", for none. */
@@ -547,8 +564,11 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean delete() {
-        if (isDefault()) {
-            log.error("The default collection shall only be deleted with the low-level API.");
+        // Refused also when the default alias cannot be read: the collection may be the user's
+        // default then, which gnome-keyring and KWallet delete without asking.
+        if (!deletingTheDefaultAllowed && isDefault(true)) {
+            log.error("The default collection is deleted only after allowDeletingTheDefault(), or "
+                    + "with the low-level API.");
             return false;
         }
 
@@ -1452,6 +1472,18 @@ public class Collection implements CollectionInterface {
 
     public boolean enablePrompt() {
         isPrompting = true;
+        return true;
+    }
+
+    @Override
+    public boolean allowDeletingTheDefault() {
+        deletingTheDefaultAllowed = true;
+        return true;
+    }
+
+    @Override
+    public boolean refuseDeletingTheDefault() {
+        deletingTheDefaultAllowed = false;
         return true;
     }
 }

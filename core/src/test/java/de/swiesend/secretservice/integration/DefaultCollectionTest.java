@@ -74,6 +74,73 @@ class DefaultCollectionTest {
                 });
 
         assertFalse(other.isDefault());
+        assertFalse(other.allowDeletingTheDefault(), "the setting is not taken");
+        assertFalse(other.refuseDeletingTheDefault(), "the setting is not taken");
+    }
+
+    @Test
+    void aCollectionIsNotDeletedWhileTheDefaultAliasCannotBeRead() throws Exception {
+        // It may be the provider's default collection then.
+        CollectionInterface collection = harness.start(false);
+        harness.fake().setRefuseReadAlias(true);
+
+        assertFalse(collection.delete());
+        assertEquals(0, harness.fake().collectionDeleteCalls());
+    }
+
+    @Test
+    void aCollectionIsNotDeletedOnAnInterruptedThread() throws Exception {
+        // On an interrupted thread, dbus-java gives up on the reply to ReadAlias at once.
+        CollectionInterface collection = harness.start(false);
+        try {
+            Thread.currentThread().interrupt();
+            assertFalse(collection.delete());
+        } finally {
+            Thread.interrupted();
+        }
+        // A Delete would reach the fake although the call gave up on its reply: give it the time.
+        Thread.sleep(500);
+        assertEquals(0, harness.fake().collectionDeleteCalls());
+    }
+
+    @Test
+    void theCollectionThatOpenDefaultOpenedIsNotDeletedWhenTheAliasCannotBeReadAnyMore() throws Exception {
+        harness.start(false);
+        harness.fake().setDefaultAlias(FakeSecretService.COLLECTION_PATH);
+        SessionInterface session = harness.service().openSession().orElseThrow();
+
+        try (CollectionInterface collection = session.defaultCollection().orElseThrow()) {
+            harness.fake().setRefuseReadAlias(true);
+
+            assertTrue(collection.isDefault(), "openDefault() opened it");
+            assertFalse(collection.delete());
+            assertEquals(0, harness.fake().collectionDeleteCalls());
+        }
+    }
+
+    @Test
+    void theDefaultCollectionIsDeletedOnceThatIsAllowed() throws Exception {
+        harness.start(false);
+        harness.fake().setDefaultAlias(FakeSecretService.COLLECTION_PATH);
+        SessionInterface session = harness.service().openSession().orElseThrow();
+
+        try (CollectionInterface collection = session.defaultCollection().orElseThrow()) {
+            assertTrue(collection.allowDeletingTheDefault());
+
+            assertTrue(collection.delete());
+            assertEquals(1, harness.fake().collectionDeleteCalls());
+        }
+    }
+
+    @Test
+    void theDefaultCollectionIsRefusedAgainAfterItWasAllowed() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        harness.fake().setDefaultAlias(FakeSecretService.COLLECTION_PATH);
+        collection.allowDeletingTheDefault();
+
+        assertTrue(collection.refuseDeletingTheDefault());
+        assertFalse(collection.delete());
+        assertEquals(0, harness.fake().collectionDeleteCalls());
     }
 
     @Test

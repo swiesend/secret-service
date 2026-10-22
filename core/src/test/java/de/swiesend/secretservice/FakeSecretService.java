@@ -561,6 +561,10 @@ public final class FakeSecretService {
     public void setDefaultAlias(String path) { this.defaultAlias = path; }
     private volatile String defaultAlias;
 
+    /** Makes {@code ReadAlias} answer with an error, as for an alias that the client cannot read. */
+    public void setRefuseReadAlias(boolean refuse) { this.refuseReadAlias = refuse; }
+    private volatile boolean refuseReadAlias;
+
     /**
      * The content type that {@code GetSecret} gives the secret, as the application that stored it
      * chose it. The specification's own default, with its unusual spelling, unless set.
@@ -824,6 +828,7 @@ public final class FakeSecretService {
         @Override
         public DBusPath ReadAlias(String name) {
             alive();
+            if (refuseReadAlias) throw new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: ReadAlias refused");
             String target = "default".equals(name) ? defaultAlias : null;
             return new DBusPath(target == null ? "/" : target);
         }

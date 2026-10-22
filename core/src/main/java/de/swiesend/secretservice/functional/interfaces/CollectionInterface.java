@@ -49,20 +49,50 @@ public interface CollectionInterface extends AutoCloseable {
     Optional<String> createItem(String label, CharSequence secret, Map<String, String> attributes);
 
     /**
-     * Delete this collection, unless it is a default collection; see {@link #isDefault()}.
+     * Delete this collection, unless it is a default collection; see {@link #isDefault()}. It is
+     * refused also when the provider's default alias cannot be read, as the collection may be the
+     * default then. {@link #allowDeletingTheDefault()} lets it delete a default collection.
      *
      * @return whether the collection was deleted
      */
     boolean delete();
 
     /**
-     * Whether this is a default collection, which {@link #delete()} does not delete: the one the
-     * provider's {@code default} alias points to, or gnome-keyring's login or session collection.
+     * Whether this is a default collection, which {@link #delete()} does not delete: the one that
+     * {@code openDefault()} opened, the one the provider's {@code default} alias points to, or
+     * gnome-keyring's login or session collection.
      * <p>
      * The default body answers {@code false}, for an implementation whose {@code delete()} refuses
      * no collection. It keeps an implementation that does not declare this method compiling.
      */
     default boolean isDefault() {
+        return false;
+    }
+
+    /**
+     * Lets {@link #delete()} delete this collection also when it is a default collection, which it
+     * refuses otherwise. A default collection holds the secrets of every application that uses it,
+     * and gnome-keyring and KWallet delete it without asking the user.
+     * <p>
+     * The default body answers {@code false} and changes nothing, for an implementation that does
+     * not declare this method. It keeps such an implementation compiling.
+     *
+     * @return whether the setting was taken
+     */
+    default boolean allowDeletingTheDefault() {
+        return false;
+    }
+
+    /**
+     * Makes {@link #delete()} refuse a default collection again, as it does until
+     * {@link #allowDeletingTheDefault()}.
+     * <p>
+     * The default body answers {@code false} and changes nothing, for an implementation that does
+     * not declare this method.
+     *
+     * @return whether the setting was taken
+     */
+    default boolean refuseDeletingTheDefault() {
         return false;
     }
 
