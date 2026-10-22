@@ -9,7 +9,6 @@ import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.types.Variant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,11 +74,22 @@ public class InternalUnsupportedGuiltRiddenInterfaceTest {
     }
 
     @Test
-    @Disabled("Asserts nothing: the call only creates the change-password prompt, and showing it needs a user")
     public void changeWithPrompt() throws InterruptedException {
-        assertDoesNotThrow(() -> iugri.changeWithPrompt(collection.getPath()));
-        Thread.sleep(1000L);
-        // NOTE: no prompt popup. Is this to be expected?
+        // The call gives the prompt whose dialog asks for the old password and the new one, and no
+        // dialog shows before the prompt is shown. Nobody answers it here, so it is dismissed: a
+        // prompt of gnome-keyring other than an unlock prompt may be.
+        List<DBusPath> collections = service.getCollections().get();
+        if (!Static.Convert.toStrings(collections).contains("/org/freedesktop/secrets/collection/test")) {
+            HashMap<String, Variant> properties = new HashMap<>();
+            properties.put("org.freedesktop.Secret.Collection.Label", new Variant<>("test"));
+            iugri.createWithMasterPassword(properties, original);
+            Thread.sleep(100L);
+        }
+
+        DBusPath prompt = iugri.changeWithPrompt(collection.getPath()).orElseThrow();
+
+        assertTrue(prompt.getPath().startsWith(Static.ObjectPaths.PROMPT + "/"), prompt.getPath());
+        assertTrue(new de.swiesend.secretservice.Prompt(service).dismiss(prompt));
     }
 
     @Test
