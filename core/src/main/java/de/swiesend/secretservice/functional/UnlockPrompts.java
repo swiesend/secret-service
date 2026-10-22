@@ -20,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /**
  * The unlock prompts of gnome-keyring that a connection has shown and that have no answer yet, one
@@ -45,9 +46,12 @@ final class UnlockPrompts {
     /** Weak: the registration's handler holds its registry, not the connection. */
     private static final Map<DBusConnection, UnlockPrompts> BY_CONNECTION = new WeakHashMap<>();
 
+    /** How often a wait on a prompt reads whether its collection is unlocked. */
+    private static final Duration LOCK_CHECK = Duration.ofSeconds(1);
+
     /** How an unlock through gnome-keyring's dialog went; the provider's Locked state is the authority. */
     enum Unlock {
-        /** gnome-keyring unlocked at once, or the user answered the dialog. */
+        /** gnome-keyring unlocked at once, the user answered the dialog, or the collection was unlocked meanwhile. */
         DONE,
         /** The user cancelled the dialog. */
         REFUSED,
@@ -103,10 +107,13 @@ final class UnlockPrompts {
      * gnome-keyring's dialog: waits on the collection's open unlock prompt, or asks gnome-keyring
      * for one and shows it. The prompt stays open when nobody answers within {@code timeout}.
      *
-     * @param service the service to ask, whose connection is this registry's
-     * @param prompt  what shows the prompt, on that connection
+     * @param service     the service to ask, whose connection is this registry's
+     * @param prompt      what shows the prompt, on that connection
+     * @param lockedState the collection's {@code Locked} property, or empty when it cannot be read:
+     *                    the wait ends once the collection is unlocked
      */
-    Unlock unlock(Service service, Prompt prompt, List<DBusPath> objects, String collection, Duration timeout) {
+    Unlock unlock(Service service, Prompt prompt, List<DBusPath> objects, String collection, Duration timeout,
+                  Supplier<Optional<Boolean>> lockedState) {
         if (!following) {
             // Through the prompt's own wait, which leaves an unlock prompt of gnome-keyring open as well.
             Optional<Pair<List<DBusPath>, DBusPath>> reply = service.unlock(objects);
@@ -147,12 +154,33 @@ final class UnlockPrompts {
             }
             return Unlock.NO_ANSWER;
         }
+        long deadline = java.lang.System.nanoTime() + timeout.toNanos();
         try {
-            return open.completed.get(timeout.toNanos(), TimeUnit.NANOSECONDS).dismissed ? Unlock.REFUSED : Unlock.DONE;
-        } catch (TimeoutException e) {
-            log.info("Left gnome-keyring's unlock prompt ({}) open: nobody answered it in time, and a "
-                    + "dismissal can abort gnome-keyring.", open.prompt);
-            return Unlock.NO_ANSWER;
+            while (true) {
+                long left = deadline - java.lang.System.nanoTime();
+                if (left <= 0) {
+                    log.info("Left gnome-keyring's unlock prompt ({}) open: nobody answered it in time, and a "
+                            + "dismissal can abort gnome-keyring.", open.prompt);
+                    return Unlock.NO_ANSWER;
+                }
+                try {
+                    return open.completed.get(Math.min(left, LOCK_CHECK.toNanos()), TimeUnit.NANOSECONDS).dismissed
+                            ? Unlock.REFUSED : Unlock.DONE;
+                } catch (TimeoutException e) {
+                    // gnome-keyring 51 strands an unlock prompt that waits behind a dialog whose own
+                    // prompt another client dismissed: the answer to that dialog unlocks the
+                    // collection, and the prompt never completes. It is forgotten then, and the
+                    // next request asks anew.
+                    if (Boolean.FALSE.equals(lockedState.get().orElse(null))) {
+                        synchronized (this) {
+                            forget(open);
+                        }
+                        log.debug("Collection {} was unlocked while its unlock prompt ({}) waited.",
+                                collection, open.prompt);
+                        return Unlock.DONE;
+                    }
+                }
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return Unlock.NO_ANSWER;

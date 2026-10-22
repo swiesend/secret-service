@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 // Note: de.swiesend.secretservice.interfaces.Prompt.Completed is referenced fully-qualified
 // below to avoid a name clash with the low-level Prompt class in this package.
@@ -1104,8 +1105,12 @@ public class Collection implements CollectionInterface {
      * again: see {@link UnlockPrompts}.
      */
     private UnlockPrompts.Unlock unlockThroughGnomeKeyring(List<DBusPath> objects) {
+        String unlocks = collectionOf(objects.get(0));
+        // The Locked property of the collection that the prompt unlocks, where it is this one.
+        Supplier<Optional<Boolean>> lockedState = unlocks.equals(collection.getObjectPath())
+                ? collection::lockedState : Optional::empty;
         return UnlockPrompts.of(connection).unlock(service.getService(), prompt, objects,
-                collectionOf(objects.get(0)), service.getTimeout());
+                unlocks, service.getTimeout(), lockedState);
     }
 
     /** The collection that gnome-keyring unlocks for {@code object}: itself, or the item's own. */
