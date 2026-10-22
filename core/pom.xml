@@ -148,6 +148,9 @@
                         <artifactId>maven-surefire-plugin</artifactId>
                         <configuration combine.self="override">
                             <groups>system-test</groups>
+                            <!-- A tag or group renamed on one side only selects no test, and the
+                                 run would pass. -->
+                            <failIfNoTests>true</failIfNoTests>
                         </configuration>
                         <executions>
                             <!-- The override above replaces the plugin-level configuration only; the

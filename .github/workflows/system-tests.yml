@@ -108,6 +108,8 @@ jobs:
       - name: Build ${{ matrix.provider }} container
         run: docker build -f .github/providers/${{ matrix.image || matrix.provider }}/Dockerfile -t secret-service-${{ matrix.provider }} .
 
+      # required: a provider, session or collection that the tests cannot reach fails them, where
+      # it would skip them, so that a leg cannot pass with every test skipped.
       - name: Run system tests against ${{ matrix.provider }}
         run: |
           docker run --rm ${{ matrix.docker-options }} \
@@ -115,6 +117,7 @@ jobs:
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-${{ matrix.provider }} \
             mvn -B test -Psystem-test -Dsecret-service.system-test.collection=${{ matrix.collection }} \
+              -Dsecret-service.system-test.required=true \
               -Dsecret-service.system-test.lockable=${{ matrix.lockable || false }} \
               -Dsecret-service.system-test.dialogs-answered=${{ matrix.dialogs-answered || false }} \
               -Dsecret-service.system-test.default-collection=${{ matrix.default-collection }}
