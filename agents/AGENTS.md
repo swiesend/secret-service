@@ -157,8 +157,8 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
   `system-test` profile (`mvn test -Psystem-test`). `ProviderSystemTest` is provider-agnostic and
   runs against whichever provider serves `org.freedesktop.secrets` (gnome-keyring, KeePassXC,
   KWallet), skipping cleanly (`Assumptions`) when a provider/collection is absent. The
-  `system-tests.yml` workflow runs it across all three providers (KWallet/KeePassXC legs are
-  non-blocking).
+  `system-tests.yml` workflow runs it against all three providers, KWallet in versions 5 and 6
+  (the KWallet/KeePassXC legs are non-blocking).
 - The standalone developer GUI lives in the separate `tools/gui` project (not in the test suite or
   the core jar). Launch it with `mvn -DskipTests -Dgpg.skip=true install` then
   `mvn -f tools/gui/pom.xml exec:java`.
