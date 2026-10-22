@@ -216,7 +216,22 @@ public class SignalHandler implements DBusSigHandler {
         }
     }
 
+    /**
+     * {@code timeout} in nanoseconds: none for a negative one, and at most {@link Long#MAX_VALUE},
+     * some 292 years, where {@link Duration#toNanos()} would overflow.
+     */
+    private static long nanos(Duration timeout) {
+        if (timeout.isNegative()) return 0;
+        try {
+            return timeout.toNanos();
+        } catch (ArithmeticException e) {
+            return Long.MAX_VALUE;
+        }
+    }
+
     public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
+        // Before the action, which shows the prompt: it would wait for an answer that nobody collects.
+        Objects.requireNonNull(timeout, "timeout must not be null");
         final int init = count;
 
         Optional<Prompt> maybePrompt = Optional.empty();
@@ -265,7 +280,7 @@ public class SignalHandler implements DBusSigHandler {
         String gaveUp = "it was interrupted";
         try {
             long start = System.nanoTime();
-            long nanos = timeout.toNanos();
+            long nanos = nanos(timeout);
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {

@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
@@ -114,6 +115,8 @@ final class UnlockPrompts {
      */
     Unlock unlock(Service service, Prompt prompt, List<DBusPath> objects, String collection, Duration timeout,
                   Supplier<Optional<Boolean>> lockedState) {
+        // Before the prompt is shown, which nothing could end then.
+        Objects.requireNonNull(timeout, "timeout must not be null");
         if (!following) {
             // Through the prompt's own wait, which leaves an unlock prompt of gnome-keyring open as well.
             Optional<Pair<List<DBusPath>, DBusPath>> reply = service.unlock(objects);
@@ -154,10 +157,11 @@ final class UnlockPrompts {
             }
             return Unlock.NO_ANSWER;
         }
-        long deadline = java.lang.System.nanoTime() + timeout.toNanos();
+        long budget = nanos(timeout);
+        long start = java.lang.System.nanoTime();
         try {
             while (true) {
-                long left = deadline - java.lang.System.nanoTime();
+                long left = budget - (java.lang.System.nanoTime() - start);
                 if (left <= 0) {
                     log.info("Left gnome-keyring's unlock prompt ({}) open: nobody answered it in time, and a "
                             + "dismissal can abort gnome-keyring.", open.prompt);
@@ -186,6 +190,19 @@ final class UnlockPrompts {
             return Unlock.NO_ANSWER;
         } catch (ExecutionException e) {
             return Unlock.NO_ANSWER;
+        }
+    }
+
+    /**
+     * {@code timeout} in nanoseconds: none for a negative one, and at most {@link Long#MAX_VALUE},
+     * some 292 years, where {@link Duration#toNanos()} would overflow.
+     */
+    private static long nanos(Duration timeout) {
+        if (timeout.isNegative()) return 0;
+        try {
+            return timeout.toNanos();
+        } catch (ArithmeticException e) {
+            return Long.MAX_VALUE;
         }
     }
 
