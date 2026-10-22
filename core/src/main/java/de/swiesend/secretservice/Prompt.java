@@ -27,6 +27,12 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
         this.service = service;
     }
 
+    /**
+     * Shows the prompt whose id, the last part of its path, is {@code window_id}, and sends that same
+     * string as the window id, as in 1.x: no window handle can be given here. For a prompt that the
+     * provider answered with, {@link #prompt(DBusPath)} shows it under its path, with the empty
+     * window id.
+     */
     @Override
     public boolean prompt(String window_id) {
         objectPath = Static.ObjectPaths.prompt(window_id);

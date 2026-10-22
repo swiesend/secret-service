@@ -235,9 +235,11 @@ public interface CollectionInterface extends AutoCloseable {
      * {@link #deleteItems(List)} ask for it first. Reading a single secret does not.
      *
      * <p>Where the provider locks without a prompt, as gnome-keyring does, the collection is
-     * locked and then unlocked through the provider's dialog, once per collection object. A
-     * provider that locks only through a prompt, as KeePassXC does, confirms access to its secrets
-     * itself, and the collection is used as it is.</p>
+     * locked and then unlocked through the provider's dialog, once per collection object, or on
+     * gnome-keyring with the password that the collection was opened with. A provider that locks
+     * only through a prompt, as KeePassXC does, confirms access to its secrets itself, and the
+     * collection is used as it is. With prompting disabled, a collection that only the dialog
+     * could unlock again is not locked, and the call returns {@code false}.</p>
      *
      * @return whether the collection is unlocked afterwards
      */
