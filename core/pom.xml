@@ -440,6 +440,10 @@
                             <!-- A renamed tag or class would otherwise leave this execution with no
                                  test to run, and it would pass. -->
                             <failIfNoTests>true</failIfNoTests>
+                            <!-- Named here, as configuration wins over the command line: with
+                                 mvn test -Dtest=... this execution kept only the named tests, none
+                                 of its group, and failed the build for want of a test. -->
+                            <test>ReplyLoggingTest</test>
                             <systemPropertyVariables>
                                 <org.slf4j.simpleLogger.log.de.swiesend.secretservice>trace</org.slf4j.simpleLogger.log.de.swiesend.secretservice>
                             </systemPropertyVariables>
