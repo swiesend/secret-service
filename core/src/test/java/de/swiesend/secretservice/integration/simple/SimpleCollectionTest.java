@@ -1,7 +1,9 @@
 package de.swiesend.secretservice.integration.simple;
 
+import de.swiesend.secretservice.integration.test.Dialogs;
 import de.swiesend.secretservice.simple.SimpleCollection;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -176,7 +178,10 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled("Writes into the user's default collection")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Writes into the user's default collection and deletes from it through the password dialog")
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void getPasswordFromDefaultCollection() throws IOException {
         // before
         SimpleCollection collection = new SimpleCollection();
@@ -227,20 +232,28 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled("Locks the user's default collection and reads all its secrets after the password dialog")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Locks the user's default collection and reads all its secrets after the password dialog")
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void getPasswords() throws IOException {
         SimpleCollection collection = new SimpleCollection();
-        assertDoesNotThrow(() -> {
+        String item = collection.createItem("item", "secret");
+        try {
             Map<String, char[]> secrets = collection.getSecrets();
             assertNotNull(secrets);
-            for (char[] ignored : secrets.values()) {
-                log.info("secrets: ***");
-            }
-        });
+            assertArrayEquals("secret".toCharArray(), secrets.get(item));
+            secrets.values().forEach(secret -> Arrays.fill(secret, '\0'));
+        } finally {
+            collection.deleteItem(item);
+        }
     }
 
     @Test
-    @Disabled("Danger Zone!  Be aware that this can lead to the loss of passwords if performed for other items.")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Writes into the user's default collection and deletes from it through the password dialog")
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void deletePassword() throws IOException {
         SimpleCollection collection = new SimpleCollection();
         String item = collection.createItem("item", "secret");

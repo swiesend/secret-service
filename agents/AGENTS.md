@@ -158,13 +158,15 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
   runs against whichever provider serves `org.freedesktop.secrets` (gnome-keyring, KeePassXC,
   KWallet), skipping cleanly (`Assumptions`) when a provider/collection is absent. The
   `system-tests.yml` workflow runs it against all three providers, KWallet in versions 5 and 6
-  (the KWallet/KeePassXC legs are non-blocking).
+  (the KWallet/KeePassXC legs are non-blocking), and against gnome-keyring with its dialogs shown
+  and answered through xdotool (`gnome-keyring-dialogs`, non-blocking too).
 - The standalone developer GUI lives in the separate `tools/gui` project (not in the test suite or
   the core jar). Launch it with `mvn -DskipTests -Dgpg.skip=true install` then
   `mvn -f tools/gui/pom.xml exec:java`.
 - `DBusConnection.isConnected()` is **unreliable after `close()`** in dbus-java 4.x — do not assert on post-close connection state.
 - Use `Thread.sleep()` (not `Thread.currentThread().sleep()`) for D-Bus signal waits.
-- `@Disabled` tests need a user to answer a dialog, touch the user's own keyring, or depend on timing or on the rest of the run; the annotation string says which. Give every new one its reason.
+- A test that needs a user to answer a dialog runs only with `-Dsecret-service.system-test.dialogs-answered=true`, and one that also locks or writes into the default collection only with `-Dsecret-service.system-test.default-collection=throwaway` as well: `@EnabledIfSystemProperty` on the flags of `integration.test.Dialogs`, with its reason as `disabledReason`. The `gnome-keyring-dialogs` CI leg sets both; never set the second where the default collection is a user's.
+- The other `@Disabled` tests touch the user's own keyring, need a dialog that the CI leg does not answer, or depend on timing or on the rest of the run; the annotation string says which. Give every new one its reason.
 
 ## Security Considerations
 
