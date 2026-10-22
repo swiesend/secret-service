@@ -139,9 +139,10 @@ jobs:
       # is read. Surefire reports are collected for every provider; the daemon logs for
       # keepassxc, kwallet, oo7 and gnome-keyring-dialogs, which write them under the mounted
       # workspace, the last with a log of the dialogs it answered. The daemon of the
-      # gnome-keyring leg forks and logs to syslog, which its container does not have.
+      # gnome-keyring leg forks and logs to syslog, which its container does not have. Also for a
+      # leg that its timeout cancelled, as a hung provider leaves one: failure() is false then.
       - name: Collect provider diagnostics
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: provider-logs-${{ matrix.provider }}
