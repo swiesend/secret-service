@@ -17,7 +17,7 @@
     <name>secret-service</name>
     <description>
         A Java library for storing secrets in a keyring over D-Bus, through the freedesktop.org
-        Secret Service API: gnome-keyring, KeePassXC or KWallet.
+        Secret Service API: gnome-keyring, KeePassXC, KWallet or oo7.
     </description>
     <url>https://github.com/swiesend/secret-service</url>
 
