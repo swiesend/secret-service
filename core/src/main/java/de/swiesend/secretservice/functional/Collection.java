@@ -1295,6 +1295,7 @@ public class Collection implements CollectionInterface {
     public boolean unlockWithUserPermission() {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
+        boolean lockedHere = false;
         if (!isUnlockedOnceWithUserPermission) {
             // With prompting disabled, only gnome-keyring's stored-password unlock can undo the
             // lock below. Without it the collection would stay locked for every application on
@@ -1304,9 +1305,11 @@ public class Collection implements CollectionInterface {
                 log.debug("Prompting is disabled, and nothing could unlock the collection again; not locking it.");
                 return false;
             }
+            boolean lockedBefore = collection.isLocked();
             switch (lock(false)) {
                 case LOCKED -> {
-                    // unlock() below brings up the provider's dialog.
+                    // unlock() below brings up the provider's dialog, or uses the stored password.
+                    lockedHere = !lockedBefore;
                 }
                 case NEEDS_A_PROMPT -> {
                     // The provider locks only through a prompt: KeePassXC. Carrying it out would lock
@@ -1323,10 +1326,21 @@ public class Collection implements CollectionInterface {
             }
         }
         unlock();
+        if (lockedHere && isPrompting && collection.isLocked() && canUnlockWithoutPrompt()) {
+            // A stored password that does not unlock the collection, which this call locked:
+            // through gnome-keyring's dialog then, rather than leaving the collection locked for
+            // every application.
+            log.warn("The stored password did not unlock collection {}; asking through the dialog.",
+                    collection.getObjectPath());
+            unlockThroughGnomeKeyring(lockable());
+        }
         if (collection.isLocked()) {
             log.error("The collection was not unlocked with user permission.");
             return false;
         }
+        // Once per collection object, also where the stored password unlocked it: the next call
+        // does not lock it again.
+        isUnlockedOnceWithUserPermission = true;
         return true;
     }
 

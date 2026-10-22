@@ -107,6 +107,12 @@ public final class FakeSecretService {
         DBusPath ReadAlias(String name);
     }
 
+    /** gnome-keyring's own interface, on the service's object, for a collection's stored password. */
+    @DBusInterfaceName("org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface")
+    public interface WireGnomeKeyring extends DBusInterface {
+        void UnlockWithMasterPassword(DBusPath collection, WireSecret master);
+    }
+
     @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
@@ -315,6 +321,15 @@ public final class FakeSecretService {
     /** Makes {@code Service.SearchItems} reply only after {@code delay}, as an overloaded provider does. */
     public void setSearchReplyDelay(java.time.Duration delay) { this.searchReplyDelay = delay; }
     private volatile java.time.Duration searchReplyDelay = java.time.Duration.ZERO;
+
+    /** Makes gnome-keyring's {@code UnlockWithMasterPassword} refuse the password, as a wrong one. */
+    public void setRefuseMasterPassword(boolean refuse) { this.refuseMasterPassword = refuse; }
+    private volatile boolean refuseMasterPassword;
+
+    /** How often a stored password was given to unlock the collection. */
+    public int masterPasswordUnlocks() { return masterPasswordUnlocks.get(); }
+    private final java.util.concurrent.atomic.AtomicInteger masterPasswordUnlocks =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     /** Makes {@code Service.Lock} reply only after {@code delay}, once it has locked. */
     public void setLockReplyDelay(java.time.Duration delay) { this.lockReplyDelay = delay; }
@@ -687,7 +702,18 @@ public final class FakeSecretService {
 
     // ---- implementations -------------------------------------------------------------------
 
-    private final class ServiceImpl implements WireService, Properties {
+    private final class ServiceImpl implements WireService, WireGnomeKeyring, Properties {
+
+        @Override
+        public void UnlockWithMasterPassword(DBusPath collection, WireSecret master) {
+            alive();
+            masterPasswordUnlocks.incrementAndGet();
+            // The fake decrypts no password: it takes it as right, unless told otherwise.
+            if (refuseMasterPassword) {
+                throw new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: The password was incorrect.");
+            }
+            if (COLLECTION_PATH.equals(collection.getPath())) collectionLocked = false;
+        }
 
         @Override
         public Pair<Variant<byte[]>, DBusPath> OpenSession(String algorithm, Variant<?> input) {

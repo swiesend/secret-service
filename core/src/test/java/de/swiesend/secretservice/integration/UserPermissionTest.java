@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -66,6 +67,41 @@ class UserPermissionTest {
                 "without the dialog the user cannot confirm access, so the read is refused");
         assertFalse(fake.isCollectionLocked(),
                 "and the collection was not locked, which nothing could have undone");
+    }
+
+    @Test
+    void aCollectionWithAStoredPasswordIsLockedForTheFirstBulkReadOnly() throws Exception {
+        // The stored password unlocks it again, and counts as the permission once, as the
+        // dialog's answer does.
+        harness.startAsGnomeKeyring(false);
+        FakeSecretService fake = harness.fake();
+        try (CollectionInterface collection = harness.service().openSession().orElseThrow()
+                .collection(FakeSecretService.COLLECTION_LABEL, Optional.of("password")).orElseThrow()) {
+
+            assertTrue(collection.getSecrets().isPresent());
+            assertTrue(collection.getSecrets().isPresent());
+
+            assertEquals(1, fake.lockCalls().size(), "locked once, not for every read");
+            assertEquals(1, fake.masterPasswordUnlocks());
+        }
+    }
+
+    @Test
+    void aStoredPasswordThatDoesNotUnlockTheCollectionAgainAsksThroughTheDialog() throws Exception {
+        // A stale password, after the user changed the collection's: the call locked the collection,
+        // and does not leave it locked for every application.
+        harness.startAsGnomeKeyring(false);
+        FakeSecretService fake = harness.fake();
+        fake.setRefuseMasterPassword(true);
+        fake.setRequirePromptForCollectionUnlock(true);
+        try (CollectionInterface collection = harness.service().openSession().orElseThrow()
+                .collection(FakeSecretService.COLLECTION_LABEL, Optional.of("stale")).orElseThrow()) {
+            Thread user = approveWhenPrompted(fake);
+
+            assertTrue(collection.getSecrets().isPresent(), "the user unlocked it through the dialog");
+            user.join(5_000);
+            assertFalse(fake.isCollectionLocked());
+        }
     }
 
     @Test
