@@ -119,8 +119,9 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
             Optional<CharSequence> maybePassword = Optional.ofNullable(password);
             delegate = de.swiesend.secretservice.functional.Collection
                     .open(label, maybePassword, Optional.of(session))
-                    .orElseThrow(() -> new IOException(
-                            String.format("Could not acquire collection with name %s", label)));
+                    // Without the label, which an application logs with the exception: a label often
+                    // describes the secret it guards.
+                    .orElseThrow(() -> new IOException("Could not acquire the collection."));
         } catch (IOException e) {
             closeAfterFailedOpen();
             throw e;
