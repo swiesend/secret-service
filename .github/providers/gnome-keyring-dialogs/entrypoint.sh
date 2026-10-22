@@ -25,6 +25,13 @@ DIALOG_LOG="$LOG_DIR/dialogs.log"
 # the collections that the tests create.
 PASSWORD=test
 
+# Through this directory a test holds the answerer back, as a user who is away: while "hold" is in
+# it, answer_dialogs leaves the dialogs alone, and answers them once it is gone. "cancel" makes it
+# cancel the dialog on the screen, also while it holds, and it removes the file then. The tests
+# learn the directory from the environment, which only this container sets.
+export SECRET_SERVICE_DIALOG_CONTROL=/tmp/dialog-control
+mkdir -p "$SECRET_SERVICE_DIALOG_CONTROL"
+
 # gcr-prompter shows its dialogs on an X server (defines start_x_server).
 source /providers/x-up.sh
 start_x_server
@@ -40,8 +47,8 @@ dbus-update-activation-environment DISPLAY DBUS_SESSION_BUS_ADDRESS
 
 # Creates the login keyring with the password, and unlocks it. In the foreground, so that its
 # messages reach the log: once it has forked, gnome-keyring logs to syslog, which the container
-# does not have. Among them its abort: gnome-keyring before 51 aborts when a client dismisses an
-# unlock prompt whose dialog is open, as the library does when nobody answers in time.
+# does not have. Among them its abort: gnome-keyring aborts when a client dismisses an unlock
+# prompt while an unlock dialog is open.
 printf '%s' "$PASSWORD" | gnome-keyring-daemon --foreground --unlock --components=secrets \
     > "$KEYRING_LOG" 2>&1 &
 KEYRING_PID=$!
@@ -65,6 +72,21 @@ type_password() {
 answer_dialogs() {
     local answered=" " visible win title fields
     while true; do
+        if [ -e "$SECRET_SERVICE_DIALOG_CONTROL/cancel" ]; then
+            win="$(xdotool search --onlyvisible --class gcr-prompter 2>/dev/null | head -1 || true)"
+            if [ -n "$win" ]; then
+                title="$(xdotool getwindowname "$win" 2>/dev/null || true)"
+                xdotool windowfocus --sync "$win" 2>/dev/null || true
+                if xdotool key Escape; then
+                    echo "cancelled \"$title\" (window $win) at $(date +%T)"
+                    rm -f "$SECRET_SERVICE_DIALOG_CONTROL/cancel"
+                fi
+            fi
+        fi
+        if [ -e "$SECRET_SERVICE_DIALOG_CONTROL/hold" ]; then
+            sleep 0.3
+            continue
+        fi
         # xdotool fails when it finds no window, which under set -e would end the loop.
         visible=" $(xdotool search --onlyvisible --class gcr-prompter 2>/dev/null | tr '\n' ' ' || true)"
         # Forgets the dialogs that have closed. gcr-prompter quits after ten idle seconds, and the

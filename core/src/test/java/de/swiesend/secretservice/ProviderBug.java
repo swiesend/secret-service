@@ -22,8 +22,9 @@ public enum ProviderBug {
      * daemon: {@code perform_next_unlock: assertion failed: (!self->current)}. Every client loses
      * its session, and the daemon that D-Bus starts next has the login keyring locked. Also
      * reported as GNOME #64 and #144, Launchpad #1891800 and #2107534, and Fedora 2417856, 2484409
-     * and 2499356; reproduced here on 40 and 46.1. Fixed by commit 4eacdcf0. The library dismisses
-     * a prompt that nobody answers within its timeout, 120 seconds by default, which meets it.
+     * and 2499356; reproduced here on 40 and 46.1. Fixed by commit 4eacdcf0. The library leaves an
+     * unlock prompt of gnome-keyring open that nobody answers within its timeout, where it
+     * dismisses any other prompt ({@code GnomeKeyringUnlockPromptTest}).
      */
     GNOME_KEYRING_ABORTS_ON_A_DISMISSED_UNLOCK_DIALOG(Provider.GNOME_KEYRING, Status.FIXED,
             "3.0.3 to 50.0; fixed in 51.0", "https://gitlab.gnome.org/GNOME/gnome-keyring/-/issues/37", Fake.ON_REQUEST),
@@ -33,10 +34,10 @@ public enum ProviderBug {
      * screen aborts the daemon as well: a prompt that waits behind that dialog, or one that was
      * never shown. Its completion takes the first prompt off the unlock queue, the one whose dialog
      * shows, and asserts that nothing is in progress there; the fix of #37 clears only the
-     * dismissed prompt's own state. Reproduced here on 40, 46.1 and 51.1. The library dismisses a
-     * prompt that nobody answers within its timeout, also one that waits behind another
-     * application's dialog, and with prompting disabled it dismisses an unlock prompt that it does
-     * not show.
+     * dismissed prompt's own state. Reproduced here on 40, 46.1 and 51.1. The library leaves an
+     * unlock prompt of gnome-keyring open that nobody answers within its timeout, also one that
+     * waits behind another application's dialog, and with prompting disabled it does not ask
+     * gnome-keyring to unlock at all ({@code GnomeKeyringUnlockPromptTest}).
      */
     GNOME_KEYRING_ABORTS_ON_A_DISMISSED_WAITING_UNLOCK(Provider.GNOME_KEYRING, Status.UNREPORTED,
             "3.0.3 to 51.1", null, Fake.ON_REQUEST),
@@ -48,7 +49,8 @@ public enum ProviderBug {
      * answers, and it takes the waiting prompt off the unlock queue in its own place, without
      * resuming it ("unlock prompt queue is out of sync with prompts"); a prompt that waits behind
      * that one is never resumed either. The answer still unlocks the collection, and an unlock
-     * prompt that comes later works. Reproduced here on 51.1.
+     * prompt that comes later works. Reproduced here on 51.1. The library dismisses no unlock
+     * prompt of gnome-keyring.
      */
     GNOME_KEYRING_STRANDS_THE_UNLOCKS_BEHIND_A_DISMISSED_DIALOG(Provider.GNOME_KEYRING, Status.UNREPORTED,
             "51.0 and 51.1", null, Fake.ON_REQUEST),

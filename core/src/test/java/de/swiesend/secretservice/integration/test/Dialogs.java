@@ -28,6 +28,44 @@ public final class Dialogs {
     /** Why a test that locks or writes into the default collection skips without that keyring. */
     public static final String NOT_A_THROWAWAY_KEYRING = "Changes the user's default collection";
 
+    /**
+     * The environment variable with the directory through which a test controls the dialog
+     * answerer of the gnome-keyring-dialogs container, which sets it, for
+     * {@code @EnabledIfEnvironmentVariable}: see {@link #hold()}.
+     */
+    public static final String CONTROL = "SECRET_SERVICE_DIALOG_CONTROL";
+
+    /** Why a test that controls the dialog answerer skips without it. */
+    public static final String NO_ANSWERER_TO_CONTROL = "Needs the dialog answerer of the gnome-keyring-dialogs container";
+
+    /** Keeps the answerer from the dialogs that come up from now on, as a user who is away. */
+    public static void hold() throws java.io.IOException {
+        java.nio.file.Files.writeString(control().resolve("hold"), "");
+    }
+
+    /** Lets the answerer answer the dialogs again, the ones that it held back among them. */
+    public static void release() throws java.io.IOException {
+        java.nio.file.Files.deleteIfExists(control().resolve("hold"));
+    }
+
+    /**
+     * Has the answerer cancel the dialog on the screen, as a user who refuses it, also while it
+     * holds back.
+     *
+     * @return whether it did within ten seconds
+     */
+    public static boolean cancelTheDialog() throws java.io.IOException, InterruptedException {
+        java.nio.file.Path cancel = control().resolve("cancel");
+        java.nio.file.Files.writeString(cancel, "");
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while (java.nio.file.Files.exists(cancel) && System.nanoTime() < deadline) Thread.sleep(100);
+        return !java.nio.file.Files.exists(cancel);
+    }
+
+    private static java.nio.file.Path control() {
+        return java.nio.file.Path.of(System.getenv(CONTROL));
+    }
+
     private Dialogs() {
     }
 }

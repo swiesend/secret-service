@@ -58,11 +58,40 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
 
     @Override
     public Optional<Pair<List<DBusPath>, DBusPath>> unlock(List<DBusPath> objects) {
-        return send("Unlock", "ao", objects).flatMap(response ->
+        Optional<Pair<List<DBusPath>, DBusPath>> unlocked = send("Unlock", "ao", objects).flatMap(response ->
                 (Static.Utils.isNullOrEmpty(response) || response.length != 2) ?
                         Optional.empty() :
                         Optional.of(new Pair<List<DBusPath>, DBusPath>((List<DBusPath>) response[0], (DBusPath) response[1])));
+        // For Prompt.await, which leaves an unlock prompt of gnome-keyring open where it dismisses
+        // any other prompt that nobody answers.
+        unlocked.map(pair -> pair.b)
+                .filter(prompt -> prompt.getPath() != null && !"/".equals(prompt.getPath()))
+                .ifPresent(prompt -> unlockPrompts.add(prompt.getPath()));
+        return unlocked;
     }
+
+    /** The prompts that {@link #unlock} gave. */
+    private final Set<String> unlockPrompts = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Whether {@code prompt} is one that {@link #unlock} gave. */
+    boolean gaveUnlockPrompt(DBusPath prompt) {
+        return unlockPrompts.contains(prompt.getPath());
+    }
+
+    /**
+     * Whether gnome-keyring serves the secrets, as {@link ProviderDetector} tells. Asked once: the
+     * provider that serves the secrets does not change while the session's objects live.
+     */
+    boolean isGnomeKeyring() {
+        Boolean known = gnomeKeyring;
+        if (known == null) {
+            known = ProviderDetector.detectProvider(getConnection()) == ProviderDetector.Provider.GNOME_KEYRING;
+            gnomeKeyring = known;
+        }
+        return known;
+    }
+
+    private volatile Boolean gnomeKeyring;
 
     @Override
     public Optional<Pair<List<DBusPath>, DBusPath>> lock(List<DBusPath> objects) {

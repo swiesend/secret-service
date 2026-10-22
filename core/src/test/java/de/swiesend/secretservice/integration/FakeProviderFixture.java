@@ -80,6 +80,18 @@ final class FakeProviderFixture {
      * @param itemLocked whether the fake's single item starts out individually locked
      */
     CollectionInterface start(boolean itemLocked) throws Exception {
+        return start(itemLocked, false);
+    }
+
+    /**
+     * As {@link #start(boolean)}, with the fake owning {@code org.gnome.keyring} as well, before
+     * the library looks: the library takes it for gnome-keyring.
+     */
+    CollectionInterface startAsGnomeKeyring(boolean itemLocked) throws Exception {
+        return start(itemLocked, true);
+    }
+
+    private CollectionInterface start(boolean itemLocked, boolean asGnomeKeyring) throws Exception {
         String address = startBus();
         // One connection, built twice: dbus-java hands every shared build for the same address the
         // same reference-counted connection, so the fake and the library share it. A test that needs
@@ -87,6 +99,7 @@ final class FakeProviderFixture {
         providerConnection = DBusConnectionBuilder.forAddress(address).build();
         fake = new FakeSecretService(providerConnection, itemLocked);
         fake.export();
+        if (asGnomeKeyring) fake.requestBusName("org.gnome.keyring");
 
         clientConnection = DBusConnectionBuilder.forAddress(address).build();
         // wrap(), not connect(): this fixture owns the connection and the bus process.
