@@ -167,6 +167,7 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
 - Use `Thread.sleep()` (not `Thread.currentThread().sleep()`) for D-Bus signal waits.
 - A test that needs a user to answer a dialog runs only with `-Dsecret-service.system-test.dialogs-answered=true`, and one that also locks or writes into the default collection only with `-Dsecret-service.system-test.default-collection=throwaway` as well: `@EnabledIfSystemProperty` on the flags of `integration.test.Dialogs`, with its reason as `disabledReason`. The `gnome-keyring-dialogs` CI leg sets both; never set the second where the default collection is a user's.
 - The other `@Disabled` tests touch the user's own keyring, need a dialog that the CI leg does not answer, or depend on timing or on the rest of the run; the annotation string says which. Give every new one its reason.
+- A provider's bug has its entry in `ProviderBug`, next to `FakeSecretService`: what the provider does, the versions known to have it, its report upstream or that it is not reported, and what the library does about it. The fake follows the specification unless a test turns a bug on with `FakeSecretService.reproduce(...)`, and a test of a workaround turns on the bug that it works around. Give a newly found bug its entry.
 
 ## Security Considerations
 

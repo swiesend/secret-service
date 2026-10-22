@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.interfaces.Item;
 import org.junit.jupiter.api.AfterEach;
@@ -41,7 +42,9 @@ class CreateItemPropertiesTest {
 
     @Test
     void anItemWithoutAttributesIsCreatedWithAnEmptyMap() throws Exception {
+        // oo7 gives no reply to a CreateItem without the attributes.
         CollectionInterface collection = harness.start(false);
+        harness.fake().reproduce(ProviderBug.OO7_PANICS_ON_CREATE_ITEM_WITHOUT_ATTRIBUTES);
         assertTrue(collection.disablePrompt());
 
         collection.createItem("new", "secret");

@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -50,6 +51,18 @@ class CollectionLockPromptTest {
         assertTrue(collection.lock(), "the lock completes through the provider's prompt");
         assertTrue(fake.isCollectionLocked(), "and the collection really is locked");
         approver.join(5_000);
+    }
+
+    @Test
+    void aLockedCollectionIsNotLockedAgain() throws Exception {
+        // KWallet answers Lock of a closed wallet with an error.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KWALLET_REFUSES_TO_LOCK_A_LOCKED_WALLET);
+        fake.lockCollection();
+
+        assertTrue(collection.lock(), "the collection is locked");
+        assertEquals(List.of(), fake.lockCalls(), "and nothing was asked of the provider");
     }
 
     @Test

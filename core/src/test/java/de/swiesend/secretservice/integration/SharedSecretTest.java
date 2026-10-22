@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.SessionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -44,9 +45,24 @@ class SharedSecretTest {
     }
 
     @Test
+    void everySessionWorksWhereThePublicKeyIsReadAsSigned() throws Exception {
+        // KWallet up to 6.24 reads the key as a signed number: one whose top bit is set, about
+        // every second key, arrives changed without its sign byte.
+        harness.start(false);
+        harness.fake().reproduce(ProviderBug.KWALLET_READS_THE_PUBLIC_KEY_AS_SIGNED);
+
+        for (int i = 0; i < 16; i++) {
+            try (SessionInterface session = harness.service().openSession().orElseThrow()) {
+                assertEquals(Optional.of(FakeSecretService.SECRET_VALUE), readThroughANewSession(session),
+                        "the secret, through session " + i);
+            }
+        }
+    }
+
+    @Test
     void aSessionWhoseSecretHasAZeroTopByteIsReplaced() throws Exception {
         harness.start(false);
-        harness.fake().setHashSecretsWithoutLeadingZeros(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS);
         harness.fake().setZeroTopByteSecrets(1);
         int opened = harness.fake().openSessionCalls();
         int closed = harness.fake().closeSessionCalls();
@@ -75,7 +91,7 @@ class SharedSecretTest {
     @Test
     void anyOtherSessionIsKept() throws Exception {
         harness.start(false);
-        harness.fake().setHashSecretsWithoutLeadingZeros(true);
+        harness.fake().reproduce(ProviderBug.KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS);
         int opened = harness.fake().openSessionCalls();
         int closed = harness.fake().closeSessionCalls();
 

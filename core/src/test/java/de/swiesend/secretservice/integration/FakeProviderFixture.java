@@ -145,8 +145,12 @@ final class FakeProviderFixture {
     /** Idempotent: the two-phase tests call this mid-test and again from {@code @AfterEach}. */
     void stop() {
         // Before disconnecting: a pending emitter would otherwise fail mid-send and mutate fake
-        // state after the test has finished reading it.
-        if (fake != null) fake.awaitPendingPrompt();
+        // state after the test has finished reading it, and a call that the fake does not answer
+        // would hold a handler thread.
+        if (fake != null) {
+            fake.release();
+            fake.awaitPendingPrompt();
+        }
         try { if (service != null) service.close(); } catch (Exception ignored) { }
         try { if (clientConnection != null) clientConnection.disconnect(); } catch (Exception ignored) { }
         try { if (providerConnection != null) providerConnection.disconnect(); } catch (Exception ignored) { }

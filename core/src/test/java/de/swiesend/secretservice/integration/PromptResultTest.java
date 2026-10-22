@@ -2,6 +2,7 @@ package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
 import de.swiesend.secretservice.Prompt;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.types.Variant;
@@ -62,8 +63,8 @@ class PromptResultTest {
         harness.start(false);
         Prompt prompt = new Prompt(harness.service().getService());
         try {
-            // The answer to an earlier prompt on the same path: the user refused that one. The fake
-            // gives every prompt the same path; a provider that restarts reuses its paths too.
+            // The answer to an earlier prompt on the same path: the user refused that one. A
+            // provider that restarts numbers its prompts from the start again.
             send(FakeSecretService.PROMPT_PATH, true);
             assertTrue(received(prompt, 1), "the precondition: the earlier answer was received");
 
@@ -132,6 +133,29 @@ class PromptResultTest {
             other.join(10_000);
 
             assertEquals(List.of(first, second), dismissed, "each await dismissed its own prompt, in order");
+        } finally {
+            prompt.getSignalHandler().disconnect();
+        }
+    }
+
+    @Test
+    void aTimedOutAwaitWaitsForNoAnswerToItsDismissal() throws Exception {
+        // oo7 answers a Dismiss with no Completed.
+        harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.OO7_DISMISS_SENDS_NO_COMPLETED);
+        fake.lockCollection();
+        fake.setRequirePromptForCollectionUnlock(true);
+        DBusPath unlock = harness.service().getService()
+                .unlock(List.of(new DBusPath(FakeSecretService.COLLECTION_PATH))).orElseThrow().b;
+        Prompt prompt = new Prompt(harness.service().getService());
+        try {
+            long start = java.lang.System.nanoTime();
+            assertNull(prompt.await(unlock, Duration.ofSeconds(1)), "nobody answered the dialog");
+            long waited = (java.lang.System.nanoTime() - start) / 1_000_000;
+
+            assertEquals(List.of(unlock.getPath()), fake.dismissCalls(), "the prompt was dismissed");
+            assertTrue(waited < 2_500, "and the await returned at its timeout, after " + waited + " ms");
         } finally {
             prompt.getSignalHandler().disconnect();
         }

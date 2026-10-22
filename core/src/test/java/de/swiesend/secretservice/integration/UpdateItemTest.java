@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.integration;
 
 import de.swiesend.secretservice.FakeSecretService;
+import de.swiesend.secretservice.ProviderBug;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -56,9 +57,10 @@ class UpdateItemTest {
 
     @Test
     void aNewSecretIsNotSentToALockedItem() throws Exception {
-        // The fake accepts a secret for a locked item and keeps nothing of it, as KWallet does.
+        // KWallet accepts a secret for a locked item and keeps nothing of it.
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KWALLET_DROPS_THE_SECRET_FOR_A_LOCKED_ITEM);
         fake.lockCollection();
         fake.setRefuseCollectionUnlock(true);
 
@@ -72,6 +74,7 @@ class UpdateItemTest {
         // KWallet keeps a label that it gets for an item of a closed wallet.
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KWALLET_TAKES_THE_LABEL_OF_A_LOCKED_ITEM);
         fake.lockCollection();
         fake.setRefuseCollectionUnlock(true);
 
@@ -86,6 +89,7 @@ class UpdateItemTest {
         // takes a new label and attributes for it all the same; only the secret it refuses.
         CollectionInterface collection = harness.start(true);
         FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.KEEPASSXC_CHANGES_AN_ITEM_IT_HAS_NOT_ALLOWED);
         fake.setRequirePromptForItemOps(true);
 
         assertTrue(collection.updateItem(FakeSecretService.ITEM_PATH, "renamed", "new-secret", Map.of("k", "v")));
