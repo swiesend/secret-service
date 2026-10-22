@@ -80,6 +80,21 @@ public enum ProviderBug {
             "46.2 to 51.1", "https://gitlab.gnome.org/GNOME/gnome-keyring/-/issues/160", Fake.NOT_REPRODUCED),
 
     /**
+     * About one prompt in 256 that creates a collection is dismissed after the user has answered
+     * its dialog: "couldn't create new collection: Cannot import an invalid key". The daemon gets
+     * the password from its prompter through a key exchange of their own, and hashes all 192 bytes
+     * of the shared secret, where the prompter's gcr 3 hashes it without its leading zero bytes; a
+     * secret whose top byte is zero gives each side a key of its own. An unlock dialog is not
+     * affected, as gcr does both sides of its exchange, and gcr 4.3 pads the secret in its
+     * libgcrypt backend. Reported by its symptom only; reproduced here on 40 and 51.1, where 9 of
+     * 3000 creates failed. Not reproduced: a client sees a cancel, and the fake cancels every
+     * create. The library cannot tell the two apart; {@code ServiceTest}, where someone answers
+     * every dialog, creates once more.
+     */
+    GNOME_KEYRING_DISMISSES_AN_ANSWERED_CREATE_PROMPT(Provider.GNOME_KEYRING, Status.REPORTED,
+            "40.0 and 51.1, with gcr 3.40 and 3.41", "https://gitlab.gnome.org/GNOME/gnome-keyring/-/issues/167", Fake.NOT_REPRODUCED),
+
+    /**
      * A call of {@code Prompt}, {@code Dismiss} or {@code Close} on another connection's prompt or
      * session gets two replies: the error, and the error that its handler's unhandled return gives.
      * Fixed by commit 9000777b. Not reproduced: the library calls them on its own objects only.
