@@ -49,8 +49,11 @@ public final class FakeSecretService {
     public static final String BUS_NAME = "org.freedesktop.secrets";
     public static final String SERVICE_PATH = "/org/freedesktop/secrets";
     public static final String COLLECTION_PATH = "/org/freedesktop/secrets/collection/fake";
-    /** The client resolves a collection by label, so the Label property must match this. */
-    public static final String COLLECTION_LABEL = "fake";
+    /**
+     * The client resolves a collection by label, so the Label property must match this. It appears
+     * in no object path, so a test can tell from a log whether the label reached it.
+     */
+    public static final String COLLECTION_LABEL = "Fake Keyring";
     public static final String ITEM_PATH = COLLECTION_PATH + "/1";
     /** The item that {@link #addSecondItem(boolean)} adds. */
     public static final String SECOND_ITEM_PATH = COLLECTION_PATH + "/3";
@@ -317,6 +320,14 @@ public final class FakeSecretService {
     private static void log(String message) {
         java.lang.System.err.println(message);
     }
+
+    /** The secret's value as the last {@code GetSecret} sent it: encrypted, as it crossed the bus. */
+    public byte[] lastCiphertext() {
+        byte[] ct = lastCiphertext;
+        return ct == null ? null : ct.clone();
+    }
+
+    private volatile byte[] lastCiphertext;
 
     public boolean isItemLocked() {
         return itemLocked;
@@ -714,6 +725,7 @@ public final class FakeSecretService {
                 c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
                 String value = ITEM_PATH.equals(path) ? secretValue : SECOND_SECRET_VALUE;
                 byte[] ct = c.doFinal(locked ? new byte[0] : value.getBytes(secretEncoding));
+                lastCiphertext = ct.clone();
                 return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, secretContentType);
             } catch (Exception e) {
                 throw new IllegalStateException("fake GetSecret failed", e);
