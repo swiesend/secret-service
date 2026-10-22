@@ -346,21 +346,25 @@ public class ServiceTest {
     }
 
     @Test
-    @Disabled("Points the user's default alias at the test collection; a failure before the repair leaves it there")
+    // It points the default alias at the test collection: only where the default belongs to a
+    // keyring of the run's own.
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void setAlias() {
         context.ensureCollection();
 
         DBusPath collection;
-
-        // change the default alias to point to the test collection
-        context.service.setAlias("default", context.collection.getPath());
-        collection = context.service.readAlias("default").get();
-        log.info("default: " + collection);
-        assertEquals(context.collection.getPath().getPath(), collection.getPath());
-
-        // repair the default alias
         DBusPath login = Static.Convert.toObjectPath(Static.ObjectPaths.LOGIN_COLLECTION);
-        context.service.setAlias("default", login);
+        try {
+            // change the default alias to point to the test collection
+            context.service.setAlias("default", context.collection.getPath());
+            collection = context.service.readAlias("default").get();
+            log.info("default: " + collection);
+            assertEquals(context.collection.getPath().getPath(), collection.getPath());
+        } finally {
+            // repair the default alias, also after a failure: the later tests use it
+            context.service.setAlias("default", login);
+        }
         collection = context.service.readAlias("default").get();
         log.info("default: " + collection);
         assertEquals(login.getPath(), collection.getPath());

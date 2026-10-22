@@ -7,7 +7,6 @@ import de.swiesend.secretservice.functional.SearchMode;
 import de.swiesend.secretservice.integration.test.Dialogs;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
@@ -139,14 +138,15 @@ class CollectionTest {
     }
 
     @Test
-    @Disabled("Requires interactive prompt dismissal to test password abort")
+    @EnabledIfSystemProperty(named = Dialogs.ANSWERED, matches = "true",
+            disabledReason = "Creates a collection and reads it through gnome-keyring's dialogs, which need a user")
     void deleteCollectionWithoutPassword() {
+        // Without a password, gnome-keyring creates the collection through its dialog, where the
+        // user sets one, and reading all secrets asks again through its unlock dialog.
         CollectionInterface collectionWithoutPassword = service.openSession().flatMap(session ->
                 session.collection("test-no-password-collection", Optional.empty())
         ).get();
-        // collectionWithoutPassword.disablePrompt();
-        Optional<Map<String, char[]>> maybeSecrets = collectionWithoutPassword.getSecrets();
-        // assertTrue(maybeSecrets.isEmpty());
+        assertTrue(collectionWithoutPassword.getSecrets().isPresent(), "the user allowed the read");
         assertTrue(collectionWithoutPassword.delete());
     }
 
