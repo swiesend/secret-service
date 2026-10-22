@@ -13,9 +13,9 @@ import java.nio.charset.CoderResult;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static java.util.Objects.requireNonNull;
 
@@ -222,25 +222,28 @@ public final class Secret extends Struct implements AutoCloseable {
         return true;
     }
 
+    /** The type and subtype, before the parameters. */
+    private static final Pattern MIME_TYPE = Pattern.compile("^[\\s\"]*([^\\s;,\"]+)");
+
+    /**
+     * The charset parameter, among any others: its name in any case (RFC 2045), its value quoted
+     * or not.
+     */
+    private static final Pattern CHARSET_PARAMETER =
+            Pattern.compile("(?i)(?:^|[\\s;,])charset\\s*=\\s*(?:\"([^\"]*)\"|([^\\s;,\"]+))");
+
     private void parseContentType(String contentType) {
-        String pattern = "[\\s\\\"\\;\\,]";
-        List<String> split = Arrays.asList(contentType.split(pattern));
-        List<String> filtered = split.stream()
-                .filter(s -> !(s.isEmpty() || s.length() == 1))
-                .collect(Collectors.toList());
+        Matcher type = MIME_TYPE.matcher(contentType);
+        mimeType = type.find() ? type.group(1) : TEXT_PLAIN;
 
-        if (filtered.size() > 0) {
-            mimeType = filtered.get(0);
-        } else {
-            mimeType = TEXT_PLAIN;
-        }
-
-        if (filtered.size() == 2 && filtered.get(1).startsWith(CHARSET)) {
+        Matcher parameter = CHARSET_PARAMETER.matcher(contentType);
+        if (parameter.find()) {
+            String name = (parameter.group(1) != null ? parameter.group(1) : parameter.group(2)).trim();
             try {
                 // As it is: charset names are case-insensitive, and upper-casing in the default
                 // locale turned the i of iso-8859-1 into a dotted capital I under a Turkish one,
                 // which no charset name may contain.
-                charset = Charset.forName(filtered.get(1).substring(CHARSET.length()));
+                charset = Charset.forName(name);
             } catch (IllegalArgumentException e) {
                 // An illegal or unsupported name, from the application that stored the secret. It
                 // must not make the secret unreadable: read it as having no charset.
