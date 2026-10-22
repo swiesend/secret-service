@@ -50,6 +50,16 @@ jobs:
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-test
 
+      # tools/gui is a project of its own, outside the reactor, on the library that it installs
+      # first: nothing else compiles it, and a change of the library's API could break it unseen.
+      - name: Compile the developer GUI
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/workspace \
+            -v "$HOME/.m2/repository":/root/.m2/repository \
+            secret-service-test \
+            bash -c "mvn -B -q -DskipTests -Dgpg.skip=true install && mvn -B -q -f tools/gui/pom.xml compile"
+
   # The same suite on JDK 25, the newest LTS: an application can run the library on any JDK from
   # 17 on, and the JDK 17 job above sees none of the newer ones. A job of its own, not a matrix,
   # because main's ruleset requires the check "regression-tests" by that name.

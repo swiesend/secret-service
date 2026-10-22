@@ -72,25 +72,6 @@ public class ItemTest {
     }
 
     @Test
-    @Disabled("Reads a secret from the user's default collection")
-    public void getForeignSecret() {
-        //
-        // NOTE: This is considered by NIST as a security vulnerability, but apparently it is not easy to solve with the
-        //       current design of the gnome-keyring library and gnome-seahorse application.
-        //
-        //  see: https://nvd.nist.gov/vuln/detail/CVE-2018-19358
-        //
-
-        DBusPath alias = new DBusPath(Static.ObjectPaths.DEFAULT_COLLECTION);
-        Collection login = new Collection(alias, context.service.getConnection());
-        List<DBusPath> items = login.getItems().get();
-        Item item = new Item(items.get(0), context.service);
-        Secret secret = item.getSecret(context.session.getPath()).get();
-        log.info("secret retrieved from foreign collection");
-
-    }
-
-    @Test
     public void setSecret() {
         Secret secret = context.encryption.encrypt("new secret").get();
         assertTrue(context.item.setSecret(secret));

@@ -18,7 +18,10 @@ public class SimpleCollectionTest {
     private static final Logger log = LoggerFactory.getLogger(SimpleCollectionTest.class);
 
     @Test
-    @Disabled("Danger Zone! Be aware that this can lead to the loss of passwords.")
+    // Only against a default collection of the run's own: were the refusal broken, it would delete
+    // the user's, with every password in it.
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void deleteDefaultCollection() throws IOException {
         SimpleCollection defaultCollection = new SimpleCollection();
         assertThrows(SecurityException.class, defaultCollection::delete);
@@ -285,28 +288,29 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled("Writes into the user's default collection and lets its dialogs time out")
-    public void setTimeout() throws IOException {
+    // It writes into the default collection, and holds the dialog answerer back.
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = Dialogs.CONTROL, matches = ".+",
+            disabledReason = Dialogs.NO_ANSWERER_TO_CONTROL)
+    @EnabledIfSystemProperty(named = Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = Dialogs.NOT_A_THROWAWAY_KEYRING)
+    public void setTimeout() throws Exception {
         SimpleCollection collection = new SimpleCollection();
         String item = collection.createItem("item", "secret");
-
-        // wait 3 seconds before cancelling the prompt manually
-        Duration briefly = Duration.ofSeconds(3);
-        collection.setTimeout(briefly);
         try {
-            @SuppressWarnings("unused")
-            Map<String, char[]> ignored = collection.getSecrets();
-        } catch (SecurityException e) {
-            log.info("Expected SecurityException:", e);
-        }
-
-        // clean within 120 seconds
-        Duration longish = Duration.ofSeconds(120);
-        collection.setTimeout(longish);
-        try {
+            // Reading all secrets asks through the unlock dialog, which nobody answers now.
+            collection.setTimeout(Duration.ofSeconds(3));
+            Dialogs.hold();
+            long start = java.lang.System.nanoTime();
+            try {
+                assertThrows(SecurityException.class, collection::getSecrets, "nobody answered the dialog");
+            } finally {
+                Dialogs.release();
+            }
+            long waited = (java.lang.System.nanoTime() - start) / 1_000_000;
+            assertTrue(waited < 30_000, "the wait ended with the short timeout, after " + waited + " ms");
+        } finally {
+            collection.setTimeout(Duration.ofSeconds(120));
             collection.deleteItem(item);
-        } catch (SecurityException e) {
-            log.info("Unexpected SecurityException:", e);
         }
     }
 
@@ -318,8 +322,8 @@ public class SimpleCollectionTest {
     }
 
     @Test
-    @Disabled("disconnect() affects the global static DBusConnection and cannot be undone within the static lifetime")
-    public void disconnect() throws IOException {
+    public void isConnected() throws IOException {
+        // Not disconnect(), which would close the static connection for the rest of the JVM.
         SimpleCollection collection = new SimpleCollection("test", "test");
         assertTrue(collection.isConnected());
         assertTrue(SimpleCollection.isConnected());

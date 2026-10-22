@@ -96,8 +96,16 @@ public final class FakeSecretService {
     // by MessageHandler. To EXPORT an object we need signatures dbus-java can serialise, so they are
     // redeclared here. Pair already extends org.freedesktop.dbus.Tuple with @Position, so it maps to
     // multiple out-arguments as-is.
+    //
+    // WireService, WireCollection and WirePrompt carry no @DBusInterfaceName, as their D-Bus
+    // interfaces have signals. dbus-java keeps one JVM-wide map from an annotated D-Bus interface
+    // name to the Java interface last exported under it, and builds each incoming signal of that
+    // interface as that Java interface's nested class. With org.freedesktop.Secret.Service mapped
+    // here, every CollectionCreated, ItemChanged and the like that a real provider sent failed to
+    // build in every later test of the JVM, and the library never got it. dbus-java dispatches an
+    // incoming call by member name and signature, so the client's calls reach these interfaces all
+    // the same.
 
-    @DBusInterfaceName(Static.Interfaces.SERVICE)
     public interface WireService extends DBusInterface {
         Pair<Variant<byte[]>, DBusPath> OpenSession(String algorithm, Variant<?> input);
         Pair<List<DBusPath>, DBusPath> Unlock(List<DBusPath> objects);
@@ -113,7 +121,6 @@ public final class FakeSecretService {
         void UnlockWithMasterPassword(DBusPath collection, WireSecret master);
     }
 
-    @DBusInterfaceName(Static.Interfaces.COLLECTION)
     public interface WireCollection extends DBusInterface {
         List<DBusPath> SearchItems(Map<String, String> attributes);
         Pair<DBusPath, DBusPath> CreateItem(Map<String, Variant<?>> properties, WireSecret secret, boolean replace);
@@ -160,13 +167,9 @@ public final class FakeSecretService {
     }
 
     /**
-     * Without {@code @DBusInterfaceName}, unlike the interfaces above. dbus-java keeps one JVM-wide
-     * map from an annotated D-Bus interface name to the Java interface last exported under it, and
-     * builds each incoming signal of that interface as that Java interface's nested class: with
+     * Without {@code @DBusInterfaceName}, as WireService and WireCollection: with
      * org.freedesktop.Secret.Prompt mapped here, the client could no longer build its
-     * Prompt.Completed, in this test and in every later one in the JVM. dbus-java dispatches an
-     * incoming call by member name and signature, so the client's Prompt and Dismiss reach this
-     * interface all the same.
+     * Prompt.Completed, in this test and in every later one in the JVM.
      */
     public interface WirePrompt extends DBusInterface {
         void Prompt(String windowId);

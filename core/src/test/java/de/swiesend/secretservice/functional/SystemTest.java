@@ -4,7 +4,6 @@ import de.swiesend.secretservice.functional.interfaces.SystemInterface;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,11 +33,14 @@ class SystemTest {
     }
 
     @Test
-    @Disabled("Passes alone, fails in the full run: System.connect() returns dbus-java's shared connection, which other tests keep open")
-    void disconnect() throws InterruptedException {
-        assertTrue(system.getConnection().isConnected());
-        assertTrue(system.disconnect());
-        assertFalse(system.getConnection().isConnected());
+    void disconnectLeavesTheSharedConnectionToItsOtherHolders() throws Exception {
+        // System.connect() gives dbus-java's shared connection, and disconnect() gives up this
+        // System's share of it: the connection stays open for the others, the second System here.
+        try (SystemInterface other = System.connect().orElseThrow()) {
+            assertTrue(system.disconnect());
+            assertTrue(system.disconnect(), "a second disconnect gives up no other share");
+            assertTrue(other.getConnection().isConnected(), "the other System's share keeps it open");
+        }
     }
 
     @Test

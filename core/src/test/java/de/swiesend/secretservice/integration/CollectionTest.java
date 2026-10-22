@@ -93,19 +93,15 @@ public class CollectionTest {
     }
 
     @Test
-    @Disabled("Reads the user's login keyring, whose label depends on the desktop's language")
+    // The login keyring's own label, which depends on the desktop's language: only where it
+    // belongs to the run's own keyring.
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(
+            named = de.swiesend.secretservice.integration.test.Dialogs.DEFAULT_COLLECTION, matches = "throwaway",
+            disabledReason = de.swiesend.secretservice.integration.test.Dialogs.NOT_A_THROWAWAY_KEYRING)
     public void getLabel() {
         Collection collection = new Collection("login", context.service.getConnection());
-        String response = collection.getLabel().get();
-        log.info(response);
-        List<String> labels = Arrays.asList(new String[]{
-                "login",     // en
-                "inicio",    // es
-                "ouverture", // fr
-                "Anmeldung", // de
-                "ログイン",   // ja
-                "登录"});    // zh
-        assertTrue(labels.contains(response));
+        String label = collection.getLabel().orElseThrow();
+        assertFalse(label.isEmpty(), "the login keyring has a label");
     }
 
     @Test
