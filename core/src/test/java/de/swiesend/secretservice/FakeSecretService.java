@@ -923,10 +923,16 @@ public final class FakeSecretService {
             }
             // Deleted at once, answering "/" for "no prompt necessary", as gnome-keyring does. The
             // fake does not own org.gnome.keyring, so the client sees a provider other than
-            // gnome-keyring giving that answer.
-            if (ITEM_PATH.equals(path)) itemDeleted = true;
-            else secondItemLocked = null;
-            connection.unExportObject(path);
+            // gnome-keyring giving that answer. oo7 deletes every item that has the deleted one's
+            // attributes: every item here, as the fake's items have none.
+            List<String> deleted = reproduces(ProviderBug.OO7_DELETE_REMOVES_EVERY_ITEM_WITH_THE_ATTRIBUTES)
+                    ? items().stream().map(DBusPath::getPath).filter(FakeSecretService.this::hasItem).toList()
+                    : List.of(path);
+            for (String gone : deleted) {
+                if (ITEM_PATH.equals(gone)) itemDeleted = true;
+                else secondItemLocked = null;
+                connection.unExportObject(gone);
+            }
             return new DBusPath("/");
         }
 

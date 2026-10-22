@@ -585,11 +585,17 @@ public class Collection implements CollectionInterface {
         }
 
         unlockWithUserPermission();
-        return deleteItemAsked(objectPath);
+        return deleteItemAsked(objectPath, Set.of(), new HashSet<>());
     }
 
-    /** Deletes the item after {@link #unlockWithUserPermission()} has been asked. */
-    private boolean deleteItemAsked(String objectPath) {
+    /**
+     * Deletes the item after {@link #unlockWithUserPermission()} has been asked.
+     *
+     * @param mayGoAlong the items that may be deleted with it, where the provider deletes by
+     *                   attributes: those that the caller deletes as well
+     * @param wentAlong  receives the items that the provider deleted with it
+     */
+    private boolean deleteItemAsked(String objectPath, Set<String> mayGoAlong, Set<String> wentAlong) {
         // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
         // prompting is disabled. KWallet answers Delete on a closed wallet with "/" and deletes
         // nothing, which the check below would report as done.
@@ -605,6 +611,18 @@ public class Collection implements CollectionInterface {
         }
         Item item = maybeItem.get();
 
+        Optional<Set<String>> along = deletedAlong(item, objectPath);
+        if (along.isEmpty()) {
+            log.error("Not deleting item {}: the provider may delete every item that has its attributes, "
+                    + "and they could not be compared.", objectPath);
+            return false;
+        }
+        if (!mayGoAlong.containsAll(along.get())) {
+            log.error("Not deleting item {}: the provider would delete {} other items with it, as they "
+                    + "have its attributes.", objectPath, along.get().size());
+            return false;
+        }
+
         Optional<DBusPath> maybePromptPath = item.delete();
         if (maybePromptPath.isEmpty()) {
             log.error("Could not delete item: {}", objectPath);
@@ -615,11 +633,47 @@ public class Collection implements CollectionInterface {
         // has deleted the item. That holds for every provider, not only for gnome-keyring, which
         // was the one case accepted. Only a real prompt can still be dismissed, time out, or be
         // refused.
-        if (!requiresPrompt(promptPath)) {
-            return true;
-        }
-        return performPrompt(promptPath).isPresent();
+        boolean deleted = !requiresPrompt(promptPath) || performPrompt(promptPath).isPresent();
+        if (deleted) wentAlong.addAll(along.get());
+        return deleted;
     }
+
+    /**
+     * The other items that deleting {@code item} deletes as well: none where the provider deletes
+     * an item by its path, as the specification says and gnome-keyring, KeePassXC and KWallet do.
+     * oo7 deletes every item whose attributes include the deleted item's, on disk, and it adds a
+     * content type to every item, so that an item made without attributes takes every other item
+     * of that content type along. A provider that the library does not know may do the same.
+     *
+     * @return the other items that have all of the item's attributes, or empty when that cannot
+     *         be told
+     */
+    private Optional<Set<String>> deletedAlong(Item item, String objectPath) {
+        if (deletesByPath()) return Optional.of(Set.of());
+        Optional<Map<String, String>> attributes = item.getAttributes();
+        if (attributes.isEmpty()) return Optional.empty();
+        Optional<List<DBusPath>> matches = collection.searchItems(attributes.get());
+        if (matches == null || matches.isEmpty()) return Optional.empty();
+        Set<String> others = new HashSet<>(Static.Convert.toStrings(matches.get()));
+        others.remove(objectPath);
+        return Optional.of(others);
+    }
+
+    /** Whether the provider deletes an item by its path; see {@link #deletedAlong}. */
+    private boolean deletesByPath() {
+        Boolean known = deletesByPath;
+        if (known == null) {
+            ProviderDetector.Provider provider = detectProvider();
+            known = provider == ProviderDetector.Provider.GNOME_KEYRING
+                    || provider == ProviderDetector.Provider.KEEPASSXC
+                    || provider == ProviderDetector.Provider.KWALLET;
+            // Asked again while the provider cannot be told: no reply, or an interrupted thread.
+            if (provider != ProviderDetector.Provider.UNAVAILABLE) deletesByPath = known;
+        }
+        return known;
+    }
+
+    private Boolean deletesByPath;
 
     @Override
     public boolean deleteItems(List<String> objectPaths) {
@@ -636,8 +690,15 @@ public class Collection implements CollectionInterface {
 
         boolean allDeleted = true;
 
+        // Where the provider deletes by attributes, an item may take others of the list along.
+        Set<String> requested = new HashSet<>();
         for (String item : objectPaths) {
-            boolean success = !Static.Utils.isNullOrEmpty(item) && deleteItemAsked(item);
+            if (!Static.Utils.isNullOrEmpty(item)) requested.add(item);
+        }
+        Set<String> wentAlong = new HashSet<>();
+        for (String item : objectPaths) {
+            boolean success = !Static.Utils.isNullOrEmpty(item)
+                    && (wentAlong.contains(item) || deleteItemAsked(item, requested, wentAlong));
             if (!success) {
                 allDeleted = false;
             }

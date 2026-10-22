@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -58,5 +60,57 @@ class DeleteItemTest {
         assertFalse(collection.deleteItem(FakeSecretService.ITEM_PATH),
                 "the collection stayed locked, so no deletion may be reported");
         assertTrue(fake.hasItem(FakeSecretService.ITEM_PATH), "and none was attempted");
+    }
+
+    // oo7 deletes every item whose attributes include the deleted item's. The fake, which owns no
+    // name of a provider that the library knows, does so on request; its items have no attributes,
+    // so each has the other's.
+
+    @Test
+    void anItemIsNotDeletedWhereTheProviderWouldTakeAnotherOneAlong() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.addSecondItem(false);
+        fake.reproduce(ProviderBug.OO7_DELETE_REMOVES_EVERY_ITEM_WITH_THE_ATTRIBUTES);
+
+        assertFalse(collection.deleteItem(FakeSecretService.ITEM_PATH));
+        assertTrue(fake.hasItem(FakeSecretService.ITEM_PATH));
+        assertTrue(fake.hasItem(FakeSecretService.SECOND_ITEM_PATH), "the other item is kept");
+    }
+
+    @Test
+    void anItemThatNoOtherOneSharesItsAttributesWithIsDeleted() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.reproduce(ProviderBug.OO7_DELETE_REMOVES_EVERY_ITEM_WITH_THE_ATTRIBUTES);
+
+        assertTrue(collection.deleteItem(FakeSecretService.ITEM_PATH));
+        assertFalse(fake.hasItem(FakeSecretService.ITEM_PATH));
+    }
+
+    @Test
+    void itemsThatShareTheirAttributesAreDeletedTogether() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.addSecondItem(false);
+        fake.reproduce(ProviderBug.OO7_DELETE_REMOVES_EVERY_ITEM_WITH_THE_ATTRIBUTES);
+
+        assertTrue(collection.deleteItems(List.of(FakeSecretService.ITEM_PATH, FakeSecretService.SECOND_ITEM_PATH)),
+                "the second went with the first, and both were to be deleted");
+        assertFalse(fake.hasItem(FakeSecretService.ITEM_PATH));
+        assertFalse(fake.hasItem(FakeSecretService.SECOND_ITEM_PATH));
+    }
+
+    @Test
+    void anItemIsDeletedByItsPathOnAProviderThatDeletesSo() throws Exception {
+        // KWallet's name: a provider that deletes the item at the path, whatever its attributes.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.requestBusName("org.kde.kwalletd5");
+        fake.addSecondItem(false);
+
+        assertTrue(collection.deleteItem(FakeSecretService.ITEM_PATH));
+        assertFalse(fake.hasItem(FakeSecretService.ITEM_PATH));
+        assertTrue(fake.hasItem(FakeSecretService.SECOND_ITEM_PATH));
     }
 }
