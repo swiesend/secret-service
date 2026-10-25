@@ -53,10 +53,17 @@ CONFIRM_ACCESS_ITEM="${KPXC_CONFIRM_ACCESS_ITEM:-false}"
 ANSWER_ACCESS_REQUESTS="${KPXC_ANSWER_ACCESS_REQUESTS:-false}"
 ANSWER_LOG="$LOG_DIR/access-requests.log"
 
+# UpdateCheckMessageShown and CheckForUpdates: a KeePassXC built with update checks, as the
+# release AppImage is, asks "Check for updates on startup?" on its first start. That dialog is
+# modal, so the typed password never reaches the unlock dialog. Ubuntu's 2.7.6 does not ask.
 mkdir -p "$HOME/.config/keepassxc"
 cat > "$HOME/.config/keepassxc/keepassxc.ini" << KPXCINI
 [General]
 ConfigVersion=2
+UpdateCheckMessageShown=true
+
+[GUI]
+CheckForUpdates=false
 
 [FdoSecrets]
 Enabled=true
@@ -136,6 +143,17 @@ unlock_database() {
     sleep 1
     xdotool key Return
     echo "Typed the database password into the unlock dialog (after ${waited}s)."
+    # The collection is exposed while the database is locked too, so check the unlock here: a
+    # database left locked makes every call wait on an unlock dialog that nobody answers.
+    waited=0
+    while xdotool search --name "\[Locked\]" > /dev/null 2>&1; do
+        sleep 1; waited=$((waited + 1))
+        if [ "$waited" -ge 10 ]; then
+            echo "ERROR: the database is still locked 10s after its password was typed."
+            return 1
+        fi
+    done
+    echo "The database is unlocked."
 }
 
 if ! unlock_database; then
