@@ -245,12 +245,14 @@ mvn test -Psystem-test                    # provider-agnostic system suite (Prov
 ```
 
 The CI test environments live under [`.github/providers/`](.github/providers) — one container per
-provider (`gnome-keyring`, `kwallet`, `kwallet6`, `keepassxc`), each starting a path-based D-Bus via
+provider (`gnome-keyring`, `kwallet`, `kwallet6`, `keepassxc`, `keepassxc-2.8`), each starting a path-based D-Bus via
 the shared `dbus-up.sh`. The default regression workflow runs against gnome-keyring; the
 [`system-tests`](.github/workflows/system-tests.yml) workflow runs the system suite in each of them
 (the KWallet/KeePassXC legs are best-effort and non-blocking). The KWallet legs, KWallet 5 on
 Ubuntu 24.04 and KWallet 6 on Ubuntu 26.04, as Kubuntu ships them, start KWallet as a Plasma login
-does, so that it creates its wallet, with an empty password, and opens it without a dialog. A second
+does, so that it creates its wallet, with an empty password, and opens it without a dialog. The
+KeePassXC legs run Ubuntu 24.04's KeePassXC 2.7.6, and KeePassXC 2.8 from its release AppImage,
+pinned by its SHA-256. A second
 gnome-keyring container, `gnome-keyring-dialogs`, shows gnome-keyring's dialogs on a virtual X server
 and answers each through xdotool, as a user does, for the tests that need a dialog answered; its leg
 is non-blocking too.
