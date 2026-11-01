@@ -7,7 +7,7 @@ A _Java_ library for storing secrets in a keyring over the _DBus_.
 The library is conform to the freedesktop.org
 [Secret Service API 0.2](https://specifications.freedesktop.org/secret-service/0.2) and thus compatible with Gnome linux systems.
 
-The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon). [KeePassXC](https://keepassxc.org/) implements it as well, and so does KWallet, since [KDE Frameworks 5.97.0](https://kde.org/announcements/frameworks/5/5.97.0/) (August 2022).
+The Secret Service itself is implemented by the [`gnome-keyring`](https://wiki.gnome.org/action/show/Projects/GnomeKeyring) and provided by the [`gnome-keyring-daemon`](https://wiki.gnome.org/Projects/GnomeKeyring/RunningDaemon). [KeePassXC](https://keepassxc.org/) implements it as well, and so does KWallet, since [KDE Frameworks 5.97.0](https://kde.org/announcements/frameworks/5/5.97.0/) (August 2022), and [oo7](https://github.com/linux-credentials/oo7), GNOME's provider in Rust, which Fedora uses from 45 on.
 
 This library can be seen as the functional equivalent to the [`libsecret`](https://wiki.gnome.org/Projects/Libsecret) C client library.
 
@@ -47,6 +47,10 @@ The attack vector is known, see GnomeKeyring [SecurityFAQ](https://wiki.gnome.or
   - [`easy`/`moderate`] Using disk encryption like [LUKS](https://gitlab.com/cryptsetup/cryptsetup) does not help against malicious applications, but at least against several scenarios with physical access. 
 - [`moderate`/`advanced`] Deliver your application in a secure sandbox.
 
+**In this library**
+
+Reading all secrets and deleting items ask for the user's permission first: `getSecrets()`, `withSecrets()`, `deleteItem()` and `deleteItems()`, of the functional API and of `SimpleCollection`, call `unlockWithUserPermission()`. Where the provider locks without a prompt, as gnome-keyring does, it locks the collection and unlocks it again through the provider's dialog, once per collection object, or on gnome-keyring with the password that the collection was opened with. With prompting disabled, it does not lock a collection that only the dialog could unlock again, and the call is refused. KeePassXC, which locks only through a prompt, confirms access to its secrets itself. Reading a single secret asks nothing.
+
 **KeePassXC**
 
 Notification:
@@ -69,13 +73,13 @@ The library provides two API layers, both using transport-encrypted secrets over
 
 ### Dependency
 
-Add the `secret-service` as dependency to your project. The current version requires at least _JDK 17_.
+Add the `secret-service` as dependency to your project. The 3.x line requires at least _JDK 17_; 3.0.0 is its last release on JDK 17, as 4.0 requires JDK 25.
 
 ```xml
 <dependency>
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service</artifactId>
-    <version>3.0.0-beta</version>
+    <version>3.0.0</version>
 </dependency>
 ```
 
@@ -181,7 +185,7 @@ try (CollectionInterface collection = Collection.open("My Collection")
 
 The `SimpleCollection` API preserves the original 1.x interface for backward compatibility. It uses a static shared D-Bus connection with a JVM shutdown hook.
 
-New code should prefer the functional API above.
+It is deprecated since 3.0, for removal in 4.0. New code should use the functional API above, which covers what `SimpleCollection` does; its javadoc shows how to move.
 
 ```java
 try (SimpleCollection collection = new SimpleCollection("My Collection", "super secret")) {
@@ -245,10 +249,13 @@ mvn test -Psystem-test                    # provider-agnostic system suite (Prov
 ```
 
 The CI test environments live under [`.github/providers/`](.github/providers) — one container per
-provider (`gnome-keyring`, `kwallet`, `kwallet6`, `keepassxc`, `keepassxc-2.8`), each starting a path-based D-Bus via
-the shared `dbus-up.sh`. The default regression workflow runs against gnome-keyring; the
-[`system-tests`](.github/workflows/system-tests.yml) workflow runs the system suite in each of them
-(the KWallet/KeePassXC legs are best-effort and non-blocking). The KWallet legs, KWallet 5 on
+provider (`gnome-keyring`, `kwallet`, `kwallet6`, `keepassxc`, `keepassxc-2.8`, `oo7`), each
+starting a path-based D-Bus via the shared `dbus-up.sh`. The default regression workflow runs
+against gnome-keyring, on JDK 17 and 25; the [`system-tests`](.github/workflows/system-tests.yml)
+workflow runs the system suite in each of them, and KeePassXC a second time with its per-item
+confirmation on (`keepassxc-confirm`, `keepassxc-2.8-confirm`). Only the gnome-keyring leg is
+required; the others are non-blocking. A leg fails where its tests cannot reach the provider, as it
+passes `-Dsecret-service.system-test.required=true`. The KWallet legs, KWallet 5 on
 Ubuntu 24.04 and KWallet 6 on Ubuntu 26.04, as Kubuntu ships them, start KWallet as a Plasma login
 does, so that it creates its wallet, with an empty password, and opens it without a dialog. The
 KeePassXC legs run Ubuntu 24.04's KeePassXC 2.7.6, and KeePassXC 2.8 from its release AppImage,
