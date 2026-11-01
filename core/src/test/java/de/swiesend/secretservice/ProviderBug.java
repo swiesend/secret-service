@@ -162,7 +162,7 @@ public enum ProviderBug {
      * The library unlocks the collection before it lists or reads ({@code SearchResultTest}).
      */
     KEEPASSXC_HIDES_THE_ITEMS_OF_A_LOCKED_DATABASE(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.ON_REQUEST),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.ON_REQUEST),
 
     /**
      * {@code SearchItems} with no attributes finds no item, where gnome-keyring and KWallet find
@@ -170,7 +170,7 @@ public enum ProviderBug {
      * {@code Items} ({@code SearchResultTest}).
      */
     KEEPASSXC_AN_EMPTY_SEARCH_FINDS_NOTHING(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.ON_REQUEST),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.ON_REQUEST),
 
     /**
      * A secret stored as {@code text/plain} with a charset comes back as {@code text/plain}, its
@@ -178,7 +178,18 @@ public enum ProviderBug {
      * {@code text/plain} as UTF-8 ({@code SecretContentTypeTest}).
      */
     KEEPASSXC_DROPS_THE_CHARSET(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.ON_REQUEST),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.ON_REQUEST),
+
+    /**
+     * A secret stored as {@code text/plain} in a charset other than UTF-8, UTF-16, UTF-32 and
+     * ISO-8859-1 is decoded as UTF-8, and comes back changed: Qt 6's {@code QStringDecoder} knows
+     * no other charset. A secret in windows-1252 or ISO-8859-15 has U+FFFD for each char outside
+     * ASCII, and one in UTF-16 begins with its byte order mark, U+FEFF. 2.7 decodes each charset
+     * that Qt 5 knows. Not reproduced: the functional API and {@code SimpleCollection} store
+     * UTF-8, and the library reads what comes back in the charset that its content type names.
+     */
+    KEEPASSXC_DECODES_AN_UNKNOWN_CHARSET_AS_UTF_8(Provider.KEEPASSXC, Status.UNREPORTED,
+            "2.8.0", null, Fake.NOT_REPRODUCED),
 
     /**
      * A new label or new attributes for an item that the user has not allowed the client to read
@@ -187,14 +198,14 @@ public enum ProviderBug {
      * changes it ({@code UpdateItemTest}).
      */
     KEEPASSXC_CHANGES_AN_ITEM_IT_HAS_NOT_ALLOWED(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.ON_REQUEST),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.ON_REQUEST),
 
     /**
      * Any connection uses and closes any session, where the specification binds a session to the
      * connection that opened it. The fake has one session for every connection.
      */
     KEEPASSXC_ANY_CONNECTION_USES_ANY_SESSION(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.ALWAYS),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.ALWAYS),
 
     /**
      * New attributes are merged into the item's old ones, so that an attribute can never be
@@ -202,14 +213,14 @@ public enum ProviderBug {
      * KeePassXC either.
      */
     KEEPASSXC_MERGES_NEW_ATTRIBUTES_INTO_THE_OLD(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.NOT_REPRODUCED),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.NOT_REPRODUCED),
 
     /**
      * A search that names KeePassXC's own attribute {@code Uuid} or {@code Path} ignores every other
      * attribute of the search. Not reproduced: the library searches with what it is given.
      */
     KEEPASSXC_A_UUID_OR_PATH_SEARCH_IGNORES_THE_OTHER_ATTRIBUTES(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.NOT_REPRODUCED),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.NOT_REPRODUCED),
 
     /**
      * {@code Item.Delete} moves the entry to the database's recycle bin, after a prompt, and
@@ -217,7 +228,7 @@ public enum ProviderBug {
      * the prompt, and cannot tell where the item went.
      */
     KEEPASSXC_DELETE_KEEPS_THE_ITEM_IN_THE_RECYCLE_BIN(Provider.KEEPASSXC, Status.UNREPORTED,
-            "2.7.6 and 2.7.12", null, Fake.NOT_REPRODUCED),
+            "2.7.6, 2.7.12 and 2.8.0", null, Fake.NOT_REPRODUCED),
 
     // ---- KWallet -----------------------------------------------------------------------------
 

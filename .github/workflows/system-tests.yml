@@ -86,6 +86,19 @@ jobs:
             dialogs-answered: true
             default-collection: throwaway
             docker-options: -e KPXC_CONFIRM_ACCESS_ITEM=true -e KPXC_ANSWER_ACCESS_REQUESTS=true
+          # The two KeePassXC legs again, on KeePassXC 2.8 from its release AppImage.
+          - provider: keepassxc-2.8
+            experimental: true
+            collection: test
+            dialogs-answered: true
+            default-collection: throwaway
+          - provider: keepassxc-2.8-confirm
+            image: keepassxc-2.8
+            experimental: true
+            collection: test
+            dialogs-answered: true
+            default-collection: throwaway
+            docker-options: -e KPXC_CONFIRM_ACCESS_ITEM=true -e KPXC_ANSWER_ACCESS_REQUESTS=true
           - provider: oo7
             experimental: true
             collection: login
