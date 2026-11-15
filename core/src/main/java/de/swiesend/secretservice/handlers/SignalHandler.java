@@ -23,12 +23,15 @@ public class SignalHandler implements DBusSigHandler {
     /** How often an await looks after the provider's owner: every tenth of its ticks, once a second. */
     private static final int OWNER_CHECK_TICKS = 10;
     private Logger log = LoggerFactory.getLogger(getClass());
-    private DBusConnection connection = null;
-    private String sourcePath = null;
+    // connection and sourcePath change under the lock on the buffer, and with it: a signal counts
+    // for the connection and the path that the buffer is kept for.
+    private volatile DBusConnection connection = null;
+    private volatile String sourcePath = null;
     /** Who owns the bus name of the provider whose signals this handler takes, or null for any sender's. */
     private volatile BusNameOwner provider = null;
     private List<AutoCloseable> registrations = new ArrayList<>();
-    private DBusSignal[] handled = new DBusSignal[bufferSize];
+    /** The signals taken, the newest first. Read and written under its own lock, as {@link #count}. */
+    private final DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
 
     /**
@@ -87,11 +90,15 @@ public class SignalHandler implements DBusSigHandler {
      */
     public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath,
                         String provider) {
-        if (this.connection == null) {
-            this.connection = connection;
+        // Before the lock, which the thread that dispatches the signals takes: this may ask the bus.
+        final BusNameOwner name = provider == null ? null : BusNameOwner.of(connection, provider);
+        synchronized (handled) {
+            if (this.connection == null) {
+                this.connection = connection;
+            }
+            this.sourcePath = sourcePath;
+            this.provider = name;
         }
-        this.sourcePath = sourcePath;
-        this.provider = provider == null ? null : BusNameOwner.of(connection, provider);
         if (signals != null) {
             try {
                 for (Class sc : signals) {
@@ -131,10 +138,10 @@ public class SignalHandler implements DBusSigHandler {
         synchronized (handled) {
             Arrays.fill(handled, null);
             count = 0;
+            connection = null;
+            sourcePath = null;
+            provider = null;
         }
-        connection = null;
-        sourcePath = null;
-        provider = null;
     }
 
     /**
@@ -152,9 +159,10 @@ public class SignalHandler implements DBusSigHandler {
         // If a source path was provided during connect(), ignore signals that
         // do not originate from that object path. This provides the path-scoped
         // semantics we want while using the global DBus addSigHandler registration.
-        if (this.sourcePath != null && !"/".equals(this.sourcePath)) {
+        final String scope = this.sourcePath;
+        if (scope != null && !"/".equals(scope)) {
             try {
-                if (!this.sourcePath.equals(s.getPath())) {
+                if (!scope.equals(s.getPath())) {
                     return; // ignore signals from other object paths
                 }
             } catch (Exception e) {
@@ -170,6 +178,12 @@ public class SignalHandler implements DBusSigHandler {
         }
 
         synchronized (handled) {
+            // dbus-java can deliver a signal after its handler was removed. One that was on its
+            // way while disconnect() ran, or while connect() gave this handler another path, was
+            // checked against a path that no longer holds, or against none.
+            if (connection == null || !Objects.equals(scope, sourcePath)) {
+                return;
+            }
             Collections.rotate(Arrays.asList(handled), 1);
             handled[0] = s;
             count++;
@@ -207,12 +221,18 @@ public class SignalHandler implements DBusSigHandler {
 
     }
 
+    /**
+     * The signals taken, the newest first, and null where the buffer is not filled: a copy, as the
+     * buffer changes with every signal, on another thread.
+     */
     public DBusSignal[] getHandled() {
-        return handled;
+        synchronized (handled) {
+            return handled.clone();
+        }
     }
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s) {
-        return Arrays.stream(handled)
+        return Arrays.stream(getHandled())
                 .filter(signal -> signal != null)
                 .filter(signal -> signal.getClass().equals(s))
                 .map(signal -> (S) signal)
@@ -220,7 +240,7 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s, String path) {
-        return Arrays.stream(handled)
+        return Arrays.stream(getHandled())
                 .filter(signal -> signal != null)
                 .filter(signal -> signal.getClass().equals(s))
                 .filter(signal -> isOnPath(signal, path))
@@ -258,11 +278,15 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public int getCount() {
-        return count;
+        synchronized (handled) {
+            return count;
+        }
     }
 
     public DBusSignal getLastHandledSignal() {
-        return handled[0];
+        synchronized (handled) {
+            return handled[0];
+        }
     }
 
     public <S extends DBusSignal> S getLastHandledSignal(Class<S> s) {
@@ -304,7 +328,7 @@ public class SignalHandler implements DBusSigHandler {
         final BusNameOwner name = provider;
         final String answers = name == null ? null : name.read().orElse(null);
         final DBusConnection waitsOn = connection;
-        final int init = count;
+        final int init = getCount();
 
         Optional<Prompt> maybePrompt = Optional.empty();
         try {
