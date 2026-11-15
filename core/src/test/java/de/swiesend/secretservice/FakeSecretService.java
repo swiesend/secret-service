@@ -275,6 +275,14 @@ public final class FakeSecretService {
     private final List<String> createCollectionCalls = Collections.synchronizedList(new ArrayList<>());
 
     /**
+     * Makes the prompt of {@code CreateCollection} complete with {@code result}, as if the user had
+     * confirmed it; {@code null}, the default, has the user cancel it. No collection is created:
+     * the result is what the library is told.
+     */
+    public void setCreateCollectionResult(Variant<?> result) { this.createCollectionResult = result; }
+    private volatile Variant<?> createCollectionResult;
+
+    /**
      * Claims another bus name on the fake's connection, as gnome-keyring owns {@code org.gnome.keyring}
      * on the connection that serves {@code org.freedesktop.secrets}.
      */
@@ -1006,7 +1014,12 @@ public final class FakeSecretService {
             // collection: the user sets the password there. The user cancels it here, so nothing is
             // created; the tests need to see that the request was made, not a new collection.
             FakePrompt prompt = newPrompt(false);
-            emitCompletedLater(prompt, true);
+            Variant<?> result = createCollectionResult;
+            if (result == null) {
+                emitCompletedLater(prompt, true);
+            } else {
+                emitCompletedLater(prompt, false, () -> { }, result);
+            }
             return new Pair<>(new DBusPath("/"), new DBusPath(prompt.path));
         }
 

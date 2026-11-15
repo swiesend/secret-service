@@ -169,12 +169,23 @@ public class Collection implements CollectionInterface {
      * Open a collection by its collection id (not label). This opens the collection
      * directly using the known object path for the collection id and does not try
      * to create it.
+     *
+     * @param id the last element of the collection's object path, of letters, digits and
+     *           underscores, as {@link #getId()} gives it
+     * @return the collection, or empty for an id that is no such element: with a {@code /} in it,
+     *         it would name an item or another object, not a collection
      */
     public static Optional<CollectionInterface> openById(String id, Optional<SessionInterface> maybeSession) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("The collection id must not be null or blank.");
         }
         Objects.requireNonNull(maybeSession, "maybeSession must not be null; use Optional.empty() instead");
+        if (!PATH_ELEMENT.matcher(id).matches()) {
+            // Without the id: it is the caller's text, and unchecked.
+            log.error("Could not open the collection by its id: an id is one element of an object path, "
+                    + "of letters, digits and underscores.");
+            return Optional.empty();
+        }
         Collection c = new Collection();
         if (maybeSession.isEmpty()) {
             c.clearSessionAtClose = true;
@@ -335,13 +346,27 @@ public class Collection implements CollectionInterface {
         if (!"/".equals(response.a.getPath())) {
             return Optional.of(response.a);
         } else {
-            return performPrompt(response.b);
+            // The created collection is the prompt's result. A result of another kind is turned
+            // into a path that names nothing, which getCollectionFromPath() refuses.
+            return performPrompt(response.b)
+                    .map(result -> result instanceof DBusPath ? (DBusPath) result : new DBusPath(String.valueOf(result)));
         }
     }
 
+    // A whole object path, as the D-Bus specification spells it: one or more of PATH_ELEMENT.
+    private static final Pattern OBJECT_PATH = Pattern.compile("(/[A-Za-z0-9_]+)+");
+
+    /**
+     * Whether {@code path} names an object that can be a collection: an object path, and not
+     * {@code "/"}, which is the Secret Service's answer for none. Package-private for tests.
+     */
+    static boolean namesAnObject(DBusPath path) {
+        return path != null && path.getPath() != null && OBJECT_PATH.matcher(path.getPath()).matches();
+    }
+
     private Optional<de.swiesend.secretservice.Collection> getCollectionFromPath(DBusPath path, String label) {
-        if (path == null) {
-            log.error("Could not acquire the collection: it has no object path.");
+        if (!namesAnObject(path)) {
+            log.error("Could not acquire the collection: the provider named no object path for it.");
             return Optional.empty();
         }
 
@@ -407,7 +432,14 @@ public class Collection implements CollectionInterface {
         return alias.filter(path -> path.getPath() != null && !"/".equals(path.getPath()));
     }
 
-    private Optional<DBusPath> performPrompt(DBusPath path) {
+    /**
+     * Shows the prompt at {@code path} and waits for its answer.
+     *
+     * @return the result of a prompt that completed, which depends on the operation that the
+     *         prompt stands for; empty where the user dismissed it, where nobody answered in time
+     *         and where prompting is disabled
+     */
+    private Optional<Object> performPrompt(DBusPath path) {
         if (!isPrompting) {
             // The provider allocated a Prompt object for this reply. Walking away leaves it
             // registered until the connection closes, one per call. requiresPrompt excludes "/",
@@ -421,7 +453,8 @@ public class Collection implements CollectionInterface {
         if (!("/".equals(path.getPath()))) {
             return Optional.ofNullable(prompt.await(path, service.getTimeout()))
                     .filter(completed -> !completed.dismissed)
-                    .map(success -> new DBusPath(success.result.getValue().toString()));
+                    // Completed is what counts: a signal without a result has an empty one.
+                    .map(success -> success.result == null ? "" : success.result.getValue());
         } else {
             return Optional.empty();
         }
