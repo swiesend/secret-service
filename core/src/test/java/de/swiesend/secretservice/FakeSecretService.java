@@ -89,7 +89,7 @@ public final class FakeSecretService {
      * RFC 2409, section 6.2: the prime of the group that the specification prescribes. The fake's
      * own copy, as a provider has one, independent of the library's.
      */
-    private static final BigInteger SECOND_OAKLEY_GROUP_PRIME = new BigInteger(
+    public static final BigInteger SECOND_OAKLEY_GROUP_PRIME = new BigInteger(
             "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22"
                     + "514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6"
                     + "F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381"
@@ -736,6 +736,18 @@ public final class FakeSecretService {
     public void setZeroTopByteSecrets(int count) { this.zeroTopByteSecrets = count; }
     private volatile int zeroTopByteSecrets;
 
+    /**
+     * Makes {@code OpenSession} answer with this output in place of the fake's public key, as a
+     * provider that answers with something else; {@code null} for the key again. The session is
+     * opened all the same.
+     */
+    public void setOpenSessionOutput(Variant<?> output) { this.openSessionOutput = output; }
+    private volatile Variant<?> openSessionOutput;
+
+    /** Makes {@code OpenSession} answer with this path for the session; {@code null} for its own. */
+    public void setOpenSessionPath(String path) { this.openSessionPath = path; }
+    private volatile String openSessionPath;
+
     /** How often {@code OpenSession} was called. */
     public int openSessionCalls() {
         return openSessionCalls.get();
@@ -847,7 +859,10 @@ public final class FakeSecretService {
                         reproduces(ProviderBug.KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS)
                                 ? withoutLeadingZeros(shared) : shared);
 
-                return new Pair<>(new Variant<>(ourY.toByteArray()), new DBusPath(SESSION_PATH));
+                @SuppressWarnings("unchecked")
+                Variant<byte[]> output = openSessionOutput != null
+                        ? (Variant<byte[]>) openSessionOutput : new Variant<>(ourY.toByteArray());
+                return new Pair<>(output, new DBusPath(openSessionPath != null ? openSessionPath : SESSION_PATH));
             } catch (Exception e) {
                 throw new IllegalStateException("fake OpenSession failed", e);
             }

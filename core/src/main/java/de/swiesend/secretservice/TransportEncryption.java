@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 public class TransportEncryption implements AutoCloseable {
@@ -213,13 +214,44 @@ public class TransportEncryption implements AutoCloseable {
                     Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7,
                     new Variant<>(toKeyBytes(ya, length))
             ).flatMap(pair -> {
-                // transform peer's raw Y to a public key
-                yb = Static.Utils.toByteArray(pair.a.getValue());
-
-                DBusPath sessionPath = pair.b;
-                session = new Session(sessionPath, service);
+                Session opened = new Session(pair.b, service);
+                Optional<byte[]> peerKey = peerPublicKey(pair.a);
+                if (peerKey.isEmpty()) {
+                    // The provider has opened the session all the same.
+                    opened.close();
+                    return Optional.empty();
+                }
+                yb = peerKey.get();
+                session = opened;
                 return Optional.of(new OpenedSession());
             });
+        }
+
+        /**
+         * The provider's public key from its reply, where the reply holds one: a byte array that
+         * reads as a number from 2 to p - 2. A plain session's output is the empty string, and a
+         * key of 0, 1 or p - 1 gives a shared secret that everyone on the bus can compute.
+         */
+        private Optional<byte[]> peerPublicKey(Variant<?> output) {
+            Object value = output == null ? null : output.getValue();
+            if (!(value instanceof byte[]) && !(value instanceof List)) {
+                log.error("The provider's reply to OpenSession holds no public key.");
+                return Optional.empty();
+            }
+            byte[] bytes;
+            try {
+                bytes = Static.Utils.toByteArray(value);
+            } catch (ClassCastException | NullPointerException e) {
+                log.error("The provider's reply to OpenSession holds no public key.");
+                return Optional.empty();
+            }
+            BigInteger y = fromBinary(bytes);
+            BigInteger p = dhParameters.getP();
+            if (y.compareTo(BigInteger.TWO) < 0 || y.compareTo(p.subtract(BigInteger.TWO)) > 0) {
+                log.error("The provider's public key is not a number from 2 to p - 2; no session is opened under it.");
+                return Optional.empty();
+            }
+            return Optional.of(bytes);
         }
     }
 

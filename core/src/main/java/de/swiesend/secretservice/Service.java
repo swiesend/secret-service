@@ -27,10 +27,16 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     public Optional<Pair<Variant<byte[]>, DBusPath>> openSession(String algorithm, Variant input) {
         return send("OpenSession", "sv", algorithm, input)
                 .filter(response -> !Static.Utils.isNullOrEmpty(response) && response.length == 2)
-                .flatMap(response -> Optional.of(new Pair<>(asBytes((Variant<?>) response[0]), (DBusPath) response[1])))
-                .map(pair -> {
-                    log.debug("Got session: " + pair.b.getPath());
-                    return pair;
+                .flatMap(response -> {
+                    // A reply of another shape names no session, and a cast of it would throw.
+                    if (!(response[0] instanceof Variant) || !(response[1] instanceof DBusPath)
+                            || "/".equals(((DBusPath) response[1]).getPath())) {
+                        log.error("The provider's reply to OpenSession is not an output and a session's path.");
+                        return Optional.empty();
+                    }
+                    DBusPath session = (DBusPath) response[1];
+                    log.debug("Got session: {}", session.getPath());
+                    return Optional.of(new Pair<>(asBytes((Variant<?>) response[0]), session));
                 });
     }
 
@@ -131,12 +137,18 @@ public class Service extends Messaging implements de.swiesend.secretservice.inte
     /**
      * The output as declared: dbus-java can hand a byte array over as {@code List<Byte>}, which a
      * caller reading {@code byte[]} from it got as a ClassCastException. A plain session's output
-     * is the empty string, and stays as it is.
+     * is the empty string, and stays as it is. So does any other output that holds no bytes: it
+     * is the caller's to judge, with the session's path next to it, which names the session that
+     * the provider has opened and that the caller closes.
      */
     @SuppressWarnings("unchecked")
     private static Variant<byte[]> asBytes(Variant<?> output) {
-        if ("ay".equals(output.getSig()) && !(output.getValue() instanceof byte[])) {
-            return new Variant<>(Static.Utils.toByteArray(output.getValue()), "ay");
+        if ("ay".equals(output.getSig()) && output.getValue() instanceof List) {
+            try {
+                return new Variant<>(Static.Utils.toByteArray(output.getValue()), "ay");
+            } catch (ClassCastException | NullPointerException e) {
+                // A list of something else: no bytes.
+            }
         }
         return (Variant<byte[]>) output;
     }
