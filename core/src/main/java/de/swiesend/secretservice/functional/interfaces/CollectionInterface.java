@@ -6,6 +6,23 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+/**
+ * A collection of secret items.
+ *
+ * <p><b>An item's path is taken only for an item of this collection.</b> The methods that take
+ * the object path of an item -- {@code getSecret}, {@code withSecret}, {@code getAttributes},
+ * {@code getItemLabel}, {@code setItemLabel}, {@code updateItem}, {@code deleteItem},
+ * {@code deleteItems}, {@code lockItem} and {@code unlockItem} -- refuse a path that names no item
+ * of the collection, with {@code false} or {@code Optional.empty()}, before they unlock anything
+ * or ask the user. {@code deleteItems} refuses the whole list for one such path. The paths that
+ * {@code createItem}, {@code getItems} and {@code search} return are the collection's own.</p>
+ *
+ * <p>An item of the collection is named by a path below the collection's own, or by one below an
+ * alias that the provider resolves to the collection, as
+ * {@code /org/freedesktop/secrets/aliases/default/12} for the default collection. Where the
+ * collection itself was opened at an alias's path, because the provider's alias could not be
+ * read, an item is one that the provider lists as the collection's.</p>
+ */
 public interface CollectionInterface extends AutoCloseable {
 
     /**

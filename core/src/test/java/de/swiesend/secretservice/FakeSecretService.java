@@ -43,7 +43,8 @@ import javax.crypto.interfaces.DHPublicKey;
  * {@code Item.SetSecret}, setting the item's properties, {@code Collection.Delete},
  * {@code ReadAlias}, {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a
  * provider: it does no access control and keeps its secret in a field. A test can add a second
- * item, with a lock of its own, for the reads of several items.</p>
+ * item, with a lock of its own, for the reads of several items, and an item of another collection,
+ * which records every call that reaches it.</p>
  *
  * <p>Each prompt it hands out has a path of its own and is an object on the bus, so the client's
  * {@code Prompt} and {@code Dismiss} reach the fake, which records them. The prompt that unlocks
@@ -79,6 +80,10 @@ public final class FakeSecretService {
     public static final String SECRET_VALUE = "the-locked-secret";
     /** What the second item holds. */
     public static final String SECOND_SECRET_VALUE = "the-second-secret";
+    /** The item of another collection that {@link #addForeignItem()} adds. */
+    public static final String FOREIGN_ITEM_PATH = "/org/freedesktop/secrets/collection/other/1";
+    /** What the item of the other collection holds. */
+    public static final String FOREIGN_SECRET_VALUE = "the-other-collection's-secret";
 
     /**
      * RFC 2409, section 6.2: the prime of the group that the specification prescribes. The fake's
@@ -561,6 +566,22 @@ public final class FakeSecretService {
 
     private volatile boolean itemDeleted;
 
+    /**
+     * Puts an item of another collection on the bus, at {@link #FOREIGN_ITEM_PATH}: unlocked, with
+     * a label and a secret, and it takes every change and its deletion without a prompt. It is no
+     * item of the fake collection, which does not list it.
+     */
+    public void addForeignItem() throws Exception {
+        connection.exportObject(FOREIGN_ITEM_PATH, new ForeignItemImpl());
+    }
+
+    /** The calls that reached the item of the other collection, as "Delete" or "Get Label". */
+    public List<String> foreignItemCalls() {
+        synchronized (foreignItemCalls) { return new ArrayList<>(foreignItemCalls); }
+    }
+
+    private final List<String> foreignItemCalls = Collections.synchronizedList(new ArrayList<>());
+
     /** The item properties that {@code Set} changed, in call order. */
     public List<String> itemPropertySets() {
         return List.copyOf(itemPropertySets);
@@ -590,6 +611,17 @@ public final class FakeSecretService {
      */
     public void setDefaultAlias(String path) { this.defaultAlias = path; }
     private volatile String defaultAlias;
+
+    /** The path of the {@code default} alias, at which a provider serves its default collection too. */
+    public static final String DEFAULT_ALIAS_PATH = "/org/freedesktop/secrets/aliases/default";
+
+    /**
+     * Serves the fake collection at {@link #DEFAULT_ALIAS_PATH} too, as a provider serves its
+     * default collection: the same collection, whose items keep their paths.
+     */
+    public void serveCollectionAtTheDefaultAlias() throws Exception {
+        connection.exportObject(DEFAULT_ALIAS_PATH, new CollectionImpl());
+    }
 
     /** Makes {@code ReadAlias} answer with an error, as for an alias that the client cannot read. */
     public void setRefuseReadAlias(boolean refuse) { this.refuseReadAlias = refuse; }
@@ -1112,6 +1144,62 @@ public final class FakeSecretService {
         }
 
         @Override public String getObjectPath() { return path; }
+        @Override public boolean isRemote() { return false; }
+    }
+
+    /** The item of another collection, which answers every call as done and records it. */
+    private final class ForeignItemImpl implements WireItem, Properties {
+
+        @Override
+        public DBusPath Delete() {
+            foreignItemCalls.add("Delete");
+            return new DBusPath("/");
+        }
+
+        @Override
+        public WireSecret GetSecret(DBusPath session) {
+            foreignItemCalls.add("GetSecret");
+            try {
+                byte[] iv = new byte[16];
+                new SecureRandom().nextBytes(iv);
+                Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
+                byte[] ct = c.doFinal(FOREIGN_SECRET_VALUE.getBytes(StandardCharsets.UTF_8));
+                return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, "text/plain; charset=utf8");
+            } catch (Exception e) {
+                throw new IllegalStateException("fake GetSecret failed", e);
+            }
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <A> A Get(String iface, String property) {
+            foreignItemCalls.add("Get " + property);
+            switch (property) {
+                case "Locked":     return (A) Boolean.FALSE;
+                case "Attributes": return (A) new Variant<>(new HashMap<>(Map.of("owner", "other")), "a{ss}");
+                case "Label":      return (A) "foreign-item";
+                default: throw new IllegalArgumentException("fake: unsupported property " + property);
+            }
+        }
+
+        @Override
+        public void SetSecret(WireSecret secret) {
+            foreignItemCalls.add("SetSecret");
+        }
+
+        @Override
+        public <A> void Set(String iface, String property, A value) {
+            foreignItemCalls.add("Set " + property);
+        }
+
+        @Override
+        public Map<String, Variant<?>> GetAll(String iface) {
+            foreignItemCalls.add("GetAll");
+            return Map.of("Label", new Variant<>("foreign-item"), "Locked", new Variant<>(Boolean.FALSE));
+        }
+
+        @Override public String getObjectPath() { return FOREIGN_ITEM_PATH; }
         @Override public boolean isRemote() { return false; }
     }
 

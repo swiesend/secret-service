@@ -15,6 +15,7 @@ import java.util.*;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 // Note: de.swiesend.secretservice.interfaces.Prompt.Completed is referenced fully-qualified
 // below to avoid a name clash with the low-level Prompt class in this package.
@@ -605,11 +606,14 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public boolean deleteItem(String objectPath) {
-        if (Static.Utils.isNullOrEmpty(objectPath)) {
+    public boolean deleteItem(String path) {
+        if (Static.Utils.isNullOrEmpty(path)) {
             log.error("Cannot delete an unspecified item.");
             return false;
         }
+        // Before the user is asked: a call that is refused raises no dialog.
+        final String objectPath = ownItem(path, "delete").orElse(null);
+        if (objectPath == null) return false;
 
         unlockWithUserPermission();
         return deleteItemAsked(objectPath, Set.of(), new HashSet<>());
@@ -703,10 +707,22 @@ public class Collection implements CollectionInterface {
     private Boolean deletesByPath;
 
     @Override
-    public boolean deleteItems(List<String> objectPaths) {
-        if (objectPaths == null || objectPaths.isEmpty()) {
+    public boolean deleteItems(List<String> paths) {
+        if (paths == null || paths.isEmpty()) {
             log.error("Cannot delete unspecified items.");
             return false;
+        }
+        // Every path before the user is asked, and all or nothing: one item of another collection
+        // refuses the call, which then has raised no dialog and deleted nothing.
+        final List<String> objectPaths = new ArrayList<>();
+        for (String path : paths) {
+            if (Static.Utils.isNullOrEmpty(path)) {
+                objectPaths.add(null);
+                continue;
+            }
+            Optional<String> item = ownItem(path, "delete");
+            if (item.isEmpty()) return false;
+            objectPaths.add(item.get());
         }
         // Asked once for all of them: deleteItem() would ask again for every item.
         unlockWithUserPermission();
@@ -735,8 +751,10 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public Optional<Map<String, String>> getAttributes(String objectPath) {
-        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+    public Optional<Map<String, String>> getAttributes(String path) {
+        if (Static.Utils.isNullOrEmpty(path)) return Optional.empty();
+        final String objectPath = ownItem(path, "read the attributes").orElse(null);
+        if (objectPath == null) return Optional.empty();
         unlock();
         return getItem(objectPath).flatMap(item -> attributesOf(item, objectPath));
     }
@@ -871,19 +889,23 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public Optional<String> getItemLabel(String objectPath) {
-        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+    public Optional<String> getItemLabel(String path) {
+        if (Static.Utils.isNullOrEmpty(path)) return Optional.empty();
+        final String objectPath = ownItem(path, "read the label").orElse(null);
+        if (objectPath == null) return Optional.empty();
         unlock();
         return getItem(objectPath).flatMap(item -> labelOf(item, objectPath));
     }
 
     @Override
-    public boolean setItemLabel(String objectPath, String label) {
-        if (Static.Utils.isNullOrEmpty(objectPath)) return false;
+    public boolean setItemLabel(String path, String label) {
+        if (Static.Utils.isNullOrEmpty(path)) return false;
         if (label == null) {
             log.error("The label may not be null.");
             return false;
         }
+        final String objectPath = ownItem(path, "set the label").orElse(null);
+        if (objectPath == null) return false;
         unlock();
         // As in updateItem: a locked item cannot be modified, and KWallet and KeePassXC take a new
         // label for one all the same.
@@ -920,11 +942,13 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public boolean lockItem(String itemPath) {
-        if (Static.Utils.isNullOrEmpty(itemPath)) {
+    public boolean lockItem(String path) {
+        if (Static.Utils.isNullOrEmpty(path)) {
             log.error("Cannot lock an unspecified item.");
             return false;
         }
+        final String itemPath = ownItem(path, "lock").orElse(null);
+        if (itemPath == null) return false;
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (!item.isLocked()) {
             // No isPrompting check before the call. Locking normally needs no prompt at all --
@@ -955,11 +979,13 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public boolean unlockItem(String itemPath) {
-        if (Static.Utils.isNullOrEmpty(itemPath)) {
+    public boolean unlockItem(String path) {
+        if (Static.Utils.isNullOrEmpty(path)) {
             log.error("Cannot unlock an unspecified item.");
             return false;
         }
+        final String itemPath = ownItem(path, "unlock").orElse(null);
+        if (itemPath == null) return false;
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
         if (item.isLocked()) {
             // Before the call, not after. Unlocking a locked item essentially always needs a
@@ -1011,7 +1037,10 @@ public class Collection implements CollectionInterface {
 
     @Override
     public Optional<char[]> getSecret(String objectPath) {
-        return getSecret(objectPath, true);
+        if (Static.Utils.isNullOrEmpty(objectPath)) return Optional.empty();
+        // Here, not in the reader below: the bulk readers pass it the paths that the provider lists
+        // as this collection's items.
+        return ownItem(objectPath, "read the secret").flatMap(item -> getSecret(item, true));
     }
 
     /**
@@ -1367,9 +1396,9 @@ public class Collection implements CollectionInterface {
     }
 
     @Override
-    public boolean updateItem(String objectPath, String label, CharSequence password, Map<String, String> attributes) {
+    public boolean updateItem(String path, String label, CharSequence password, Map<String, String> attributes) {
 
-        if (Static.Utils.isNullOrEmpty(objectPath)) {
+        if (Static.Utils.isNullOrEmpty(path)) {
             log.error("The object path of the item may not be null or empty.");
             return false;
         }
@@ -1380,6 +1409,8 @@ public class Collection implements CollectionInterface {
             log.error("The password may not be empty.");
             return false;
         }
+        final String objectPath = ownItem(path, "update").orElse(null);
+        if (objectPath == null) return false;
 
         unlock();
 
@@ -1499,6 +1530,74 @@ public class Collection implements CollectionInterface {
         return labels.containsValue(label);
     }
 
+    /** One element of an object path, and the elements below a path: what D-Bus allows in them. */
+    private static final Pattern PATH_ELEMENT = Pattern.compile("[A-Za-z0-9_]+");
+    private static final Pattern PATH_ELEMENTS = Pattern.compile("[A-Za-z0-9_]+(/[A-Za-z0-9_]+)*");
+
+    /**
+     * The path of this collection's item that {@code objectPath} names, or empty where it names
+     * none. Every public method that takes an item's path asks this before anything else and goes
+     * on with the answer, so one collection object neither reads nor changes the items of another
+     * collection.
+     *
+     * <p>An item of this collection is named by a path below the collection's own. Where that is
+     * the canonical one, below {@code /org/freedesktop/secrets/collection}, as it is for every
+     * collection opened by its label or id, and for the default collection, which
+     * {@link #openDefault} opens at the path that the provider's alias names, an item is named as
+     * well by a path below an alias that the provider resolves to this collection,
+     * {@code /org/freedesktop/secrets/aliases/default/12}. The answer is the path below the
+     * collection's own then: the provider is asked for the item that was judged, also where the
+     * alias names another collection a moment later.</p>
+     *
+     * <p>A collection at an alias's path, as where the provider's alias could not be read, has
+     * its items below a path that it does not know. There an item is one that the provider lists
+     * as the collection's, and none where the list cannot be read.</p>
+     */
+    private Optional<String> ownItem(String objectPath) {
+        if (collection == null) return Optional.ofNullable(objectPath);
+        if (objectPath == null) return Optional.empty();
+        String own = collection.getObjectPath();
+        if (objectPath.startsWith(own + "/")
+                && PATH_ELEMENTS.matcher(objectPath.substring(own.length() + 1)).matches()) {
+            return Optional.of(objectPath);
+        }
+        if (!own.startsWith(Static.ObjectPaths.collection(""))) {
+            return collection.getItems()
+                    .filter(items -> items.stream().anyMatch(item -> objectPath.equals(item.getPath())))
+                    .map(items -> objectPath);
+        }
+        String aliases = Static.ObjectPaths.ALIASES + "/";
+        if (!objectPath.startsWith(aliases)) return Optional.empty();
+        String below = objectPath.substring(aliases.length());
+        int end = below.indexOf('/');
+        if (end < 0) return Optional.empty();
+        String alias = below.substring(0, end);
+        String item = below.substring(end + 1);
+        if (!PATH_ELEMENT.matcher(alias).matches() || !PATH_ELEMENTS.matcher(item).matches()) {
+            return Optional.empty();
+        }
+        return service.getService().readAlias(alias)
+                .filter(target -> own.equals(target.getPath()))
+                .map(target -> own + "/" + item);
+    }
+
+    /**
+     * {@link #ownItem(String)} for the public methods that take an item's path: logs a refusal,
+     * without the path. It is the caller's text, and unchecked, and the path of another
+     * collection's item names that collection, which gnome-keyring derives from its label.
+     *
+     * @param asked what the caller asked for, as it reads after "Refusing to"
+     */
+    private Optional<String> ownItem(String objectPath, String asked) {
+        Optional<String> item = ownItem(objectPath);
+        if (item.isEmpty()) log.warn("Refusing to {}: the path is not an item of this collection.", asked);
+        return item;
+    }
+
+    /**
+     * Wraps a path as an {@link Item}, without a look at where it lies: the public methods have
+     * refused a path of another collection, and the others pass the paths that the provider lists.
+     */
     private Optional<Item> getItem(String path) {
         if (path != null) {
             return Optional.of(new Item(Static.Convert.toObjectPath(path), service.getService()));
