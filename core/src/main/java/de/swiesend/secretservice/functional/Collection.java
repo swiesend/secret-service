@@ -467,7 +467,7 @@ public class Collection implements CollectionInterface {
         unlock();
         // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
         // prompting is disabled. CreateItem on it would bring up the same dialog a second time.
-        if (collection.isLocked()) {
+        if (notKnownUnlocked()) {
             log.info("The collection stayed locked, so the item is not created.");
             return Optional.empty();
         }
@@ -630,7 +630,7 @@ public class Collection implements CollectionInterface {
         // A collection that stayed locked was refused: the user dismissed the unlock dialog, or
         // prompting is disabled. KWallet answers Delete on a closed wallet with "/" and deletes
         // nothing, which the check below would report as done.
-        if (collection.isLocked()) {
+        if (notKnownUnlocked()) {
             log.info("The collection stayed locked, so the item is not deleted: {}", objectPath);
             return false;
         }
@@ -726,7 +726,7 @@ public class Collection implements CollectionInterface {
         }
         // Asked once for all of them: deleteItem() would ask again for every item.
         unlockWithUserPermission();
-        if (collection.isLocked()) {
+        if (notKnownUnlocked()) {
             log.info("The collection stayed locked, so no item is deleted.");
             return false;
         }
@@ -781,11 +781,12 @@ public class Collection implements CollectionInterface {
 
     /**
      * The item's label, unless the item is locked and shows an empty one: gnome-keyring hides a
-     * locked keyring's labels so. A locked item of KeePassXC keeps its label, which stays.
+     * locked keyring's labels so. A locked item of KeePassXC keeps its label, which stays. An item
+     * that does not say whether it is locked counts as locked.
      */
     private Optional<String> labelOf(Item item, String objectPath) {
         return item.getLabel().filter(label -> {
-            if (!label.isEmpty() || !item.isLocked()) return true;
+            if (!label.isEmpty() || !notKnownUnlocked(item)) return true;
             log.debug("The label of {} is hidden while it is locked.", objectPath);
             return false;
         });
@@ -950,6 +951,8 @@ public class Collection implements CollectionInterface {
         final String itemPath = ownItem(path, "lock").orElse(null);
         if (itemPath == null) return false;
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
+        // An item that does not say whether it is locked is asked to lock as well: the caller wants
+        // it locked. The answer below is then false, for a lock that nothing shows.
         if (!item.isLocked()) {
             // No isPrompting check before the call. Locking normally needs no prompt at all --
             // gnome-keyring answers Lock with a non-empty locked list and a "/" path -- and
@@ -987,7 +990,13 @@ public class Collection implements CollectionInterface {
         final String itemPath = ownItem(path, "unlock").orElse(null);
         if (itemPath == null) return false;
         Item item = new Item(Static.Convert.toObjectPath(itemPath), service.getService());
-        if (item.isLocked()) {
+        Optional<Boolean> locked = item.lockedState();
+        if (locked.isEmpty()) {
+            // Not reported as unlocked, and not unlocked either: nothing says that it is locked.
+            log.warn("Item {} does not say whether it is locked.", itemPath);
+            return false;
+        }
+        if (locked.get()) {
             // Before the call, not after. Unlocking a locked item essentially always needs a
             // prompt, and issuing Unlock only to refuse the prompt leaves the provider holding a
             // Prompt object that is never answered nor dismissed -- one per read, for the life of
@@ -1001,7 +1010,7 @@ public class Collection implements CollectionInterface {
                     log.info("Unlock prompt for item {} was dismissed by the user.", itemPath);
                     return false;
                 }
-                return !item.isLocked();
+                return !notKnownUnlocked(item);
             }
             Optional<Pair<List<DBusPath>, DBusPath>> maybeUnlock = service.getService().unlock(List.of(item.getPath()));
             if (maybeUnlock.isEmpty()) {
@@ -1032,7 +1041,7 @@ public class Collection implements CollectionInterface {
             }
         }
         // Authoritative: ask the provider again rather than trusting the prompt result.
-        return !item.isLocked();
+        return !notKnownUnlocked(item);
     }
 
     @Override
@@ -1105,16 +1114,32 @@ public class Collection implements CollectionInterface {
 
         List<DBusPath> items = maybeItems.get();
 
-        // Each item's lock is read once, here.
+        // Each item's lock is read once, here. An item that does not say whether it is locked is
+        // neither unlocked nor read: nothing says that an Unlock call is due, or that a read is.
         List<DBusPath> locked = new ArrayList<>();
+        Set<String> unknown = new HashSet<>();
         for (DBusPath item : items) {
-            if (isItemLocked(item.getPath())) locked.add(item);
+            Optional<Boolean> state = getItem(item.getPath()).flatMap(Item::lockedState);
+            if (state.isEmpty()) {
+                unknown.add(item.getPath());
+            } else if (state.get()) {
+                locked.add(item);
+            }
         }
         Set<String> stillLocked = locked.isEmpty() ? Set.of() : unlockItems(locked);
+        if (!unknown.isEmpty()) {
+            // Not at DEBUG only: the caller gets a map that lacks secrets of the collection.
+            log.warn("{} of {} items do not say whether they are locked; their secrets are not read.",
+                    unknown.size(), items.size());
+        }
 
         Map<String, char[]> passwords = new HashMap<>();
         for (DBusPath item : items) {
             String path = item.getPath();
+            if (unknown.contains(path)) {
+                log.debug("Item {} does not say whether it is locked; not read.", path);
+                continue;
+            }
             if (stillLocked.contains(path)) {
                 log.debug("Item {} stayed locked; not read.", path);
                 continue;
@@ -1232,7 +1257,7 @@ public class Collection implements CollectionInterface {
     @Override
     public boolean isLocked() {
         if (connection != null && connection.isConnected()) {
-            return collection.isLocked();
+            return notKnownUnlocked();
         } else {
             log.error("No D-Bus connection: Cannot check if the collection is locked.");
             return true;
@@ -1253,7 +1278,9 @@ public class Collection implements CollectionInterface {
      */
     private Locking lock(boolean withPrompt) {
         if (collection == null) return Locking.FAILED;
-        // Nothing to do: it is already locked.
+        // Nothing to do: it is already locked. A collection that does not say is asked to lock, as
+        // its caller wants it locked; whether that took hold is read below, and an answer that
+        // cannot be read there is no lock.
         if (collection.isLocked()) return Locking.LOCKED;
         Optional<Pair<List<DBusPath>, DBusPath>> maybeResult = service.getService().lock(lockable());
         if (maybeResult.isEmpty()) {
@@ -1302,7 +1329,17 @@ public class Collection implements CollectionInterface {
     }
 
     private boolean unlock() {
-        if (collection != null && collection.isLocked()) {
+        return unlock(false);
+    }
+
+    /**
+     * @param alsoWhereItDoesNotSay whether to ask a collection to unlock that does not say whether
+     *                              it is locked: the one that this object's own Lock call may have
+     *                              locked. Otherwise only a collection that reports itself locked
+     *                              is asked, and the reads that follow refuse the other.
+     */
+    private boolean unlock(boolean alsoWhereItDoesNotSay) {
+        if (collection != null && collection.lockedState().orElse(alsoWhereItDoesNotSay)) {
             // The stored password works only through gnome-keyring's own interface. On any other
             // provider the prompt is the only way to unlock, password or not.
             if (encryptedCollectionPassword.isEmpty() || unlocksThroughTheDialogOnly() || !service.isGnomeKeyringAvailable()) {
@@ -1319,7 +1356,7 @@ public class Collection implements CollectionInterface {
                         : service.getService().unlock(lockable())
                                 .map(response -> "/".equals(response.b.getPath()) || performPrompt(response.b).isPresent())
                                 .orElse(false);
-                if (unlockAccepted && !collection.isLocked()) {
+                if (unlockAccepted && !notKnownUnlocked()) {
                     isUnlockedOnceWithUserPermission = true;
                     log.debug("Unlocked collection {}", collection.getObjectPath());
                     return true;
@@ -1347,6 +1384,7 @@ public class Collection implements CollectionInterface {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
         boolean lockedHere = false;
+        boolean lockNotConfirmed = false;
         if (!isUnlockedOnceWithUserPermission) {
             // With prompting disabled, only gnome-keyring's stored-password unlock can undo the
             // lock below. Without it the collection would stay locked for every application on
@@ -1356,7 +1394,15 @@ public class Collection implements CollectionInterface {
                 log.debug("Prompting is disabled, and nothing could unlock the collection again; not locking it.");
                 return false;
             }
-            boolean lockedBefore = collection.isLocked();
+            Optional<Boolean> before = collection.lockedState();
+            if (before.isEmpty()) {
+                // Not locked either. A provider that only fails to answer for the property carries
+                // the Lock call out, nothing then shows that the lock took hold or needs undoing,
+                // and the collection stays locked for every application.
+                log.warn("The collection does not say whether it is locked; not locking it to ask for the user's permission.");
+                return false;
+            }
+            boolean lockedBefore = before.get();
             switch (lock(false)) {
                 case LOCKED -> {
                     // unlock() below brings up the provider's dialog, or uses the stored password.
@@ -1368,16 +1414,23 @@ public class Collection implements CollectionInterface {
                     // dialog, and KeePassXC confirms access to its secrets itself. So the collection
                     // is used as it is, as in 1.x.
                     log.debug("The provider locks only through a prompt; using the collection as it is.");
-                    return !collection.isLocked();
+                    return !notKnownUnlocked();
                 }
                 case FAILED -> {
-                    log.error("Failed to lock collection before prompting for user permission.");
-                    return false;
+                    if (collection.lockedState().isPresent()) {
+                        log.error("Failed to lock collection before prompting for user permission.");
+                        return false;
+                    }
+                    // The Lock call went out, and the collection has stopped saying whether it
+                    // took hold. Asked to unlock, rather than left locked for every application.
+                    log.warn("The collection stopped saying whether it is locked after its Lock call; asking to unlock it.");
+                    lockedHere = true;
+                    lockNotConfirmed = true;
                 }
             }
         }
-        unlock();
-        if (lockedHere && isPrompting && collection.isLocked() && canUnlockWithoutPrompt()) {
+        unlock(lockNotConfirmed);
+        if (lockedHere && isPrompting && notKnownUnlocked() && canUnlockWithoutPrompt()) {
             // A stored password that does not unlock the collection, which this call locked:
             // through gnome-keyring's dialog then, rather than leaving the collection locked for
             // every application.
@@ -1385,7 +1438,7 @@ public class Collection implements CollectionInterface {
                     collection.getObjectPath());
             unlockThroughGnomeKeyring(lockable());
         }
-        if (collection.isLocked()) {
+        if (notKnownUnlocked()) {
             log.error("The collection was not unlocked with user permission.");
             return false;
         }
@@ -1655,7 +1708,13 @@ public class Collection implements CollectionInterface {
         // method performs, and the method returns here.
         Optional<de.swiesend.secretservice.Item> maybeItem = getItem(objectPath);
         if (maybeItem.isEmpty()) return true; // getItem is empty only for a null path, rejected above
-        if (!maybeItem.get().isLocked()) return true;
+        Optional<Boolean> itemLocked = maybeItem.get().lockedState();
+        if (itemLocked.isEmpty()) {
+            // Neither unlocked nor read or changed: nothing says that it is unlocked.
+            log.debug("Item {} does not say whether it is locked.", objectPath);
+            return false;
+        }
+        if (!itemLocked.get()) return true;
 
         // No isPrompting check here: unlockItem itself now refuses to raise a prompt the caller
         // opted out of, so the guarantee holds for direct callers of the public method too, and
@@ -1689,12 +1748,33 @@ public class Collection implements CollectionInterface {
     }
 
     /**
-     * Whether the provider reports the item as locked, for the bulk readers, which unlock the
-     * locked items at once and skip those that stay locked. False also when that cannot be read, as
-     * {@link de.swiesend.secretservice.Item#isLocked()} answers then.
+     * Whether the item stayed locked, for the bulk readers, which unlock the locked items at once
+     * and skip those that stay locked. True also when that cannot be read.
      */
     private boolean isItemLocked(String objectPath) {
-        return getItem(objectPath).map(de.swiesend.secretservice.Item::isLocked).orElse(false);
+        return getItem(objectPath).map(Collection::notKnownUnlocked).orElse(false);
+    }
+
+    /**
+     * Whether the collection is locked or does not say: the read for every decision to act on an
+     * unlocked collection, and for {@link #isLocked()}.
+     * {@link de.swiesend.secretservice.Collection#isLocked()} answers {@code false} where the
+     * property cannot be read, which such a decision would take as "unlocked, go ahead".
+     *
+     * <p>{@link #lock(boolean)} asks the other question, whether a lock took hold, and reads
+     * {@code isLocked()}: there an answer that cannot be read is no lock. {@link #unlock()} asks
+     * whether an unlock is due: a collection that does not say is not asked to unlock, and the
+     * reads that follow refuse it. {@link #unlockWithUserPermission()} does not lock such a
+     * collection in the first place, and asks one to unlock that stopped saying after its Lock
+     * call.</p>
+     */
+    private boolean notKnownUnlocked() {
+        return collection.lockedState().orElse(true);
+    }
+
+    /** The same for an item: whether it is locked or does not say. */
+    private static boolean notKnownUnlocked(Item item) {
+        return item.lockedState().orElse(true);
     }
 
     /**

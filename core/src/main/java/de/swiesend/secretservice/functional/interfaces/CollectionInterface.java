@@ -235,6 +235,11 @@ public interface CollectionInterface extends AutoCloseable {
      */
     <R> Optional<R> withSecrets(Function<Map<String, char[]>, R> callback);
 
+    /**
+     * Whether the collection is locked. {@code true} also where the provider does not say, because
+     * its {@code Locked} property cannot be read or the connection is gone: {@code false} means
+     * that the provider reports the collection as unlocked.
+     */
     boolean isLocked();
 
     /**

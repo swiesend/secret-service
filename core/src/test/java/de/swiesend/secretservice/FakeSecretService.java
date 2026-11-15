@@ -627,6 +627,37 @@ public final class FakeSecretService {
     public void setRefuseReadAlias(boolean refuse) { this.refuseReadAlias = refuse; }
     private volatile boolean refuseReadAlias;
 
+    /**
+     * Makes the collection's {@code Locked} property answer with an error, as a provider that is
+     * busy or gone does: the client then does not know whether the collection is locked. The
+     * collection keeps its state, and takes every call as before.
+     */
+    public void setCollectionLockUnreadable(boolean unreadable) { this.collectionLockUnreadable = unreadable; }
+    private volatile boolean collectionLockUnreadable;
+
+    /** The same for the {@code Locked} property of every item. */
+    public void setItemLockUnreadable(boolean unreadable) { this.itemLockUnreadable = unreadable; }
+    private volatile boolean itemLockUnreadable;
+
+    /**
+     * Makes the collection's {@code Locked} property answer with an error from the moment a Lock
+     * call locks the collection: the client's read before the call is answered, and the one after
+     * it is not.
+     */
+    public void setCollectionLockUnreadableOnceLocked(boolean unreadable) { this.collectionLockUnreadableOnceLocked = unreadable; }
+    private volatile boolean collectionLockUnreadableOnceLocked;
+
+    /**
+     * Makes the {@code Locked} property of the collection and of every item answer with a string
+     * in place of the boolean that the specification gives it.
+     */
+    public void setLockedAnswersWithText(boolean text) { this.lockedAnswersWithText = text; }
+    private volatile boolean lockedAnswersWithText;
+
+    private static org.freedesktop.dbus.exceptions.DBusExecutionException lockUnreadable() {
+        return new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: Locked cannot be read");
+    }
+
     /** The attributes that the first item shows; it has none unless a test gives it some. */
     public void setItemAttributes(Map<String, String> attributes) { this.itemAttributes = Map.copyOf(attributes); }
     private volatile Map<String, String> itemAttributes = Map.of();
@@ -887,7 +918,10 @@ public final class FakeSecretService {
             }
             for (DBusPath p : objects) {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
-                if (COLLECTION_PATH.equals(p.getPath())) collectionLocked = true;
+                if (COLLECTION_PATH.equals(p.getPath())) {
+                    collectionLocked = true;
+                    if (collectionLockUnreadableOnceLocked) collectionLockUnreadable = true;
+                }
             }
             // Locked already, as a busy provider has locked when its reply comes late.
             if (!lockReplyDelay.isZero()) {
@@ -1000,7 +1034,10 @@ public final class FakeSecretService {
         public <A> A Get(String iface, String property) {
             alive();
             switch (property) {
-                case "Locked":  return (A) Boolean.valueOf(collectionLocked);
+                case "Locked":
+                    if (collectionLockUnreadable) throw lockUnreadable();
+                    if (lockedAnswersWithText) return (A) "no";
+                    return (A) Boolean.valueOf(collectionLocked);
                 case "Items":   return (A) new Variant<>(itemsHidden() ? new ArrayList<DBusPath>() : items(), "ao");
                 case "Label":   return (A) COLLECTION_LABEL;
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
@@ -1090,7 +1127,10 @@ public final class FakeSecretService {
             switch (property) {
                 // gnome-keyring reports an item as locked whenever its collection is locked, so
                 // the fake does too when asked to. This is what makes the regression reproducible.
-                case "Locked":     return (A) Boolean.valueOf(isLocked(path));
+                case "Locked":
+                    if (itemLockUnreadable) throw lockUnreadable();
+                    if (lockedAnswersWithText) return (A) "no";
+                    return (A) Boolean.valueOf(isLocked(path));
                 case "Attributes": {
                     Map<String, String> shown = ITEM_PATH.equals(path) ? itemAttributes : Map.of();
                     if (hashesItsMetadata(path)) shown = hashed(shown);
