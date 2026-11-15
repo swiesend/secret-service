@@ -63,6 +63,14 @@ import static de.swiesend.secretservice.Static.DEFAULT_PROMPT_TIMEOUT;
 public final class SimpleCollection extends de.swiesend.secretservice.simple.interfaces.SimpleCollection {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleCollection.class);
+
+    // The calls that lock a collection to ask for the user's permission. Cut off between the lock
+    // and the unlock, one leaves its collection locked for every application on the desktop, so
+    // disconnect() waits for them, and none starts afterwards.
+    private static final RunningOperations asking = new RunningOperations(
+            () -> new SecurityException("The D-Bus connection is closed: disconnect() was called."));
+    private static final Duration DISCONNECT_PATIENCE = Duration.ofSeconds(5);
+
     private static final DBusConnection connection = getConnection();
     private static final Thread shutdownHook = setupShutdownHook();
 
@@ -267,12 +275,31 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     }
 
     /**
-     * Close the DBus connection immediately. Waits for the DBus connection to close within 2 seconds.
+     * Close the DBus connection. Waits for the DBus connection to close within 2 seconds.
+     * <p>
+     * A call that has locked a collection to ask for the user's permission
+     * ({@link #unlockWithUserPermission()}, {@link #getSecrets()}, {@link #deleteItem(String)},
+     * {@link #deleteItems(List)}) is waited for first, for up to 5 seconds: without the connection
+     * it cannot unlock the collection again, which then stays locked for every application. A
+     * call that still waits for the user's answer after that is cut off. One of these calls that
+     * starts once <code>disconnect()</code> was called does not run and throws a
+     * {@link SecurityException}. Called from within one of these calls, <code>disconnect()</code>
+     * waits for the others only.
+     * <p>
+     * An interrupt of the calling thread ends the waiting for these calls; the connection is
+     * closed all the same, and the thread's interrupt flag is set again afterwards.
+     * <p>
+     * The connection is shared by every <code>SimpleCollection</code> of the JVM and is not opened
+     * again: none of them works afterwards. The JVM's shutdown hook calls this.
      *
      * @deprecated see class-level deprecation notice.
      */
     @Deprecated(since = "3.0", forRemoval = true)
     synchronized public static boolean disconnect() {
+        return asking.whenIdle(DISCONNECT_PATIENCE, SimpleCollection::closeConnection);
+    }
+
+    private static boolean closeConnection() {
         try {
             if (connection != null && connection.isConnected()) {
                 connection.close();
@@ -385,9 +412,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public void unlockWithUserPermission() throws SecurityException {
-        if (!delegate.unlockWithUserPermission()) {
-            throw new SecurityException("The collection was not unlocked with user permission.");
-        }
+        asking.during(() -> {
+            if (!delegate.unlockWithUserPermission()) {
+                throw new SecurityException("The collection was not unlocked with user permission.");
+            }
+            return null;
+        });
     }
 
     /**
@@ -544,9 +574,11 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
      */
     @Override
     public Map<String, char[]> getSecrets() throws SecurityException {
-        unlockWithUserPermission();
+        return asking.during(() -> {
+            unlockWithUserPermission();
 
-        return delegate.getSecrets().orElse(null);
+            return delegate.getSecrets().orElse(null);
+        });
     }
 
     /**
@@ -561,9 +593,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
     @Override
     public void deleteItem(String objectPath) throws SecurityException {
         if (Static.Utils.isNullOrEmpty(objectPath)) throw new SecurityException("Cannot delete an unspecified item.");
-        if (!delegate.deleteItem(objectPath)) {
-            throw new SecurityException("Failed to delete item. User permission may be denied or the collection may be locked.");
-        }
+        asking.during(() -> {
+            if (!delegate.deleteItem(objectPath)) {
+                throw new SecurityException("Failed to delete item. User permission may be denied or the collection may be locked.");
+            }
+            return null;
+        });
     }
 
     /**
@@ -585,9 +620,12 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
 
         // The delegate asks for the user's permission, once for the list, as deleteItem() leaves
         // it to the delegate: the two then agree on a collection that the provider does not lock.
-        if (!delegate.deleteItems(objectPaths)) {
-            throw new SecurityException("Failed to delete one or more specified items. User permission may be denied or the collection may be locked.");
-        }
+        asking.during(() -> {
+            if (!delegate.deleteItems(objectPaths)) {
+                throw new SecurityException("Failed to delete one or more specified items. User permission may be denied or the collection may be locked.");
+            }
+            return null;
+        });
     }
 
     @Override
