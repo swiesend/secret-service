@@ -146,11 +146,23 @@ public class TransportEncryption implements AutoCloseable {
     static final class SessionKey implements SecretKey {
         @java.io.Serial
         private static final long serialVersionUID = 1L;
-        private final byte[] key;
+        private final transient byte[] key;
         private volatile boolean destroyed = false;
 
         SessionKey(byte[] key) {
             this.key = key.clone();
+        }
+
+        // A SecretKey is Serializable. This one is not written out: the key would leave the
+        // process in a stream that destroy() does not reach.
+        @java.io.Serial
+        private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+            throw new java.io.NotSerializableException(SessionKey.class.getName());
+        }
+
+        @java.io.Serial
+        private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+            throw new java.io.NotSerializableException(SessionKey.class.getName());
         }
 
         @Override
