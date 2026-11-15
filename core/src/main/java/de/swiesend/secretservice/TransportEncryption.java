@@ -34,6 +34,12 @@ public class TransportEncryption implements AutoCloseable {
      */
     private static final int SESSION_ATTEMPTS = 4;
     private static final Logger log = LoggerFactory.getLogger(TransportEncryption.class);
+    /**
+     * The JDK's default generator, for the initialization vectors. One for all sessions: a
+     * {@code SecureRandom} is thread-safe, and one made per secret seeds itself from the system
+     * for each.
+     */
+    private static final SecureRandom RANDOM = new SecureRandom();
     private de.swiesend.secretservice.Service service;
     private DHParameterSpec dhParameters = null;
     private KeyPair keypair = null;
@@ -363,13 +369,14 @@ public class TransportEncryption implements AutoCloseable {
             // be empty.
             if (plain == null) return Optional.empty();
 
+            SessionKey key = null;
             try {
                 if (service == null) {
                     log.error("Missing session. Call Initialized.openSession() first.");
                     return Optional.empty();
                 }
                 // Read once: clear() can drop the key while this runs.
-                final SessionKey key = sessionKey;
+                key = sessionKey;
                 if (key == null) {
                     log.error("Missing session key. Call Opened.generateSessionKey() first.");
                     return Optional.empty();
@@ -377,8 +384,7 @@ public class TransportEncryption implements AutoCloseable {
 
                 // secret.parameter - 16 byte AES initialization vector
                 final byte[] salt = new byte[toBytes(AES_BITS)];
-                SecureRandom random = SecureRandom.getInstance(Static.Algorithm.SHA1_PRNG);
-                random.nextBytes(salt);
+                RANDOM.nextBytes(salt);
                 IvParameterSpec ivSpec = new IvParameterSpec(salt);
 
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
@@ -396,14 +402,26 @@ public class TransportEncryption implements AutoCloseable {
                      NoSuchAlgorithmException e) {
                 log.error("Could not encrypt the secret", e);
             } catch (IllegalStateException e) {
-                // The key was destroyed after it was read above: the session closed meanwhile.
-                log.error("The session was closed while a secret was being encrypted.");
+                if (key != null && key.isDestroyed()) {
+                    // After it was read above: the session closed meanwhile.
+                    log.error("The session was closed while a secret was being encrypted.");
+                } else {
+                    log.error("Could not encrypt the secret", e);
+                }
             } finally {
                 Secret.clear(plain);
             }
             return Optional.empty();
         }
 
+        /**
+         * Decrypts a secret of this session.
+         *
+         * @param secret a secret that names this session, as the provider returns it for one
+         * @return the secret's characters, in the charset that its content type names; empty for
+         *         no secret, a secret without a value, a secret of another session, one that this
+         *         session's key does not decrypt, and once the session is cleared
+         */
         public Optional<char[]> decrypt(Secret secret) {
 
             if (secret == null) return Optional.empty();
@@ -414,12 +432,27 @@ public class TransportEncryption implements AutoCloseable {
                 log.error("Missing session key. Call Opened.generateSessionKey() first.");
                 return Optional.empty();
             }
+            final byte[] sealed = secret.getSecretValue();
+            if (sealed == null) {
+                log.error("Could not decrypt the secret: it holds no value.");
+                return Optional.empty();
+            }
+            // A secret is encrypted under the key of the session that it names. Under the key of
+            // another session about one in 256 still decrypts, to bytes that are not the secret:
+            // the padding of the last block then fits by chance. libsecret refuses such a secret
+            // in the same way.
+            final Session own = session;
+            final DBusPath named = secret.getSession();
+            if (own == null || named == null || !own.getPath().getPath().equals(named.getPath())) {
+                log.error("Could not decrypt the secret: it names another session than the one that decrypts it.");
+                return Optional.empty();
+            }
             byte[] decrypted = new byte[0];
             try {
                 IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
                 cipher.init(Cipher.DECRYPT_MODE, key, ivSpec);
-                decrypted = cipher.doFinal(secret.getSecretValue());
+                decrypted = cipher.doFinal(sealed);
                 // In the charset that the secret's content type names; UTF-8 where it names none.
                 return Optional.of(Secret.toChars(decrypted, secret.getCharset()));
             } catch (InvalidAlgorithmParameterException |
@@ -431,8 +464,12 @@ public class TransportEncryption implements AutoCloseable {
                 log.error("Could not decrypt the secret", e);
                 return Optional.empty();
             } catch (IllegalStateException e) {
-                // The key was destroyed after it was read above: the session closed meanwhile.
-                log.error("The session was closed while a secret was being decrypted.");
+                if (key.isDestroyed()) {
+                    // After it was read above: the session closed meanwhile.
+                    log.error("The session was closed while a secret was being decrypted.");
+                } else {
+                    log.error("Could not decrypt the secret", e);
+                }
                 return Optional.empty();
             } finally {
                 Secret.clear(decrypted);
