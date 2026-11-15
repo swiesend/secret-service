@@ -253,17 +253,32 @@ public interface CollectionInterface extends AutoCloseable {
 
     /**
      * Makes the user confirm access, against CVE-2018-19358. {@link #getSecrets()} and
-     * {@link #withSecrets(Function)} require it; {@link #deleteItem(String)} and
-     * {@link #deleteItems(List)} ask for it first. Reading a single secret does not.
+     * {@link #withSecrets(Function)} require it, and do nothing where it returns {@code false}.
+     * {@link #deleteItem(String)} and {@link #deleteItems(List)} ask for it too, and do nothing
+     * where the user refuses. Reading a single secret does not ask.
      *
      * <p>Where the provider locks without a prompt, as gnome-keyring does, the collection is
      * locked and then unlocked through the provider's dialog, once per collection object, or on
      * gnome-keyring with the password that the collection was opened with. A provider that locks
      * only through a prompt, as KeePassXC does, confirms access to its secrets itself, and the
-     * collection is used as it is. With prompting disabled, a collection that only the dialog
-     * could unlock again is not locked, and the call returns {@code false}.</p>
+     * collection is used as it is.</p>
      *
-     * @return whether the collection is unlocked afterwards
+     * <p>A collection that the provider does not lock at all, as gnome-keyring's session
+     * collection, has no dialog to ask in. The call returns {@code false} for it, so its secrets
+     * are not read in bulk. Its items are deleted all the same: a deletion hands out no secret,
+     * and there is no other way to delete them. Where the {@code Lock} call gets no answer,
+     * nothing says that the provider does not lock the collection, and a deletion is refused as
+     * well.</p>
+     *
+     * <p><b>After {@link #disablePrompt()} the user is not asked, and access is the provider's
+     * alone to enforce.</b> There is no dialog to ask in, so the collection is neither locked nor
+     * refused by the library: the call returns whether the provider has the collection unlocked,
+     * and the four methods above work on an unlocked collection as the methods that need no
+     * permission do. Only a collection that was opened with a password on gnome-keyring is still
+     * locked and unlocked again, with that password.</p>
+     *
+     * @return whether the user confirmed access; after {@link #disablePrompt()}, whether the
+     *         collection is unlocked
      */
     boolean unlockWithUserPermission();
 
@@ -287,8 +302,27 @@ public interface CollectionInterface extends AutoCloseable {
 
     boolean unlockItem(String objectPath);
 
+    /**
+     * Stops this collection from showing a dialog of the provider: a prompt that the provider
+     * answers a call with is dismissed, and the call returns {@code false} or
+     * {@code Optional.empty()} where it needed one. A collection that only a dialog unlocks so
+     * stays locked.
+     *
+     * <p>It also ends the library's own safeguard, {@link #unlockWithUserPermission()}, which asks
+     * the user through such a dialog: after this call, who reads all secrets of an unlocked
+     * collection or deletes its items is for the provider alone to enforce. An application that
+     * wants the user asked keeps prompting enabled.</p>
+     *
+     * @return {@code true}
+     */
     boolean disablePrompt();
 
+    /**
+     * Lets this collection show the provider's dialogs again, and with them ask for the user's
+     * permission, as a new collection does.
+     *
+     * @return {@code true}
+     */
     boolean enablePrompt();
 
     /**

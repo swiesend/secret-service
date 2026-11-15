@@ -615,7 +615,10 @@ public class Collection implements CollectionInterface {
         final String objectPath = ownItem(path, "delete").orElse(null);
         if (objectPath == null) return false;
 
-        unlockWithUserPermission();
+        if (userPermission() == Permission.REFUSED) {
+            log.info("Without the user's permission the item is not deleted.");
+            return false;
+        }
         return deleteItemAsked(objectPath, Set.of(), new HashSet<>());
     }
 
@@ -725,9 +728,8 @@ public class Collection implements CollectionInterface {
             objectPaths.add(item.get());
         }
         // Asked once for all of them: deleteItem() would ask again for every item.
-        unlockWithUserPermission();
-        if (notKnownUnlocked()) {
-            log.info("The collection stayed locked, so no item is deleted.");
+        if (userPermission() == Permission.REFUSED) {
+            log.info("Without the user's permission no item is deleted.");
             return false;
         }
 
@@ -1269,7 +1271,11 @@ public class Collection implements CollectionInterface {
         return lock(true) == Locking.LOCKED;
     }
 
-    private enum Locking { LOCKED, NEEDS_A_PROMPT, FAILED }
+    /**
+     * {@code NOT_LOCKED}: the provider answered the Lock call, and the collection is not locked.
+     * {@code FAILED}: the call got no answer, and the collection did not lock either.
+     */
+    private enum Locking { LOCKED, NEEDS_A_PROMPT, NOT_LOCKED, FAILED }
 
     /**
      * @param withPrompt whether to carry out a lock that the provider puts behind a prompt. When
@@ -1306,7 +1312,7 @@ public class Collection implements CollectionInterface {
             log.info("Locked collection {}", collection.getObjectPath());
             // Daemon acknowledged the lock; poll only so the "Locked" property has time to
             // propagate (bounded by MAX_DELAY_MILLIS, returns on the first successful check).
-            return awaitUntil(collection::isLocked) ? Locking.LOCKED : Locking.FAILED;
+            return awaitUntil(collection::isLocked) ? Locking.LOCKED : Locking.NOT_LOCKED;
         }
         if (promptRequired) {
             // KeePassXC answers Lock with a prompt and locks only once the prompt is called. It
@@ -1321,11 +1327,11 @@ public class Collection implements CollectionInterface {
                 awaitUntil(collection::isLocked);
             }
             // The provider's state, not the prompt result, is the authority.
-            return collection.isLocked() ? Locking.LOCKED : Locking.FAILED;
+            return collection.isLocked() ? Locking.LOCKED : Locking.NOT_LOCKED;
         }
         // Neither locked immediately nor prompted (e.g. a provider that does not support locking
         // this collection): reflect the daemon's current view without a long wait.
-        return collection.isLocked() ? Locking.LOCKED : Locking.FAILED;
+        return collection.isLocked() ? Locking.LOCKED : Locking.NOT_LOCKED;
     }
 
     private boolean unlock() {
@@ -1381,18 +1387,36 @@ public class Collection implements CollectionInterface {
 
     @Override
     public boolean unlockWithUserPermission() {
+        return userPermission() == Permission.GRANTED;
+    }
+
+    /**
+     * What asking the user came to. {@code CANNOT_ASK}: the provider does not lock the collection,
+     * which it reports as unlocked, so there is no unlock dialog to ask in. The bulk reads take
+     * that as a refusal. The deletions go ahead, as they did in 1.x and 2.x: they hand out no
+     * secret, and the items of such a collection could not be deleted at all otherwise.
+     */
+    private enum Permission { GRANTED, REFUSED, CANNOT_ASK }
+
+    private Permission userPermission() {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
         boolean lockedHere = false;
         boolean lockNotConfirmed = false;
         if (!isUnlockedOnceWithUserPermission) {
-            // With prompting disabled, only gnome-keyring's stored-password unlock can undo the
-            // lock below. Without it the collection would stay locked for every application on
-            // the desktop -- for the login keyring, all of them would start to prompt -- and the
-            // caller would still be refused.
+            // With prompting disabled there is no dialog to ask the user in, and the library does
+            // not answer in the user's place: who gets at the collection is then the provider's
+            // alone to enforce. So the collection is used as the provider gives it, unlocked or
+            // not, for the bulk reads and the deletions alike.
+            //
+            // It is not locked either. Only gnome-keyring's stored-password unlock, which the
+            // branch below takes, can undo the lock without a dialog; without it the collection
+            // would stay locked for every application on the desktop, and for the login keyring
+            // all of them would start to prompt.
             if (!isPrompting && !canUnlockWithoutPrompt()) {
-                log.debug("Prompting is disabled, and nothing could unlock the collection again; not locking it.");
-                return false;
+                log.debug("Prompting is disabled: the user is not asked, and the provider decides on access.");
+                unlock();
+                return notKnownUnlocked() ? Permission.REFUSED : Permission.GRANTED;
             }
             Optional<Boolean> before = collection.lockedState();
             if (before.isEmpty()) {
@@ -1400,10 +1424,11 @@ public class Collection implements CollectionInterface {
                 // the Lock call out, nothing then shows that the lock took hold or needs undoing,
                 // and the collection stays locked for every application.
                 log.warn("The collection does not say whether it is locked; not locking it to ask for the user's permission.");
-                return false;
+                return Permission.REFUSED;
             }
             boolean lockedBefore = before.get();
-            switch (lock(false)) {
+            Locking locking = lock(false);
+            switch (locking) {
                 case LOCKED -> {
                     // unlock() below brings up the provider's dialog, or uses the stored password.
                     lockedHere = !lockedBefore;
@@ -1414,18 +1439,28 @@ public class Collection implements CollectionInterface {
                     // dialog, and KeePassXC confirms access to its secrets itself. So the collection
                     // is used as it is, as in 1.x.
                     log.debug("The provider locks only through a prompt; using the collection as it is.");
-                    return !notKnownUnlocked();
+                    return notKnownUnlocked() ? Permission.REFUSED : Permission.GRANTED;
                 }
-                case FAILED -> {
-                    if (collection.lockedState().isPresent()) {
+                case NOT_LOCKED, FAILED -> {
+                    Optional<Boolean> after = collection.lockedState();
+                    if (after.isEmpty()) {
+                        // The Lock call went out, and the collection has stopped saying whether it
+                        // took hold. Asked to unlock, rather than left locked for every application.
+                        log.warn("The collection stopped saying whether it is locked after its Lock call; asking to unlock it.");
+                        lockedHere = true;
+                        lockNotConfirmed = true;
+                    } else if (after.get()) {
+                        // It locked in the meantime.
+                        lockedHere = !lockedBefore;
+                    } else if (locking == Locking.NOT_LOCKED) {
+                        // The provider answered and does not lock this collection. gnome-keyring's
+                        // session collection: Lock names it as locked, and it stays unlocked.
+                        log.info("The provider does not lock the collection, so the user cannot be asked for permission.");
+                        return Permission.CANNOT_ASK;
+                    } else {
                         log.error("Failed to lock collection before prompting for user permission.");
-                        return false;
+                        return Permission.REFUSED;
                     }
-                    // The Lock call went out, and the collection has stopped saying whether it
-                    // took hold. Asked to unlock, rather than left locked for every application.
-                    log.warn("The collection stopped saying whether it is locked after its Lock call; asking to unlock it.");
-                    lockedHere = true;
-                    lockNotConfirmed = true;
                 }
             }
         }
@@ -1440,12 +1475,12 @@ public class Collection implements CollectionInterface {
         }
         if (notKnownUnlocked()) {
             log.error("The collection was not unlocked with user permission.");
-            return false;
+            return Permission.REFUSED;
         }
         // Once per collection object, also where the stored password unlocked it: the next call
         // does not lock it again.
         isUnlockedOnceWithUserPermission = true;
-        return true;
+        return Permission.GRANTED;
     }
 
     @Override

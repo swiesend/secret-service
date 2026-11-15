@@ -299,6 +299,21 @@ public final class FakeSecretService {
     private volatile boolean refuseCollectionUnlock;
 
     /**
+     * Makes {@code Lock} answer for the collection with nothing locked and no prompt, and leave it
+     * unlocked: a collection that the provider does not lock. A client that locks it to ask the
+     * user for permission then cannot ask.
+     */
+    public void setCollectionCannotBeLocked(boolean cannot) { this.collectionCannotBeLocked = cannot; }
+    private volatile boolean collectionCannotBeLocked;
+
+    /**
+     * Makes {@code Lock} name the collection as locked, with no prompt, and leave it unlocked: as
+     * gnome-keyring answers for its session collection.
+     */
+    public void setLockNamesTheCollectionWithoutLocking(boolean names) { this.lockNamesWithoutLocking = names; }
+    private volatile boolean lockNamesWithoutLocking;
+
+    /**
      * Makes item Lock/Unlock require a prompt that would <b>succeed</b>. Without this the fake
      * completes those operations inline, so a test cannot tell "the client refused to prompt" from
      * "the operation failed anyway" -- both give the same answer. With it, the operation succeeds
@@ -911,6 +926,14 @@ public final class FakeSecretService {
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(prompt.path));
             }
             boolean collectionRequested = objects.stream().anyMatch(p -> COLLECTION_PATH.equals(p.getPath()));
+            if (collectionRequested && lockNamesWithoutLocking) {
+                return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
+            }
+            if (collectionRequested && collectionCannotBeLocked) {
+                // A late reply here is one that says nothing about a lock.
+                delayLockReply();
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
+            }
             if (collectionRequested && requirePromptForCollectionLock && !collectionLocked) {
                 // As for the item above: locked only when a test answers the prompt.
                 FakePrompt prompt = awaitApproval(() -> collectionLocked = true, null);
@@ -924,14 +947,17 @@ public final class FakeSecretService {
                 }
             }
             // Locked already, as a busy provider has locked when its reply comes late.
-            if (!lockReplyDelay.isZero()) {
-                try {
-                    Thread.sleep(lockReplyDelay.toMillis());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
+            delayLockReply();
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
+        }
+
+        private void delayLockReply() {
+            if (lockReplyDelay.isZero()) return;
+            try {
+                Thread.sleep(lockReplyDelay.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         @Override

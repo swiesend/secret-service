@@ -583,10 +583,10 @@ public final class SimpleCollection extends de.swiesend.secretservice.simple.int
         // Nothing to delete. 1.x looped over the empty list and returned; it was never an error.
         if (objectPaths.isEmpty()) return;
 
-        unlockWithUserPermission();
-
+        // The delegate asks for the user's permission, once for the list, as deleteItem() leaves
+        // it to the delegate: the two then agree on a collection that the provider does not lock.
         if (!delegate.deleteItems(objectPaths)) {
-            throw new SecurityException("Failed to delete one or more specified items.");
+            throw new SecurityException("Failed to delete one or more specified items. User permission may be denied or the collection may be locked.");
         }
     }
 
