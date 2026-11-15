@@ -23,6 +23,8 @@ public class SignalHandler implements DBusSigHandler {
     private Logger log = LoggerFactory.getLogger(getClass());
     private DBusConnection connection = null;
     private String sourcePath = null;
+    /** Who owns the bus name of the provider whose signals this handler takes, or null for any sender's. */
+    private volatile BusNameOwner provider = null;
     private List<AutoCloseable> registrations = new ArrayList<>();
     private DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
@@ -65,10 +67,29 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath) {
+        connect(connection, signals, sourcePath, null);
+    }
+
+    /**
+     * As {@link #connect(DBusConnection, List, String)}, for the signals of {@code provider} only, a
+     * bus name such as {@code org.freedesktop.secrets}.
+     * <p>
+     * A signal's match rule names no sender, and any client on the bus can send a signal for any
+     * path: a {@code Completed} that answers a prompt with a consent or a refusal, or an
+     * {@code ItemCreated} that names an item. With a {@code provider}, this handler takes a signal
+     * only from the unique name that owns that bus name, and none while nobody owns it or the owner
+     * cannot be read. It follows the owner through the bus's {@code NameOwnerChanged}, see
+     * {@link BusNameOwner}: a signal costs no call to the bus.
+     *
+     * @param provider the bus name whose owner's signals count, or {@code null} for any sender's
+     */
+    public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath,
+                        String provider) {
         if (this.connection == null) {
             this.connection = connection;
         }
         this.sourcePath = sourcePath;
+        this.provider = provider == null ? null : BusNameOwner.of(connection, provider);
         if (signals != null) {
             try {
                 for (Class sc : signals) {
@@ -111,6 +132,17 @@ public class SignalHandler implements DBusSigHandler {
         }
         connection = null;
         sourcePath = null;
+        provider = null;
+    }
+
+    /**
+     * Whether the provider sent {@code s}: always, where {@link #connect} named none. On the thread
+     * that dispatches the signals, so without a call to the bus: any client can send signals in
+     * any number, and each call would hold up the provider's own.
+     */
+    private boolean sentByProvider(DBusSignal s) {
+        final BusNameOwner name = provider;
+        return name == null || name.isOwner(s.getSource());
     }
 
     @Override
@@ -126,6 +158,13 @@ public class SignalHandler implements DBusSigHandler {
             } catch (Exception e) {
                 // In case s.getPath() throws or is null, fall through and handle
             }
+        }
+
+        // Only the provider's signals: a prompt's answer and a created item's path are taken from
+        // them, and any client on the bus can send one.
+        if (!sentByProvider(s)) {
+            log.debug("Ignored a signal that the provider did not send, from {}.", s.getSource());
+            return;
         }
 
         synchronized (handled) {
@@ -258,6 +297,9 @@ public class SignalHandler implements DBusSigHandler {
     public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
         // Before the action, which shows the prompt: it would wait for an answer that nobody collects.
         Objects.requireNonNull(timeout, "timeout must not be null");
+        // On the caller's thread, where an owner that could not be read before is read again.
+        final BusNameOwner name = provider;
+        if (name != null) name.read();
         final int init = count;
 
         Optional<Prompt> maybePrompt = Optional.empty();
