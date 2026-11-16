@@ -121,6 +121,22 @@ class UnreadableLockTest {
     }
 
     @Test
+    void aCollectionThatThisCallLockedIsAskedToUnlockThoughItDoesNotSay() throws Exception {
+        collection = harness.start(false);
+        fake = harness.fake();
+        // The Lock call takes hold and the collection says so; the next read, the one that
+        // decides whether to unlock, gets no answer.
+        fake.setCollectionLockUnreadableOnceAfterLocking(1);
+
+        assertTrue(collection.unlockWithUserPermission());
+
+        assertEquals(List.of(FakeSecretService.COLLECTION_PATH), fake.lockCalls());
+        assertTrue(fake.unlockCalls().contains(FakeSecretService.COLLECTION_PATH), "Unlock was sent");
+        assertFalse(fake.isCollectionLocked(), "and the collection is not left locked");
+    }
+
+
+    @Test
     void aLockedPropertyOfAnotherTypeIsNoAnswer() throws Exception {
         collection = harness.start(false);
         fake = harness.fake();

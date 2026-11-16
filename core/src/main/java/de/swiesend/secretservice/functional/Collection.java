@@ -1373,8 +1373,8 @@ public class Collection implements CollectionInterface {
 
     /**
      * @param alsoWhereItDoesNotSay whether to ask a collection to unlock that does not say whether
-     *                              it is locked: the one that this object's own Lock call may have
-     *                              locked. Otherwise only a collection that reports itself locked
+     *                              it is locked: the one that this object's own Lock call locked,
+     *                              or may have. Otherwise only a collection that reports itself locked
      *                              is asked, and the reads that follow refuse the other.
      */
     private boolean unlock(boolean alsoWhereItDoesNotSay) {
@@ -1434,8 +1434,9 @@ public class Collection implements CollectionInterface {
     private Permission userPermission() {
         // Lock before unlocking to force a user prompt, preventing silent access by malicious apps.
         // Applies to all collections (not just default) as the safer policy (CVE-2018-19358).
+        // Whether this call locked the collection, or may have: its Lock call went out and
+        // nothing says that it did not take hold.
         boolean lockedHere = false;
-        boolean lockNotConfirmed = false;
         if (!isUnlockedOnceWithUserPermission) {
             // With prompting disabled there is no dialog to ask the user in, and the library does
             // not answer in the user's place: who gets at the collection is then the provider's
@@ -1481,7 +1482,6 @@ public class Collection implements CollectionInterface {
                         // took hold. Asked to unlock, rather than left locked for every application.
                         log.warn("The collection stopped saying whether it is locked after its Lock call; asking to unlock it.");
                         lockedHere = true;
-                        lockNotConfirmed = true;
                     } else if (after.get()) {
                         // It locked in the meantime.
                         lockedHere = !lockedBefore;
@@ -1497,7 +1497,9 @@ public class Collection implements CollectionInterface {
                 }
             }
         }
-        unlock(lockNotConfirmed);
+        // A collection that this call locked is asked to unlock also where it does not say whether
+        // it is locked at this moment: it would stay locked for every application otherwise.
+        unlock(lockedHere);
         if (lockedHere && isPrompting && notKnownUnlocked() && canUnlockWithoutPrompt()) {
             // A stored password that does not unlock the collection, which this call locked:
             // through gnome-keyring's dialog then, rather than leaving the collection locked for
@@ -1833,8 +1835,8 @@ public class Collection implements CollectionInterface {
      * {@code isLocked()}: there an answer that cannot be read is no lock. {@link #unlock()} asks
      * whether an unlock is due: a collection that does not say is not asked to unlock, and the
      * reads that follow refuse it. {@link #unlockWithUserPermission()} does not lock such a
-     * collection in the first place, and asks one to unlock that stopped saying after its Lock
-     * call.</p>
+     * collection in the first place, and asks one to unlock that it locked itself, or that stopped
+     * saying after its Lock call.</p>
      */
     private boolean notKnownUnlocked() {
         return collection.lockedState().orElse(true);
