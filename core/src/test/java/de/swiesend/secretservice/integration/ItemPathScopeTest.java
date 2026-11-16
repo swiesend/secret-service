@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -218,6 +219,27 @@ class ItemPathScopeTest {
         assertFalse(collection.deleteItem(throughTheAlias));
         assertNothingReachedTheProvider();
         assertTrue(fake.hasItem(OWN), "the item with the same id in this collection is kept");
+    }
+
+    /**
+     * No factory hands out a collection object without its collection. One that lost it by a
+     * mistake of the library has nothing to judge a path by, and so takes none.
+     */
+    @Test
+    void aCollectionObjectWithoutItsCollectionTakesNoPath() throws Exception {
+        start();
+        Field field = de.swiesend.secretservice.functional.Collection.class.getDeclaredField("collection");
+        field.setAccessible(true);
+        Object own = field.get(collection);
+        field.set(collection, null);
+        try {
+            assertEquals(Optional.empty(), collection.getItemLabel(FOREIGN));
+            assertEquals(Optional.empty(), collection.getAttributes(FOREIGN));
+            assertEquals(Optional.empty(), collection.getItemLabel(OWN), "its own item neither");
+            assertEquals(List.of(), fake.foreignItemCalls(), "no call reached the other collection's item");
+        } finally {
+            field.set(collection, own);
+        }
     }
 
     @Test

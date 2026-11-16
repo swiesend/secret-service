@@ -1682,8 +1682,8 @@ public class Collection implements CollectionInterface {
      * as the collection's, and none where the list cannot be read.</p>
      */
     private Optional<String> ownItem(String objectPath) {
-        if (collection == null) return Optional.ofNullable(objectPath);
-        if (objectPath == null) return Optional.empty();
+        // Without its collection this object has nothing to judge a path by, and takes none.
+        if (collection == null || objectPath == null) return Optional.empty();
         String own = collection.getObjectPath();
         if (objectPath.startsWith(own + "/")
                 && PATH_ELEMENTS.matcher(objectPath.substring(own.length() + 1)).matches()) {
