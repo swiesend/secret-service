@@ -411,6 +411,11 @@ public class SignalHandler implements DBusSigHandler {
             executor.shutdownNow();
         }
 
+        if (received == null) {
+            // A last look before giving up: the answer may have arrived since the buffer was last
+            // read, as from a provider that answers and leaves the bus at once.
+            received = newestSince(init, signal, path);
+        }
         if (received == null && unanswerable) {
             log.warn("Stopped waiting for the signal ({}) because {}.", path, gaveUp);
         } else if (received == null) {
