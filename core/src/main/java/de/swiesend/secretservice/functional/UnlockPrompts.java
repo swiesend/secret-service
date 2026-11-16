@@ -121,9 +121,8 @@ final class UnlockPrompts {
         Objects.requireNonNull(timeout, "timeout must not be null");
         // An answer is told from another client's signal by the unique name of the provider.
         // Read once for the connection and followed from then on, as the signal handlers do.
-        String provider = following
-                ? BusNameOwner.of(service.getConnection(), Static.Service.SECRETS).read().orElse("")
-                : "";
+        BusNameOwner owner = BusNameOwner.of(service.getConnection(), Static.Service.SECRETS);
+        String provider = following ? owner.read().orElse("") : "";
         if (provider.isEmpty()) {
             // Through the prompt's own wait, which leaves an unlock prompt of gnome-keyring open as well.
             Optional<Pair<List<DBusPath>, DBusPath>> reply = service.unlock(objects);
@@ -188,6 +187,18 @@ final class UnlockPrompts {
                         log.debug("Collection {} was unlocked while its unlock prompt ({}) waited.",
                                 collection, open.prompt);
                         return Unlock.DONE;
+                    }
+                    // Nothing answers once gnome-keyring has left the bus or the connection has
+                    // closed: the prompt went with it.
+                    owner.read();
+                    boolean gone = owner.hasLost(open.provider);
+                    if (gone || !service.getConnection().isConnected()) {
+                        synchronized (this) {
+                            forget(open);
+                        }
+                        log.warn("Stopped waiting on gnome-keyring's unlock prompt ({}): {}.", open.prompt,
+                                gone ? "the provider left the bus" : "the connection closed");
+                        return Unlock.NO_ANSWER;
                     }
                 }
             }

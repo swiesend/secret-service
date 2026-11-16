@@ -20,6 +20,8 @@ import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 public class SignalHandler implements DBusSigHandler {
 
     private final static int bufferSize = 1024;
+    /** How often an await looks after the provider's owner: every tenth of its ticks, once a second. */
+    private static final int OWNER_CHECK_TICKS = 10;
     private Logger log = LoggerFactory.getLogger(getClass());
     private DBusConnection connection = null;
     private String sourcePath = null;
@@ -298,8 +300,10 @@ public class SignalHandler implements DBusSigHandler {
         // Before the action, which shows the prompt: it would wait for an answer that nobody collects.
         Objects.requireNonNull(timeout, "timeout must not be null");
         // On the caller's thread, where an owner that could not be read before is read again.
+        // Only this name can answer: the wait ends when it has left the bus.
         final BusNameOwner name = provider;
-        if (name != null) name.read();
+        final String answers = name == null ? null : name.read().orElse(null);
+        final DBusConnection waitsOn = connection;
         final int init = count;
 
         Optional<Prompt> maybePrompt = Optional.empty();
@@ -346,9 +350,13 @@ public class SignalHandler implements DBusSigHandler {
 
         S received = null;
         String gaveUp = "it was interrupted";
+        // Once the connection has closed or the provider has left the bus, nothing answers, and
+        // there is no prompt left to dismiss.
+        boolean unanswerable = false;
         try {
             long start = System.nanoTime();
             long nanos = nanos(timeout);
+            int ticks = 0;
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {
@@ -357,7 +365,17 @@ public class SignalHandler implements DBusSigHandler {
                 } else if (now - start > nanos) {
                     gaveUp = "it exceeded the timeout of " + timeout.getSeconds() + " seconds";
                     break;
+                } else if (waitsOn != null && !waitsOn.isConnected()) {
+                    gaveUp = "the connection closed";
+                    unanswerable = true;
+                    break;
+                } else if (name != null && name.hasLost(answers)) {
+                    gaveUp = "the provider left the bus";
+                    unanswerable = true;
+                    break;
                 }
+                // Asks the bus only where the owner's changes are not followed.
+                if (name != null && ++ticks % OWNER_CHECK_TICKS == 0) name.read();
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
             }
         } catch (InterruptedException e) {
@@ -369,7 +387,9 @@ public class SignalHandler implements DBusSigHandler {
             executor.shutdownNow();
         }
 
-        if (received == null) {
+        if (received == null && unanswerable) {
+            log.warn("Stopped waiting for the signal ({}) because {}.", path, gaveUp);
+        } else if (received == null) {
             // Timed out or interrupted, also before the wait began: a prompt still open would
             // wait for an answer that nobody collects.
             final String reason = gaveUp;

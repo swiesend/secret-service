@@ -65,8 +65,10 @@ public class Prompt extends Messaging implements de.swiesend.secretservice.inter
      *
      * @param path    Objectpath of the prompt.
      * @param timeout Duration until the prompt times out.
-     * @return Completed, or null if user input exceeds the timeout, or if {@code path} is "/", the
-     *         Secret Service's answer when no prompt is needed: there is no prompt to wait for.
+     * @return Completed, or null if user input exceeds the timeout, if the provider has left the
+     *         bus or the connection has closed, when nothing can answer any more, or if
+     *         {@code path} is "/", the Secret Service's answer when no prompt is needed: there is
+     *         no prompt to wait for.
      * @see Completed
      */
     public Completed await(DBusPath path, Duration timeout) {

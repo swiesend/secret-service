@@ -86,6 +86,14 @@ public final class BusNameOwner {
     }
 
     /**
+     * Whether {@code uniqueName} is known to own the name no longer: another name does, or none.
+     * Not while the owner cannot be read. Asks the bus nothing.
+     */
+    public boolean hasLost(String uniqueName) {
+        return uniqueName != null && known && !uniqueName.equals(owner);
+    }
+
+    /**
      * The owner's unique name, or empty where nobody owns the name or it cannot be read. Asks the
      * bus where the owner is not known, or its changes are not followed: not for the thread that
      * dispatches the signals.
