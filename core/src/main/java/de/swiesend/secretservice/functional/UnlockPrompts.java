@@ -3,10 +3,12 @@ package de.swiesend.secretservice.functional;
 import de.swiesend.secretservice.Pair;
 import de.swiesend.secretservice.Prompt;
 import de.swiesend.secretservice.Service;
+import de.swiesend.secretservice.Static;
+import de.swiesend.secretservice.handlers.BusNameOwner;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 import org.freedesktop.dbus.exceptions.DBusException;
-import org.freedesktop.dbus.interfaces.DBus;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -117,7 +119,11 @@ final class UnlockPrompts {
                   Supplier<Optional<Boolean>> lockedState) {
         // Before the prompt is shown, which nothing could end then.
         Objects.requireNonNull(timeout, "timeout must not be null");
-        if (!following) {
+        // An answer is told from another client's signal by the unique name of the provider.
+        // Read once for the connection and followed from then on, as the signal handlers do.
+        BusNameOwner owner = BusNameOwner.of(service.getConnection(), Static.Service.SECRETS);
+        String provider = following ? owner.read().orElse("") : "";
+        if (provider.isEmpty()) {
             // Through the prompt's own wait, which leaves an unlock prompt of gnome-keyring open as well.
             Optional<Pair<List<DBusPath>, DBusPath>> reply = service.unlock(objects);
             if (reply.isEmpty()) return Unlock.NO_ANSWER;
@@ -126,7 +132,6 @@ final class UnlockPrompts {
             Prompt.Completed completed = prompt.await(path, timeout);
             return completed == null ? Unlock.NO_ANSWER : completed.dismissed ? Unlock.REFUSED : Unlock.DONE;
         }
-        String provider = secretsOwner(service.getConnection());
         Open open;
         boolean shown;
         synchronized (this) {
@@ -183,6 +188,18 @@ final class UnlockPrompts {
                                 collection, open.prompt);
                         return Unlock.DONE;
                     }
+                    // Nothing answers once gnome-keyring has left the bus or the connection has
+                    // closed: the prompt went with it.
+                    owner.read();
+                    boolean gone = owner.hasLost(open.provider);
+                    if (gone || !service.getConnection().isConnected()) {
+                        synchronized (this) {
+                            forget(open);
+                        }
+                        log.warn("Stopped waiting on gnome-keyring's unlock prompt ({}): {}.", open.prompt,
+                                gone ? "the provider left the bus" : "the connection closed");
+                        return Unlock.NO_ANSWER;
+                    }
                 }
             }
         } catch (InterruptedException e) {
@@ -206,30 +223,29 @@ final class UnlockPrompts {
         }
     }
 
-    /** Ends the open prompt whose {@code Completed} arrived. */
+    /**
+     * Ends the open prompt whose {@code Completed} arrived from the provider that gave it. Any
+     * client on the bus can send a {@code Completed} for a prompt's path, a consent or a refusal;
+     * one from another sender is not the prompt's answer.
+     */
     private void completed(Prompt.Completed signal) {
         Open open;
         synchronized (this) {
             open = byPrompt.get(signal.getPath());
-            if (open != null) forget(open);
+            if (open == null) return;
+            if (!open.provider.equals(signal.getSource())) {
+                log.debug("Ignored an answer to gnome-keyring's unlock prompt ({}) that the provider did not "
+                        + "send, from {}.", open.prompt, signal.getSource());
+                return;
+            }
+            forget(open);
         }
-        if (open != null) open.completed.complete(signal);
+        open.completed.complete(signal);
     }
 
     /** The caller holds this registry's lock. */
     private void forget(Open open) {
         byPrompt.remove(open.prompt, open);
         byCollection.remove(open.collection, open);
-    }
-
-    /** The unique name of the connection that serves the secrets, or "" when it cannot be read. */
-    private static String secretsOwner(DBusConnection connection) {
-        try {
-            return connection.getRemoteObject("org.freedesktop.DBus", "/org/freedesktop/DBus", DBus.class)
-                    .GetNameOwner("org.freedesktop.secrets");
-        } catch (DBusException | RuntimeException e) {
-            log.debug("Could not read who serves the secrets.", e);
-            return "";
-        }
     }
 }

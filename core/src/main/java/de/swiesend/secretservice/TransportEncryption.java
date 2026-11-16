@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 public class TransportEncryption implements AutoCloseable {
@@ -33,6 +34,12 @@ public class TransportEncryption implements AutoCloseable {
      */
     private static final int SESSION_ATTEMPTS = 4;
     private static final Logger log = LoggerFactory.getLogger(TransportEncryption.class);
+    /**
+     * The JDK's default generator, for the initialization vectors. One for all sessions: a
+     * {@code SecureRandom} is thread-safe, and one made per secret seeds itself from the system
+     * for each.
+     */
+    private static final SecureRandom RANDOM = new SecureRandom();
     private de.swiesend.secretservice.Service service;
     private DHParameterSpec dhParameters = null;
     private KeyPair keypair = null;
@@ -145,11 +152,23 @@ public class TransportEncryption implements AutoCloseable {
     static final class SessionKey implements SecretKey {
         @java.io.Serial
         private static final long serialVersionUID = 1L;
-        private final byte[] key;
+        private final transient byte[] key;
         private volatile boolean destroyed = false;
 
         SessionKey(byte[] key) {
             this.key = key.clone();
+        }
+
+        // A SecretKey is Serializable. This one is not written out: the key would leave the
+        // process in a stream that destroy() does not reach.
+        @java.io.Serial
+        private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+            throw new java.io.NotSerializableException(SessionKey.class.getName());
+        }
+
+        @java.io.Serial
+        private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+            throw new java.io.NotSerializableException(SessionKey.class.getName());
         }
 
         @Override
@@ -213,13 +232,44 @@ public class TransportEncryption implements AutoCloseable {
                     Static.Algorithm.DH_IETF1024_SHA256_AES128_CBC_PKCS7,
                     new Variant<>(toKeyBytes(ya, length))
             ).flatMap(pair -> {
-                // transform peer's raw Y to a public key
-                yb = Static.Utils.toByteArray(pair.a.getValue());
-
-                DBusPath sessionPath = pair.b;
-                session = new Session(sessionPath, service);
+                Session opened = new Session(pair.b, service);
+                Optional<byte[]> peerKey = peerPublicKey(pair.a);
+                if (peerKey.isEmpty()) {
+                    // The provider has opened the session all the same.
+                    opened.close();
+                    return Optional.empty();
+                }
+                yb = peerKey.get();
+                session = opened;
                 return Optional.of(new OpenedSession());
             });
+        }
+
+        /**
+         * The provider's public key from its reply, where the reply holds one: a byte array that
+         * reads as a number from 2 to p - 2. A plain session's output is the empty string, and a
+         * key of 0, 1 or p - 1 gives a shared secret that everyone on the bus can compute.
+         */
+        private Optional<byte[]> peerPublicKey(Variant<?> output) {
+            Object value = output == null ? null : output.getValue();
+            if (!(value instanceof byte[]) && !(value instanceof List)) {
+                log.error("The provider's reply to OpenSession holds no public key.");
+                return Optional.empty();
+            }
+            byte[] bytes;
+            try {
+                bytes = Static.Utils.toByteArray(value);
+            } catch (ClassCastException | NullPointerException e) {
+                log.error("The provider's reply to OpenSession holds no public key.");
+                return Optional.empty();
+            }
+            BigInteger y = fromBinary(bytes);
+            BigInteger p = dhParameters.getP();
+            if (y.compareTo(BigInteger.TWO) < 0 || y.compareTo(p.subtract(BigInteger.TWO)) > 0) {
+                log.error("The provider's public key is not a number from 2 to p - 2; no session is opened under it.");
+                return Optional.empty();
+            }
+            return Optional.of(bytes);
         }
     }
 
@@ -319,13 +369,14 @@ public class TransportEncryption implements AutoCloseable {
             // be empty.
             if (plain == null) return Optional.empty();
 
+            SessionKey key = null;
             try {
                 if (service == null) {
                     log.error("Missing session. Call Initialized.openSession() first.");
                     return Optional.empty();
                 }
                 // Read once: clear() can drop the key while this runs.
-                final SessionKey key = sessionKey;
+                key = sessionKey;
                 if (key == null) {
                     log.error("Missing session key. Call Opened.generateSessionKey() first.");
                     return Optional.empty();
@@ -333,8 +384,7 @@ public class TransportEncryption implements AutoCloseable {
 
                 // secret.parameter - 16 byte AES initialization vector
                 final byte[] salt = new byte[toBytes(AES_BITS)];
-                SecureRandom random = SecureRandom.getInstance(Static.Algorithm.SHA1_PRNG);
-                random.nextBytes(salt);
+                RANDOM.nextBytes(salt);
                 IvParameterSpec ivSpec = new IvParameterSpec(salt);
 
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
@@ -352,14 +402,26 @@ public class TransportEncryption implements AutoCloseable {
                      NoSuchAlgorithmException e) {
                 log.error("Could not encrypt the secret", e);
             } catch (IllegalStateException e) {
-                // The key was destroyed after it was read above: the session closed meanwhile.
-                log.error("The session was closed while a secret was being encrypted.");
+                if (key != null && key.isDestroyed()) {
+                    // After it was read above: the session closed meanwhile.
+                    log.error("The session was closed while a secret was being encrypted.");
+                } else {
+                    log.error("Could not encrypt the secret", e);
+                }
             } finally {
                 Secret.clear(plain);
             }
             return Optional.empty();
         }
 
+        /**
+         * Decrypts a secret of this session.
+         *
+         * @param secret a secret that names this session, as the provider returns it for one
+         * @return the secret's characters, in the charset that its content type names; empty for
+         *         no secret, a secret without a value, a secret of another session, one that this
+         *         session's key does not decrypt, and once the session is cleared
+         */
         public Optional<char[]> decrypt(Secret secret) {
 
             if (secret == null) return Optional.empty();
@@ -370,12 +432,27 @@ public class TransportEncryption implements AutoCloseable {
                 log.error("Missing session key. Call Opened.generateSessionKey() first.");
                 return Optional.empty();
             }
+            final byte[] sealed = secret.getSecretValue();
+            if (sealed == null) {
+                log.error("Could not decrypt the secret: it holds no value.");
+                return Optional.empty();
+            }
+            // A secret is encrypted under the key of the session that it names. Under the key of
+            // another session about one in 256 still decrypts, to bytes that are not the secret:
+            // the padding of the last block then fits by chance. libsecret refuses such a secret
+            // in the same way.
+            final Session own = session;
+            final DBusPath named = secret.getSession();
+            if (own == null || named == null || !own.getPath().getPath().equals(named.getPath())) {
+                log.error("Could not decrypt the secret: it names another session than the one that decrypts it.");
+                return Optional.empty();
+            }
             byte[] decrypted = new byte[0];
             try {
                 IvParameterSpec ivSpec = new IvParameterSpec(secret.getSecretParameters());
                 Cipher cipher = Cipher.getInstance(Static.Algorithm.AES_CBC_PKCS5);
                 cipher.init(Cipher.DECRYPT_MODE, key, ivSpec);
-                decrypted = cipher.doFinal(secret.getSecretValue());
+                decrypted = cipher.doFinal(sealed);
                 // In the charset that the secret's content type names; UTF-8 where it names none.
                 return Optional.of(Secret.toChars(decrypted, secret.getCharset()));
             } catch (InvalidAlgorithmParameterException |
@@ -387,8 +464,12 @@ public class TransportEncryption implements AutoCloseable {
                 log.error("Could not decrypt the secret", e);
                 return Optional.empty();
             } catch (IllegalStateException e) {
-                // The key was destroyed after it was read above: the session closed meanwhile.
-                log.error("The session was closed while a secret was being decrypted.");
+                if (key.isDestroyed()) {
+                    // After it was read above: the session closed meanwhile.
+                    log.error("The session was closed while a secret was being decrypted.");
+                } else {
+                    log.error("Could not decrypt the secret", e);
+                }
                 return Optional.empty();
             } finally {
                 Secret.clear(decrypted);

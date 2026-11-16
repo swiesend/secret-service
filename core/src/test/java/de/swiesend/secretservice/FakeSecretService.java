@@ -43,7 +43,8 @@ import javax.crypto.interfaces.DHPublicKey;
  * {@code Item.SetSecret}, setting the item's properties, {@code Collection.Delete},
  * {@code ReadAlias}, {@code CreateCollection} and {@code CreateItem}. This is a test fixture, not a
  * provider: it does no access control and keeps its secret in a field. A test can add a second
- * item, with a lock of its own, for the reads of several items.</p>
+ * item, with a lock of its own, for the reads of several items, and an item of another collection,
+ * which records every call that reaches it.</p>
  *
  * <p>Each prompt it hands out has a path of its own and is an object on the bus, so the client's
  * {@code Prompt} and {@code Dismiss} reach the fake, which records them. The prompt that unlocks
@@ -79,12 +80,16 @@ public final class FakeSecretService {
     public static final String SECRET_VALUE = "the-locked-secret";
     /** What the second item holds. */
     public static final String SECOND_SECRET_VALUE = "the-second-secret";
+    /** The item of another collection that {@link #addForeignItem()} adds. */
+    public static final String FOREIGN_ITEM_PATH = "/org/freedesktop/secrets/collection/other/1";
+    /** What the item of the other collection holds. */
+    public static final String FOREIGN_SECRET_VALUE = "the-other-collection's-secret";
 
     /**
      * RFC 2409, section 6.2: the prime of the group that the specification prescribes. The fake's
      * own copy, as a provider has one, independent of the library's.
      */
-    private static final BigInteger SECOND_OAKLEY_GROUP_PRIME = new BigInteger(
+    public static final BigInteger SECOND_OAKLEY_GROUP_PRIME = new BigInteger(
             "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22"
                     + "514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6"
                     + "F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381"
@@ -270,6 +275,14 @@ public final class FakeSecretService {
     private final List<String> createCollectionCalls = Collections.synchronizedList(new ArrayList<>());
 
     /**
+     * Makes the prompt of {@code CreateCollection} complete with {@code result}, as if the user had
+     * confirmed it; {@code null}, the default, has the user cancel it. No collection is created:
+     * the result is what the library is told.
+     */
+    public void setCreateCollectionResult(Variant<?> result) { this.createCollectionResult = result; }
+    private volatile Variant<?> createCollectionResult;
+
+    /**
      * Claims another bus name on the fake's connection, as gnome-keyring owns {@code org.gnome.keyring}
      * on the connection that serves {@code org.freedesktop.secrets}.
      */
@@ -292,6 +305,21 @@ public final class FakeSecretService {
      */
     public void setRefuseCollectionUnlock(boolean refuse) { this.refuseCollectionUnlock = refuse; }
     private volatile boolean refuseCollectionUnlock;
+
+    /**
+     * Makes {@code Lock} answer for the collection with nothing locked and no prompt, and leave it
+     * unlocked: a collection that the provider does not lock. A client that locks it to ask the
+     * user for permission then cannot ask.
+     */
+    public void setCollectionCannotBeLocked(boolean cannot) { this.collectionCannotBeLocked = cannot; }
+    private volatile boolean collectionCannotBeLocked;
+
+    /**
+     * Makes {@code Lock} name the collection as locked, with no prompt, and leave it unlocked: as
+     * gnome-keyring answers for its session collection.
+     */
+    public void setLockNamesTheCollectionWithoutLocking(boolean names) { this.lockNamesWithoutLocking = names; }
+    private volatile boolean lockNamesWithoutLocking;
 
     /**
      * Makes item Lock/Unlock require a prompt that would <b>succeed</b>. Without this the fake
@@ -561,6 +589,22 @@ public final class FakeSecretService {
 
     private volatile boolean itemDeleted;
 
+    /**
+     * Puts an item of another collection on the bus, at {@link #FOREIGN_ITEM_PATH}: unlocked, with
+     * a label and a secret, and it takes every change and its deletion without a prompt. It is no
+     * item of the fake collection, which does not list it.
+     */
+    public void addForeignItem() throws Exception {
+        connection.exportObject(FOREIGN_ITEM_PATH, new ForeignItemImpl());
+    }
+
+    /** The calls that reached the item of the other collection, as "Delete" or "Get Label". */
+    public List<String> foreignItemCalls() {
+        synchronized (foreignItemCalls) { return new ArrayList<>(foreignItemCalls); }
+    }
+
+    private final List<String> foreignItemCalls = Collections.synchronizedList(new ArrayList<>());
+
     /** The item properties that {@code Set} changed, in call order. */
     public List<String> itemPropertySets() {
         return List.copyOf(itemPropertySets);
@@ -591,9 +635,51 @@ public final class FakeSecretService {
     public void setDefaultAlias(String path) { this.defaultAlias = path; }
     private volatile String defaultAlias;
 
+    /** The path of the {@code default} alias, at which a provider serves its default collection too. */
+    public static final String DEFAULT_ALIAS_PATH = "/org/freedesktop/secrets/aliases/default";
+
+    /**
+     * Serves the fake collection at {@link #DEFAULT_ALIAS_PATH} too, as a provider serves its
+     * default collection: the same collection, whose items keep their paths.
+     */
+    public void serveCollectionAtTheDefaultAlias() throws Exception {
+        connection.exportObject(DEFAULT_ALIAS_PATH, new CollectionImpl());
+    }
+
     /** Makes {@code ReadAlias} answer with an error, as for an alias that the client cannot read. */
     public void setRefuseReadAlias(boolean refuse) { this.refuseReadAlias = refuse; }
     private volatile boolean refuseReadAlias;
+
+    /**
+     * Makes the collection's {@code Locked} property answer with an error, as a provider that is
+     * busy or gone does: the client then does not know whether the collection is locked. The
+     * collection keeps its state, and takes every call as before.
+     */
+    public void setCollectionLockUnreadable(boolean unreadable) { this.collectionLockUnreadable = unreadable; }
+    private volatile boolean collectionLockUnreadable;
+
+    /** The same for the {@code Locked} property of every item. */
+    public void setItemLockUnreadable(boolean unreadable) { this.itemLockUnreadable = unreadable; }
+    private volatile boolean itemLockUnreadable;
+
+    /**
+     * Makes the collection's {@code Locked} property answer with an error from the moment a Lock
+     * call locks the collection: the client's read before the call is answered, and the one after
+     * it is not.
+     */
+    public void setCollectionLockUnreadableOnceLocked(boolean unreadable) { this.collectionLockUnreadableOnceLocked = unreadable; }
+    private volatile boolean collectionLockUnreadableOnceLocked;
+
+    /**
+     * Makes the {@code Locked} property of the collection and of every item answer with a string
+     * in place of the boolean that the specification gives it.
+     */
+    public void setLockedAnswersWithText(boolean text) { this.lockedAnswersWithText = text; }
+    private volatile boolean lockedAnswersWithText;
+
+    private static org.freedesktop.dbus.exceptions.DBusExecutionException lockUnreadable() {
+        return new org.freedesktop.dbus.exceptions.DBusExecutionException("fake: Locked cannot be read");
+    }
 
     /** The attributes that the first item shows; it has none unless a test gives it some. */
     public void setItemAttributes(Map<String, String> attributes) { this.itemAttributes = Map.copyOf(attributes); }
@@ -657,6 +743,18 @@ public final class FakeSecretService {
      */
     public void setZeroTopByteSecrets(int count) { this.zeroTopByteSecrets = count; }
     private volatile int zeroTopByteSecrets;
+
+    /**
+     * Makes {@code OpenSession} answer with this output in place of the fake's public key, as a
+     * provider that answers with something else; {@code null} for the key again. The session is
+     * opened all the same.
+     */
+    public void setOpenSessionOutput(Variant<?> output) { this.openSessionOutput = output; }
+    private volatile Variant<?> openSessionOutput;
+
+    /** Makes {@code OpenSession} answer with this path for the session; {@code null} for its own. */
+    public void setOpenSessionPath(String path) { this.openSessionPath = path; }
+    private volatile String openSessionPath;
 
     /** How often {@code OpenSession} was called. */
     public int openSessionCalls() {
@@ -769,7 +867,10 @@ public final class FakeSecretService {
                         reproduces(ProviderBug.KWALLET_HASHES_THE_SHARED_SECRET_WITHOUT_LEADING_ZEROS)
                                 ? withoutLeadingZeros(shared) : shared);
 
-                return new Pair<>(new Variant<>(ourY.toByteArray()), new DBusPath(SESSION_PATH));
+                @SuppressWarnings("unchecked")
+                Variant<byte[]> output = openSessionOutput != null
+                        ? (Variant<byte[]>) openSessionOutput : new Variant<>(ourY.toByteArray());
+                return new Pair<>(output, new DBusPath(openSessionPath != null ? openSessionPath : SESSION_PATH));
             } catch (Exception e) {
                 throw new IllegalStateException("fake OpenSession failed", e);
             }
@@ -848,6 +949,14 @@ public final class FakeSecretService {
                 return new Pair<>(new ArrayList<DBusPath>(), new DBusPath(prompt.path));
             }
             boolean collectionRequested = objects.stream().anyMatch(p -> COLLECTION_PATH.equals(p.getPath()));
+            if (collectionRequested && lockNamesWithoutLocking) {
+                return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
+            }
+            if (collectionRequested && collectionCannotBeLocked) {
+                // A late reply here is one that says nothing about a lock.
+                delayLockReply();
+                return new Pair<>(new ArrayList<DBusPath>(), new DBusPath("/"));
+            }
             if (collectionRequested && requirePromptForCollectionLock && !collectionLocked) {
                 // As for the item above: locked only when a test answers the prompt.
                 FakePrompt prompt = awaitApproval(() -> collectionLocked = true, null);
@@ -855,17 +964,23 @@ public final class FakeSecretService {
             }
             for (DBusPath p : objects) {
                 if (ITEM_PATH.equals(p.getPath())) itemLocked = true;
-                if (COLLECTION_PATH.equals(p.getPath())) collectionLocked = true;
-            }
-            // Locked already, as a busy provider has locked when its reply comes late.
-            if (!lockReplyDelay.isZero()) {
-                try {
-                    Thread.sleep(lockReplyDelay.toMillis());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                if (COLLECTION_PATH.equals(p.getPath())) {
+                    collectionLocked = true;
+                    if (collectionLockUnreadableOnceLocked) collectionLockUnreadable = true;
                 }
             }
+            // Locked already, as a busy provider has locked when its reply comes late.
+            delayLockReply();
             return new Pair<>(new ArrayList<>(objects), new DBusPath("/"));
+        }
+
+        private void delayLockReply() {
+            if (lockReplyDelay.isZero()) return;
+            try {
+                Thread.sleep(lockReplyDelay.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         @Override
@@ -899,7 +1014,12 @@ public final class FakeSecretService {
             // collection: the user sets the password there. The user cancels it here, so nothing is
             // created; the tests need to see that the request was made, not a new collection.
             FakePrompt prompt = newPrompt(false);
-            emitCompletedLater(prompt, true);
+            Variant<?> result = createCollectionResult;
+            if (result == null) {
+                emitCompletedLater(prompt, true);
+            } else {
+                emitCompletedLater(prompt, false, () -> { }, result);
+            }
             return new Pair<>(new DBusPath("/"), new DBusPath(prompt.path));
         }
 
@@ -968,7 +1088,10 @@ public final class FakeSecretService {
         public <A> A Get(String iface, String property) {
             alive();
             switch (property) {
-                case "Locked":  return (A) Boolean.valueOf(collectionLocked);
+                case "Locked":
+                    if (collectionLockUnreadable) throw lockUnreadable();
+                    if (lockedAnswersWithText) return (A) "no";
+                    return (A) Boolean.valueOf(collectionLocked);
                 case "Items":   return (A) new Variant<>(itemsHidden() ? new ArrayList<DBusPath>() : items(), "ao");
                 case "Label":   return (A) COLLECTION_LABEL;
                 default: throw new IllegalArgumentException("fake: unsupported property " + property);
@@ -1058,7 +1181,10 @@ public final class FakeSecretService {
             switch (property) {
                 // gnome-keyring reports an item as locked whenever its collection is locked, so
                 // the fake does too when asked to. This is what makes the regression reproducible.
-                case "Locked":     return (A) Boolean.valueOf(isLocked(path));
+                case "Locked":
+                    if (itemLockUnreadable) throw lockUnreadable();
+                    if (lockedAnswersWithText) return (A) "no";
+                    return (A) Boolean.valueOf(isLocked(path));
                 case "Attributes": {
                     Map<String, String> shown = ITEM_PATH.equals(path) ? itemAttributes : Map.of();
                     if (hashesItsMetadata(path)) shown = hashed(shown);
@@ -1112,6 +1238,62 @@ public final class FakeSecretService {
         }
 
         @Override public String getObjectPath() { return path; }
+        @Override public boolean isRemote() { return false; }
+    }
+
+    /** The item of another collection, which answers every call as done and records it. */
+    private final class ForeignItemImpl implements WireItem, Properties {
+
+        @Override
+        public DBusPath Delete() {
+            foreignItemCalls.add("Delete");
+            return new DBusPath("/");
+        }
+
+        @Override
+        public WireSecret GetSecret(DBusPath session) {
+            foreignItemCalls.add("GetSecret");
+            try {
+                byte[] iv = new byte[16];
+                new SecureRandom().nextBytes(iv);
+                Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sessionKey, "AES"), new IvParameterSpec(iv));
+                byte[] ct = c.doFinal(FOREIGN_SECRET_VALUE.getBytes(StandardCharsets.UTF_8));
+                return new WireSecret(new DBusPath(SESSION_PATH), iv, ct, "text/plain; charset=utf8");
+            } catch (Exception e) {
+                throw new IllegalStateException("fake GetSecret failed", e);
+            }
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <A> A Get(String iface, String property) {
+            foreignItemCalls.add("Get " + property);
+            switch (property) {
+                case "Locked":     return (A) Boolean.FALSE;
+                case "Attributes": return (A) new Variant<>(new HashMap<>(Map.of("owner", "other")), "a{ss}");
+                case "Label":      return (A) "foreign-item";
+                default: throw new IllegalArgumentException("fake: unsupported property " + property);
+            }
+        }
+
+        @Override
+        public void SetSecret(WireSecret secret) {
+            foreignItemCalls.add("SetSecret");
+        }
+
+        @Override
+        public <A> void Set(String iface, String property, A value) {
+            foreignItemCalls.add("Set " + property);
+        }
+
+        @Override
+        public Map<String, Variant<?>> GetAll(String iface) {
+            foreignItemCalls.add("GetAll");
+            return Map.of("Label", new Variant<>("foreign-item"), "Locked", new Variant<>(Boolean.FALSE));
+        }
+
+        @Override public String getObjectPath() { return FOREIGN_ITEM_PATH; }
         @Override public boolean isRemote() { return false; }
     }
 

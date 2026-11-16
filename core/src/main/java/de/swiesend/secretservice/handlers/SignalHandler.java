@@ -20,11 +20,18 @@ import static de.swiesend.secretservice.Static.DBus.DEFAULT_DELAY_MILLIS;
 public class SignalHandler implements DBusSigHandler {
 
     private final static int bufferSize = 1024;
+    /** How often an await looks after the provider's owner: every tenth of its ticks, once a second. */
+    private static final int OWNER_CHECK_TICKS = 10;
     private Logger log = LoggerFactory.getLogger(getClass());
-    private DBusConnection connection = null;
-    private String sourcePath = null;
+    // connection and sourcePath change under the lock on the buffer, and with it: a signal counts
+    // for the connection and the path that the buffer is kept for.
+    private volatile DBusConnection connection = null;
+    private volatile String sourcePath = null;
+    /** Who owns the bus name of the provider whose signals this handler takes, or null for any sender's. */
+    private volatile BusNameOwner provider = null;
     private List<AutoCloseable> registrations = new ArrayList<>();
-    private DBusSignal[] handled = new DBusSignal[bufferSize];
+    /** The signals taken, the newest first. Read and written under its own lock, as {@link #count}. */
+    private final DBusSignal[] handled = new DBusSignal[bufferSize];
     private int count = 0;
 
     /**
@@ -65,10 +72,33 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath) {
-        if (this.connection == null) {
-            this.connection = connection;
+        connect(connection, signals, sourcePath, null);
+    }
+
+    /**
+     * As {@link #connect(DBusConnection, List, String)}, for the signals of {@code provider} only, a
+     * bus name such as {@code org.freedesktop.secrets}.
+     * <p>
+     * A signal's match rule names no sender, and any client on the bus can send a signal for any
+     * path: a {@code Completed} that answers a prompt with a consent or a refusal, or an
+     * {@code ItemCreated} that names an item. With a {@code provider}, this handler takes a signal
+     * only from the unique name that owns that bus name, and none while nobody owns it or the owner
+     * cannot be read. It follows the owner through the bus's {@code NameOwnerChanged}, see
+     * {@link BusNameOwner}: a signal costs no call to the bus.
+     *
+     * @param provider the bus name whose owner's signals count, or {@code null} for any sender's
+     */
+    public void connect(DBusConnection connection, List<Class<? extends DBusSignal>> signals, String sourcePath,
+                        String provider) {
+        // Before the lock, which the thread that dispatches the signals takes: this may ask the bus.
+        final BusNameOwner name = provider == null ? null : BusNameOwner.of(connection, provider);
+        synchronized (handled) {
+            if (this.connection == null) {
+                this.connection = connection;
+            }
+            this.sourcePath = sourcePath;
+            this.provider = name;
         }
-        this.sourcePath = sourcePath;
         if (signals != null) {
             try {
                 for (Class sc : signals) {
@@ -108,9 +138,20 @@ public class SignalHandler implements DBusSigHandler {
         synchronized (handled) {
             Arrays.fill(handled, null);
             count = 0;
+            connection = null;
+            sourcePath = null;
+            provider = null;
         }
-        connection = null;
-        sourcePath = null;
+    }
+
+    /**
+     * Whether the provider sent {@code s}: always, where {@link #connect} named none. On the thread
+     * that dispatches the signals, so without a call to the bus: any client can send signals in
+     * any number, and each call would hold up the provider's own.
+     */
+    private boolean sentByProvider(DBusSignal s) {
+        final BusNameOwner name = provider;
+        return name == null || name.isOwner(s.getSource());
     }
 
     @Override
@@ -118,9 +159,10 @@ public class SignalHandler implements DBusSigHandler {
         // If a source path was provided during connect(), ignore signals that
         // do not originate from that object path. This provides the path-scoped
         // semantics we want while using the global DBus addSigHandler registration.
-        if (this.sourcePath != null && !"/".equals(this.sourcePath)) {
+        final String scope = this.sourcePath;
+        if (scope != null && !"/".equals(scope)) {
             try {
-                if (!this.sourcePath.equals(s.getPath())) {
+                if (!scope.equals(s.getPath())) {
                     return; // ignore signals from other object paths
                 }
             } catch (Exception e) {
@@ -128,7 +170,20 @@ public class SignalHandler implements DBusSigHandler {
             }
         }
 
+        // Only the provider's signals: a prompt's answer and a created item's path are taken from
+        // them, and any client on the bus can send one.
+        if (!sentByProvider(s)) {
+            log.debug("Ignored a signal that the provider did not send, from {}.", s.getSource());
+            return;
+        }
+
         synchronized (handled) {
+            // dbus-java can deliver a signal after its handler was removed. One that was on its
+            // way while disconnect() ran, or while connect() gave this handler another path, was
+            // checked against a path that no longer holds, or against none.
+            if (connection == null || !Objects.equals(scope, sourcePath)) {
+                return;
+            }
             Collections.rotate(Arrays.asList(handled), 1);
             handled[0] = s;
             count++;
@@ -166,12 +221,18 @@ public class SignalHandler implements DBusSigHandler {
 
     }
 
+    /**
+     * The signals taken, the newest first, and null where the buffer is not filled: a copy, as the
+     * buffer changes with every signal, on another thread.
+     */
     public DBusSignal[] getHandled() {
-        return handled;
+        synchronized (handled) {
+            return handled.clone();
+        }
     }
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s) {
-        return Arrays.stream(handled)
+        return Arrays.stream(getHandled())
                 .filter(signal -> signal != null)
                 .filter(signal -> signal.getClass().equals(s))
                 .map(signal -> (S) signal)
@@ -179,7 +240,7 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public <S extends DBusSignal> List<S> getHandledSignals(Class<S> s, String path) {
-        return Arrays.stream(handled)
+        return Arrays.stream(getHandled())
                 .filter(signal -> signal != null)
                 .filter(signal -> signal.getClass().equals(s))
                 .filter(signal -> isOnPath(signal, path))
@@ -217,11 +278,15 @@ public class SignalHandler implements DBusSigHandler {
     }
 
     public int getCount() {
-        return count;
+        synchronized (handled) {
+            return count;
+        }
     }
 
     public DBusSignal getLastHandledSignal() {
-        return handled[0];
+        synchronized (handled) {
+            return handled[0];
+        }
     }
 
     public <S extends DBusSignal> S getLastHandledSignal(Class<S> s) {
@@ -258,7 +323,12 @@ public class SignalHandler implements DBusSigHandler {
     public <S extends DBusSignal> S await(Class<S> signal, String path, Callable action, Duration timeout) {
         // Before the action, which shows the prompt: it would wait for an answer that nobody collects.
         Objects.requireNonNull(timeout, "timeout must not be null");
-        final int init = count;
+        // On the caller's thread, where an owner that could not be read before is read again.
+        // Only this name can answer: the wait ends when it has left the bus.
+        final BusNameOwner name = provider;
+        final String answers = name == null ? null : name.read().orElse(null);
+        final DBusConnection waitsOn = connection;
+        final int init = getCount();
 
         Optional<Prompt> maybePrompt = Optional.empty();
         try {
@@ -304,9 +374,13 @@ public class SignalHandler implements DBusSigHandler {
 
         S received = null;
         String gaveUp = "it was interrupted";
+        // Once the connection has closed or the provider has left the bus, nothing answers, and
+        // there is no prompt left to dismiss.
+        boolean unanswerable = false;
         try {
             long start = System.nanoTime();
             long nanos = nanos(timeout);
+            int ticks = 0;
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.nanoTime();
                 if (handler.isDone()) {
@@ -315,7 +389,17 @@ public class SignalHandler implements DBusSigHandler {
                 } else if (now - start > nanos) {
                     gaveUp = "it exceeded the timeout of " + timeout.getSeconds() + " seconds";
                     break;
+                } else if (waitsOn != null && !waitsOn.isConnected()) {
+                    gaveUp = "the connection closed";
+                    unanswerable = true;
+                    break;
+                } else if (name != null && name.hasLost(answers)) {
+                    gaveUp = "the provider left the bus";
+                    unanswerable = true;
+                    break;
                 }
+                // Asks the bus only where the owner's changes are not followed.
+                if (name != null && ++ticks % OWNER_CHECK_TICKS == 0) name.read();
                 Thread.sleep(DEFAULT_DELAY_MILLIS);
             }
         } catch (InterruptedException e) {
@@ -327,7 +411,9 @@ public class SignalHandler implements DBusSigHandler {
             executor.shutdownNow();
         }
 
-        if (received == null) {
+        if (received == null && unanswerable) {
+            log.warn("Stopped waiting for the signal ({}) because {}.", path, gaveUp);
+        } else if (received == null) {
             // Timed out or interrupted, also before the wait began: a prompt still open would
             // wait for an answer that nobody collects.
             final String reason = gaveUp;

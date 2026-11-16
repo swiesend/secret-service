@@ -39,18 +39,18 @@ public class Session implements SessionInterface {
 
         Service dbusService = service.getService();
 
-        return new TransportEncryption(dbusService)
+        TransportEncryption transport = new TransportEncryption(dbusService);
+        Optional<SessionInterface> session = transport
                 .initialize()
                 .flatMap(initialized -> initialized.openSession())
                 .flatMap(opened -> opened.generateSessionKey())
-                .map(encryptedSession -> {
-                    Session session = new Session(service, encryptedSession);
-                    return (SessionInterface) session;
-                })
-                .or(() -> {
-                    log.error("Could not open transport encrypted session.");
-                    return Optional.empty();
-                });
+                .map(encryptedSession -> new Session(service, encryptedSession));
+        if (session.isEmpty()) {
+            log.error("Could not open transport encrypted session.");
+            // A session that the provider opened, and that got no key, is closed with it.
+            transport.close();
+        }
+        return session;
     }
 
     @Override

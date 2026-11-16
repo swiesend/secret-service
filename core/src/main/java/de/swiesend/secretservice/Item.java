@@ -135,9 +135,22 @@ public class Item extends Messaging implements de.swiesend.secretservice.interfa
 
     @Override
     public boolean isLocked() {
-        Optional<Boolean> response = getProperty("Locked").map(variant ->
-                variant == null ? false : (boolean) variant.getValue());
-        return response.isPresent() ? response.get() : false;
+        return lockedState().orElse(false);
+    }
+
+    /**
+     * The {@code Locked} property, keeping "could not read it" separate from "it is unlocked", as
+     * {@link Collection#lockedState()} does for a collection.
+     *
+     * <p>{@link #isLocked()} answers {@code false} for both. A caller that must not act unless the
+     * item is unlocked asks here, and takes an empty answer as locked.</p>
+     *
+     * @return the property, or empty when it could not be read or is no boolean
+     */
+    public Optional<Boolean> lockedState() {
+        return getProperty("Locked").flatMap(variant ->
+                variant != null && variant.getValue() instanceof Boolean locked
+                        ? Optional.of(locked) : Optional.empty());
     }
 
     @Override

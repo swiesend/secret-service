@@ -118,9 +118,7 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
 
     @Override
     public boolean isLocked() {
-        Optional<Boolean> response = getProperty("Locked").map(variant ->
-                variant == null ? false : (boolean) variant.getValue());
-        return response.isPresent() ? response.get() : false;
+        return lockedState().orElse(false);
     }
 
     /**
@@ -131,14 +129,15 @@ public class Collection extends Messaging implements de.swiesend.secretservice.i
      * that must not act unless it is <em>sure</em> — a failed read there silently becomes
      * "unlocked, go ahead".</p>
      *
-     * @return the property, or empty when it could not be read
+     * @return the property, or empty when it could not be read or is no boolean
      */
     public Optional<Boolean> lockedState() {
-        // flatMap + ofNullable, matching getItems/created/modified: a null variant is an absent
-        // answer, not "unlocked". Mapping it to FALSE would reintroduce, inside the fail-closed
-        // helper itself, the very conflation isLocked() is documented above as getting wrong.
+        // A null variant, or a value of another type, is an absent answer, not "unlocked". Mapping
+        // it to FALSE would reintroduce, inside the fail-closed helper itself, the very conflation
+        // isLocked() is documented above as getting wrong; a cast would throw out of the caller.
         return getProperty("Locked").flatMap(variant ->
-                Optional.ofNullable(variant).map(v -> (Boolean) v.getValue()));
+                variant != null && variant.getValue() instanceof Boolean locked
+                        ? Optional.of(locked) : Optional.empty());
     }
 
     @Override

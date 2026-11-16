@@ -7,7 +7,11 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -20,7 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code unlockWithUserPermission()} locks the collection and unlocks it through the provider's
  * dialog. With prompting disabled there is no dialog, and on gnome-keyring the collection then
  * stayed locked: for every application on the desktop, and for the login keyring all of them
- * started to prompt.
+ * started to prompt. So the user is not asked then, and access is the provider's to enforce.
+ *
+ * <p>Where the user is asked, the answer binds the bulk reads and the deletions alike: a deletion
+ * went ahead on a permission that was refused. Where the provider does not lock the collection,
+ * there is no dialog to ask in: the bulk reads are refused, and a deletion goes ahead.</p>
  *
  * <p>Against {@link FakeSecretService}, which locks at once and unlocks only through a prompt when
  * told to, as gnome-keyring does.</p>
@@ -57,16 +65,107 @@ class UserPermissionTest {
     }
 
     @Test
-    void withPromptingDisabledTheCollectionIsNotLocked() throws Exception {
+    void withPromptingDisabledTheUserIsNotAskedAndTheCollectionIsNotLocked() throws Exception {
         CollectionInterface collection = harness.start(false);
         FakeSecretService fake = harness.fake();
         fake.setRequirePromptForCollectionUnlock(true);
         assertTrue(collection.disablePrompt());
 
-        assertTrue(collection.getSecrets().isEmpty(),
-                "without the dialog the user cannot confirm access, so the read is refused");
-        assertFalse(fake.isCollectionLocked(),
+        assertTrue(collection.unlockWithUserPermission(), "the provider has the collection unlocked");
+        assertEquals(List.of(), fake.lockCalls(),
                 "and the collection was not locked, which nothing could have undone");
+        assertEquals(List.of(), fake.promptCalls(), "nor was a dialog asked for");
+    }
+
+    @Test
+    void withPromptingDisabledAccessIsTheProvidersToEnforce() throws Exception {
+        // The bulk read and the deletion alike: neither is refused in the user's place.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setRequirePromptForCollectionUnlock(true);
+        assertTrue(collection.disablePrompt());
+
+        assertArrayEquals(FakeSecretService.SECRET_VALUE.toCharArray(),
+                collection.getSecrets().orElseThrow().get(FakeSecretService.ITEM_PATH),
+                "the provider gives the secrets of its unlocked collection");
+        assertTrue(collection.deleteItems(List.of(FakeSecretService.ITEM_PATH)), "and deletes its item");
+        assertFalse(fake.hasItem(FakeSecretService.ITEM_PATH));
+        assertEquals(List.of(), fake.lockCalls());
+    }
+
+    @Test
+    void withPromptingDisabledALockedCollectionStaysLockedAndRefusesBoth() throws Exception {
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setRequirePromptForCollectionUnlock(true);
+        fake.lockCollection();
+        assertTrue(collection.disablePrompt());
+
+        assertFalse(collection.unlockWithUserPermission());
+        assertEquals(Optional.empty(), collection.getSecrets().map(Map::keySet));
+        assertFalse(collection.deleteItem(FakeSecretService.ITEM_PATH));
+        assertFalse(collection.deleteItems(List.of(FakeSecretService.ITEM_PATH)));
+        assertTrue(fake.hasItem(FakeSecretService.ITEM_PATH), "the item is kept");
+        assertTrue(fake.isCollectionLocked());
+    }
+
+    @Test
+    void aDeletionThatTheUserRefusesDeletesNothing() throws Exception {
+        // The user cancels the unlock dialog.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setRequirePromptForCollectionUnlock(true);
+        fake.setDismissPrompts(true);
+
+        assertFalse(collection.deleteItems(List.of(FakeSecretService.ITEM_PATH, FakeSecretService.ITEM_PATH)));
+
+        assertTrue(fake.hasItem(FakeSecretService.ITEM_PATH), "the item is kept");
+        assertEquals(1, fake.promptCalls().size(), "asked once for the list, and not again after the refusal");
+    }
+
+    @Test
+    void aCollectionThatTheProviderDoesNotLockRefusesTheBulkReadsAndDeletesItsItems() throws Exception {
+        // The user cannot be asked through the unlock dialog. No secret is handed out on that, and
+        // the items can still be deleted: there is no other way to delete them.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setCollectionCannotBeLocked(true);
+
+        assertFalse(collection.unlockWithUserPermission(), "the user could not be asked");
+        assertEquals(Optional.empty(), collection.getSecrets().map(Map::keySet),
+                "no secret is read without the permission");
+        assertTrue(collection.deleteItem(FakeSecretService.ITEM_PATH), "a deletion goes ahead");
+        assertFalse(fake.hasItem(FakeSecretService.ITEM_PATH));
+        assertFalse(fake.isCollectionLocked());
+    }
+
+    @Test
+    void aCollectionThatIsNamedAsLockedAndStaysUnlockedDeletesItsItemsToo() throws Exception {
+        // gnome-keyring's session collection: Lock answers with its path and no prompt.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setLockNamesTheCollectionWithoutLocking(true);
+
+        assertEquals(Optional.empty(), collection.getSecrets().map(Map::keySet));
+        assertTrue(collection.deleteItems(List.of(FakeSecretService.ITEM_PATH)));
+        assertFalse(fake.hasItem(FakeSecretService.ITEM_PATH));
+    }
+
+    @Test
+    void aLockCallWithoutAnAnswerIsNoCollectionThatCannotBeLocked() throws Exception {
+        // The provider may lock yet: nothing says that it does not lock this collection. The
+        // deletion is refused as the bulk read is.
+        CollectionInterface collection = harness.start(false);
+        FakeSecretService fake = harness.fake();
+        fake.setCollectionCannotBeLocked(true);
+        fake.setLockReplyDelay(Duration.ofSeconds(3));
+
+        String log = logOf(() -> assertFalse(collection.deleteItem(FakeSecretService.ITEM_PATH)));
+
+        assertTrue(fake.hasItem(FakeSecretService.ITEM_PATH), "the item is kept");
+        assertTrue(log.contains("Without the user's permission the item is not deleted."), log);
+        assertFalse(log.lines().anyMatch(line -> line.contains(" INFO ") && line.contains(FakeSecretService.ITEM_PATH)),
+                "and the refusal is logged without the path, which is the caller's text");
     }
 
     @Test
@@ -139,6 +238,18 @@ class UserPermissionTest {
 
         assertTrue(collection.unlockWithUserPermission());
         assertFalse(fake.isCollectionLocked(), "it is not left locked for every application");
+    }
+
+    private static String logOf(Runnable calls) {
+        PrintStream original = java.lang.System.err;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        java.lang.System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            calls.run();
+        } finally {
+            java.lang.System.setErr(original);
+        }
+        return captured.toString(StandardCharsets.UTF_8);
     }
 
     /** Answers the provider's prompt from another thread, as the user would. */

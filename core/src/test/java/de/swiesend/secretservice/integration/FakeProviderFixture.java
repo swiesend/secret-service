@@ -64,6 +64,11 @@ final class FakeProviderFixture {
 
     private final List<DBusConnection> otherConnections = new ArrayList<>();
 
+    /** Takes the fake off the bus, as a provider that quits: no one owns its name afterwards. */
+    void releaseProviderName() throws Exception {
+        providerConnection.releaseBusName(FakeSecretService.BUS_NAME);
+    }
+
     /** The library's connection to the private bus, for tests that drive the low-level API. */
     DBusConnection clientConnection() {
         return clientConnection;

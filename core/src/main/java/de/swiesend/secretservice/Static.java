@@ -149,6 +149,11 @@ public class Static {
         public static final String DIFFIE_HELLMAN = "DH";
         public static final String AES = "AES";
         public static final String AES_CBC_PKCS5 = "AES/CBC/PKCS5Padding";
+        /**
+         * @deprecated the library names no algorithm any more: its initialization vectors come from
+         *             the JDK's default {@code SecureRandom}. Kept for callers that read the constant.
+         */
+        @Deprecated(since = "3.0")
         public static final String SHA1_PRNG = "SHA1PRNG";
     }
 

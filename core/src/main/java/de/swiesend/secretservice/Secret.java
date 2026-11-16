@@ -6,6 +6,7 @@ import org.freedesktop.dbus.annotations.Position;
 
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
@@ -180,44 +181,56 @@ public final class Secret extends Struct implements AutoCloseable {
         }
     }
 
+    /**
+     * Overwrites {@code bytes} with zeros.
+     *
+     * @return whether every byte is zero afterwards; true for {@code null}, which holds nothing
+     */
     static public boolean clear(byte[] bytes) {
+        if (bytes == null) return true;
         Arrays.fill(bytes, (byte) 0);
-        try {
-            for (byte b : bytes) {
-                assert ((byte) 0 == b);
-            }
-        } catch (AssertionError e) {
-            return false;
+        for (byte b : bytes) {
+            if (b != 0) return false;
         }
         return true;
     }
 
+    /**
+     * Overwrites {@code buffer} with zeros, up to its limit.
+     *
+     * @return whether every byte up to the limit is zero afterwards: true for {@code null}, which
+     *         holds nothing, and false for a read-only buffer, which keeps what it holds
+     */
     static public boolean clear(ByteBuffer buffer) {
-        final byte[] zeros = new byte[buffer.limit()];
-        Arrays.fill(zeros, (byte) 0);
-        buffer.rewind();
-        buffer.put(zeros);
+        if (buffer == null) return true;
         try {
-            for (byte b : buffer.array()) {
-                assert ((byte) 0 == b);
-            }
-        } catch (AssertionError e) {
+            buffer.rewind();
+            buffer.put(new byte[buffer.limit()]);
+        } catch (ReadOnlyBufferException e) {
             return false;
+        }
+        for (int i = 0; i < buffer.limit(); i++) {
+            if (buffer.get(i) != 0) return false;
         }
         return true;
     }
 
+    /**
+     * Overwrites {@code buffer} with zeros, up to its limit.
+     *
+     * @return whether every char up to the limit is zero afterwards: true for {@code null}, which
+     *         holds nothing, and false for a read-only buffer, as one over a {@code String} is
+     */
     static public boolean clear(CharBuffer buffer) {
-        final char[] zeros = new char[buffer.limit()];
-        Arrays.fill(zeros, (char) 0);
-        buffer.rewind();
-        buffer.put(zeros);
+        if (buffer == null) return true;
         try {
-            for (char c : buffer.array()) {
-                assert ((char) 0 == c);
-            }
-        } catch (AssertionError e) {
+            buffer.rewind();
+            buffer.put(new char[buffer.limit()]);
+        } catch (ReadOnlyBufferException e) {
             return false;
+        }
+        for (int i = 0; i < buffer.limit(); i++) {
+            if (buffer.get(i) != 0) return false;
         }
         return true;
     }
@@ -254,6 +267,11 @@ public final class Secret extends Struct implements AutoCloseable {
         }
     }
 
+    /**
+     * Overwrites the secret's value with zeros.
+     *
+     * @return whether it is erased; true for a secret without a value
+     */
     public boolean clear() {
         return clear(value);
     }

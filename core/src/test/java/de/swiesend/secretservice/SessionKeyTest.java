@@ -2,6 +2,9 @@ package de.swiesend.secretservice;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 
@@ -50,5 +53,19 @@ class SessionKeyTest {
         assertTrue(key.isDestroyed());
         assertArrayEquals(new byte[16], heldBytes(key), "destroy must erase the bytes it holds");
         assertThrows(IllegalStateException.class, key::getEncoded);
+    }
+
+    /** A {@code SecretKey} is {@code Serializable}; a written key is one that destroy() cannot erase. */
+    @Test
+    void isNotWrittenToAStream() throws Exception {
+        TransportEncryption.SessionKey key = new TransportEncryption.SessionKey(sevens());
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+
+        try (ObjectOutputStream out = new ObjectOutputStream(written)) {
+            assertThrows(NotSerializableException.class, () -> out.writeObject(key));
+        }
+
+        String stream = written.toString(java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertTrue(!stream.contains("\u0007\u0007\u0007\u0007"), "and none of its bytes are in the stream");
     }
 }
