@@ -67,6 +67,16 @@ class CollectionNamingTest {
     }
 
     @Test
+    void aPromptResultThatSpellsACollectionsPathAsTextGivesNone() throws Exception {
+        harness.start(false);
+        SessionInterface session = harness.service().openSession().orElseThrow();
+
+        // A string, where the specification gives the created collection as an object path.
+        assertEquals(Optional.empty(), createdWith(session, new Variant<>(FakeSecretService.COLLECTION_PATH)));
+        assertEquals(Optional.empty(), createdWith(session, new Variant<>(List.of(FakeSecretService.COLLECTION_PATH), "as")));
+    }
+
+    @Test
     void aPromptResultThatNamesACollectionGivesIt() throws Exception {
         harness.start(false);
         SessionInterface session = harness.service().openSession().orElseThrow();

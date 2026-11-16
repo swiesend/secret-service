@@ -346,10 +346,15 @@ public class Collection implements CollectionInterface {
         if (!"/".equals(response.a.getPath())) {
             return Optional.of(response.a);
         } else {
-            // The created collection is the prompt's result. A result of another kind is turned
-            // into a path that names nothing, which getCollectionFromPath() refuses.
-            return performPrompt(response.b)
-                    .map(result -> result instanceof DBusPath ? (DBusPath) result : new DBusPath(String.valueOf(result)));
+            // The created collection is the prompt's result, an object path. A result of another
+            // kind names none: text that spells a path would bind this object to a collection
+            // that the prompt did not say it created.
+            Optional<Object> result = performPrompt(response.b);
+            if (result.isPresent() && !(result.get() instanceof DBusPath)) {
+                log.warn("The prompt that creates a collection completed with a result that is no object path.");
+                return Optional.empty();
+            }
+            return result.map(path -> (DBusPath) path);
         }
     }
 
