@@ -5,6 +5,7 @@ import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import de.swiesend.secretservice.integration.test.Dialogs;
 import de.swiesend.secretservice.simple.SimpleCollection;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,22 @@ class DefaultCollectionSystemTest {
 
     /** The label that Cryptomator gives each item. */
     private static final String LABEL = "Cryptomator";
+
+    /**
+     * The calls start from an unlocked default collection, as at a desktop after the login.
+     * KWallet opens its wallet at the login and still reports it as locked until a client first
+     * unlocks it, which shows no dialog. So the test unlocks the collection where the provider
+     * reports it as locked, and does not depend on a test class that ran before it.
+     */
+    @BeforeEach
+    void unlockTheDefaultCollection() throws Exception {
+        try (CollectionInterface keyring = Collection.openDefault()
+                .orElseThrow(() -> new AssertionError("the default collection did not open"))) {
+            if (keyring.isLocked()) {
+                assertTrue(keyring.unlockWithUserPermission(), "the default collection unlocks");
+            }
+        }
+    }
 
     @Test
     @DisplayName("Cryptomator's calls through SimpleCollection store, load, change and delete a passphrase")
