@@ -94,12 +94,16 @@ public final class BusNameOwner {
     }
 
     /**
-     * The owner's unique name, or empty where nobody owns the name or it cannot be read. Asks the
+     * The owner's unique name, or empty where nobody owns the name or it cannot be read; the bus's
+     * answer that nobody owns it counts as read, for {@link #hasLost}. Asks the
      * bus where the owner is not known, or its changes are not followed: not for the thread that
      * dispatches the signals.
      */
     public Optional<String> read() {
-        if (following && known) return Optional.ofNullable(owner);
+        // A name without an owner is asked for again, as before the bus's "nobody" counted as
+        // read: its next owner is taken from whichever comes first, the announcement or a read.
+        final String current = owner;
+        if (following && known && current != null) return Optional.of(current);
         final long before;
         synchronized (this) {
             before = announced;
@@ -108,12 +112,21 @@ public final class BusNameOwner {
         boolean answered = false;
         DBusConnection c = connection.get();
         if (c != null) {
+            DBus bus = null;
             try {
-                read = c.getRemoteObject(BUS_NAME, BUS_PATH, DBus.class).GetNameOwner(name);
+                bus = c.getRemoteObject(BUS_NAME, BUS_PATH, DBus.class);
+                read = bus.GetNameOwner(name);
                 answered = true;
             } catch (DBusException | RuntimeException e) {
-                // NameHasNoOwner too: the bus announces the next owner, or the next read asks again.
-                log.debug("Could not read who owns the bus name {}.", name, e);
+                // The bus answers for a name that nobody owns with the error NameHasNoOwner, and
+                // dbus-java hands on no error name. So the bus is asked whether the name has an
+                // owner: its "no" is an answer, and no failure to read. A provider that left is
+                // so seen also where the bus's announcements do not arrive.
+                answered = bus != null && saysNobodyOwnsTheName(bus);
+                if (!answered) {
+                    // The bus announces the next owner, or the next read asks again.
+                    log.debug("Could not read who owns the bus name {}.", name, e);
+                }
             }
         }
         synchronized (this) {
@@ -123,6 +136,15 @@ public final class BusNameOwner {
                 known = answered;
             }
             return known ? Optional.ofNullable(owner) : Optional.empty();
+        }
+    }
+
+    /** Whether the bus answers that nobody owns the name; false also where it does not answer. */
+    private boolean saysNobodyOwnsTheName(DBus bus) {
+        try {
+            return !bus.NameHasOwner(name);
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 
