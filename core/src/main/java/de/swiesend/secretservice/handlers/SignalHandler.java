@@ -22,7 +22,8 @@ public class SignalHandler implements DBusSigHandler {
     private final static int bufferSize = 1024;
     /** How often an await looks after the provider's owner: every tenth of its ticks, once a second. */
     private static final int OWNER_CHECK_TICKS = 10;
-    private Logger log = LoggerFactory.getLogger(getClass());
+    // Named for the declaring class, not getClass(); see MessageHandler for why.
+    private static final Logger log = LoggerFactory.getLogger(SignalHandler.class);
     // connection and sourcePath change under the lock on the buffer, and with it: a signal counts
     // for the connection and the path that the buffer is kept for.
     private volatile DBusConnection connection = null;
