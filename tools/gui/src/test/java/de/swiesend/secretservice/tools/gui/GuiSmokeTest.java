@@ -12,6 +12,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import javax.swing.AbstractButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -191,6 +192,23 @@ class GuiSmokeTest {
 
     @Test
     @Order(4)
+    @DisplayName("the log shows the library's log from the level that is chosen")
+    void showsTheLibrarysLog() {
+        JComboBox<?> level = Gui.find(JComboBox.class, "log-level");
+        Gui.onEventThread(() -> {
+            level.setSelectedItem(LibraryLog.Threshold.DEBUG);
+            return null;
+        });
+        Gui.click("refresh-collections");
+        Gui.await("the library's debug log shows", () -> log().contains("lib DEBUG "));
+        Gui.onEventThread(() -> {
+            level.setSelectedItem(LibraryLog.Threshold.INFO);
+            return null;
+        });
+    }
+
+    @Test
+    @Order(5)
     @DisplayName("Create / open creates the collection with its password and opens it")
     void createsTheCollection() {
         Gui.type("collection-label", collection);
@@ -207,7 +225,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("Create stores an item, and the list shows it")
     void createsAnItem() {
         Gui.selectTab("item-tabs", "New item");
@@ -221,7 +239,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("selecting the item shows its label and attributes, and Read Secret its secret")
     void readsTheItem() {
         selectFirstItem();
@@ -236,7 +254,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     @DisplayName("Search narrows the list, and List All shows every item again")
     void searches() {
         Gui.type("search", "no item has this name");
@@ -255,7 +273,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("Open opens the collection from the list, without its password")
     void reopensFromTheList() {
         Gui.click("disconnect");
@@ -272,7 +290,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     @DisplayName("the window answers while the provider's dialog waits, and Cancel gives up the wait")
     void staysResponsiveWhileTheProviderAsks() throws IOException {
         String control = System.getenv(DIALOG_CONTROL);
@@ -299,6 +317,8 @@ class GuiSmokeTest {
             assertEquals(1, items(), "the item stays");
             assertTrue(log().contains("WARNING: deleteItem returned false"), log());
             assertTrue(log().contains("Delete item: cancelled."), log());
+            // The library's own log, in the window's
+            assertTrue(log().contains("lib ERROR Collection: The collection was not unlocked with user permission."), log());
         } finally {
             // The unlock dialog of gnome-keyring stays open; the answerer answers it now.
             Files.deleteIfExists(hold);
@@ -307,7 +327,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(10)
+    @Order(11)
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
         selectFirstItem();
@@ -320,7 +340,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(11)
+    @Order(12)
     @DisplayName("the default collection opens only after the acknowledgement of the potential risk of damage")
     void opensTheDefaultAfterTheAcknowledgement() {
         Gui.selectRow("collections", LOGIN);
@@ -351,7 +371,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(12)
+    @Order(13)
     @DisplayName("Delete Collection asks, deletes the collection and closes it")
     void deletesTheCollection() {
         Gui.selectTab("bottom-tabs", "Danger zone");

@@ -42,10 +42,10 @@
             <version>${secret-service.version}</version>
         </dependency>
 
-        <!-- Console logging when launched standalone -->
+        <!-- The library logs through SLF4J; java.util.logging takes its log, and the window shows it -->
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
+            <artifactId>slf4j-jdk14</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
 
