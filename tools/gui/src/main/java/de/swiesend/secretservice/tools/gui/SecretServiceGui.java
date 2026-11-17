@@ -62,16 +62,24 @@ public final class SecretServiceGui {
         }
 
         CountDownLatch latch = new CountDownLatch(1);
-        SwingUtilities.invokeLater(() -> {
-            try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception ignored) {
-            }
-            SecretServiceFrame frame = new SecretServiceFrame(latch);
-            frame.setVisible(true);
-        });
+        SwingUtilities.invokeLater(() -> show(latch));
         latch.await(); // block until the user closes the window
         System.exit(0);
+    }
+
+    /**
+     * Shows the window, on the event thread.
+     *
+     * @param closed counted down when the window has closed
+     */
+    static JFrame show(CountDownLatch closed) {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignored) {
+        }
+        SecretServiceFrame frame = new SecretServiceFrame(closed);
+        frame.setVisible(true);
+        return frame;
     }
 
     // ─── GUI implementation ───────────────────────────────────────────────
@@ -170,6 +178,7 @@ public final class SecretServiceGui {
                 }
             });
             buildUi();
+            nameComponents();
             wireActions();
             setMinimumSize(new Dimension(800, 700));
             pack();
@@ -181,6 +190,45 @@ public final class SecretServiceGui {
             return new DefaultTableModel(columns, 0) {
                 @Override public boolean isCellEditable(int row, int col) { return false; }
             };
+        }
+
+        /** The names by which the smoke test finds the components. */
+        private void nameComponents() {
+            setName("secret-service-gui");
+            btnConnect.setName("connect");
+            btnDisconnect.setName("disconnect");
+            lblConnectionStatus.setName("connection-status");
+            lblProvider.setName("provider");
+            rbDefault.setName("collection-default");
+            rbTest.setName("collection-custom");
+            tfCollectionLabel.setName("collection-label");
+            tfCollectionId.setName("collection-id");
+            pfCollectionPassword.setName("collection-password");
+            tfLabel.setName("item-label");
+            tfSecret.setName("item-secret");
+            tfAttributeKey.setName("item-attribute-key");
+            tfAttributeValue.setName("item-attribute-value");
+            btnCreate.setName("create-item");
+            btnClearCreate.setName("clear-item");
+            itemsList.setName("items");
+            tfSearch.setName("search");
+            cmbSearchMode.setName("search-mode");
+            cmbMaxDistance.setName("search-distance");
+            btnSearch.setName("search-items");
+            btnList.setName("list-items");
+            lblDetailPath.setName("detail-path");
+            lblDetailLabel.setName("detail-label");
+            lblDetailSecret.setName("detail-secret");
+            attributesTable.setName("detail-attributes");
+            btnRead.setName("read-secret");
+            btnDeleteItem.setName("delete-item");
+            btnDeleteCollection.setName("delete-collection");
+            btnKillKeyring.setName("kill-keyring");
+            btnStartKeyring.setName("start-keyring");
+            logArea.setName("log");
+            btnClearLog.setName("clear-log");
+            btnDebugRefresh.setName("refresh-state");
+            cbAutoSync.setName("auto-sync");
         }
 
         // ── Layout ────────────────────────────────────────────────────
