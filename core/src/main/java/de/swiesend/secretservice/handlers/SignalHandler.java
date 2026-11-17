@@ -22,7 +22,8 @@ public class SignalHandler implements DBusSigHandler {
     private final static int bufferSize = 1024;
     /** How often an await looks after the provider's owner: every tenth of its ticks, once a second. */
     private static final int OWNER_CHECK_TICKS = 10;
-    private Logger log = LoggerFactory.getLogger(getClass());
+    // Named for the declaring class, not getClass(); see MessageHandler for why.
+    private static final Logger log = LoggerFactory.getLogger(SignalHandler.class);
     // connection and sourcePath change under the lock on the buffer, and with it: a signal counts
     // for the connection and the path that the buffer is kept for.
     private volatile DBusConnection connection = null;
@@ -411,6 +412,11 @@ public class SignalHandler implements DBusSigHandler {
             executor.shutdownNow();
         }
 
+        if (received == null) {
+            // A last look before giving up: the answer may have arrived since the buffer was last
+            // read, as from a provider that answers and leaves the bus at once.
+            received = newestSince(init, signal, path);
+        }
         if (received == null && unanswerable) {
             log.warn("Stopped waiting for the signal ({}) because {}.", path, gaveUp);
         } else if (received == null) {

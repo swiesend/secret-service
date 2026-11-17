@@ -4,6 +4,8 @@ import de.swiesend.secretservice.FakeSecretService;
 import de.swiesend.secretservice.Prompt;
 import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import de.swiesend.secretservice.handlers.BusNameOwner;
+import de.swiesend.secretservice.handlers.SignalHandler;
 import de.swiesend.secretservice.interfaces.Prompt.Completed;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
@@ -22,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -102,6 +105,39 @@ class PromptWaitTest {
             assertEquals(List.of(), harness.fake().dismissCalls(), "there is no prompt left to dismiss");
         } finally {
             waiting.getSignalHandler().disconnect();
+        }
+    }
+
+    @Test
+    void anAnswerThatArrivedBeforeTheProviderLeftIsNotDropped() throws Exception {
+        startWithAnOpenPrompt(false);
+        Service service = harness.service().getService();
+        DBusPath prompt = unlockPrompt(service);
+        Prompt waiting = new Prompt(service);
+        SignalHandler handler = waiting.getSignalHandler();
+        BusNameOwner provider = BusNameOwner.of(service.getConnection(), FakeSecretService.BUS_NAME);
+        String owner = provider.read().orElseThrow();
+        try {
+            // The user answers the dialog and the provider leaves the bus, both before the wait
+            // first looks: it finds the answer in the buffer and the provider gone.
+            Completed answer = handler.await(Completed.class, prompt.getPath(), () -> {
+                int before = handler.getCount();
+                waiting.prompt(prompt);
+                awaitShown();
+                harness.fake().approvePendingPrompt();
+                for (int i = 0; i < 100 && handler.getCount() == before; i++) Thread.sleep(50);
+                assertTrue(handler.getCount() > before, "the answer arrived");
+                harness.releaseProviderName();
+                for (int i = 0; i < 100 && !provider.hasLost(owner); i++) Thread.sleep(50);
+                assertTrue(provider.hasLost(owner), "the provider left the bus");
+                return null;
+            }, LONG);
+
+            assertNotNull(answer, "the answer that arrived");
+            assertFalse(answer.dismissed);
+            assertFalse(harness.fake().isCollectionLocked());
+        } finally {
+            handler.disconnect();
         }
     }
 

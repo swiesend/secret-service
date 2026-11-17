@@ -671,6 +671,17 @@ public final class FakeSecretService {
     private volatile boolean collectionLockUnreadableOnceLocked;
 
     /**
+     * Makes the collection's {@code Locked} property answer one read with an error once a Lock
+     * call has locked the collection: it answers {@code answered} reads first, fails the next,
+     * and answers again from then on. As a provider that is busy for a moment.
+     */
+    public void setCollectionLockUnreadableOnceAfterLocking(int answered) { this.lockReadsAnsweredAfterLocking = answered; }
+    private volatile int lockReadsAnsweredAfterLocking = -1;
+    /** The reads that are answered before the one that fails; negative: none fails. */
+    private final java.util.concurrent.atomic.AtomicInteger lockReadsLeft =
+            new java.util.concurrent.atomic.AtomicInteger(-1);
+
+    /**
      * Makes the {@code Locked} property of the collection and of every item answer with a string
      * in place of the boolean that the specification gives it.
      */
@@ -967,6 +978,7 @@ public final class FakeSecretService {
                 if (COLLECTION_PATH.equals(p.getPath())) {
                     collectionLocked = true;
                     if (collectionLockUnreadableOnceLocked) collectionLockUnreadable = true;
+                    lockReadsLeft.set(lockReadsAnsweredAfterLocking);
                 }
             }
             // Locked already, as a busy provider has locked when its reply comes late.
@@ -1090,6 +1102,7 @@ public final class FakeSecretService {
             switch (property) {
                 case "Locked":
                     if (collectionLockUnreadable) throw lockUnreadable();
+                    if (lockReadsLeft.getAndUpdate(left -> left < 0 ? left : left - 1) == 0) throw lockUnreadable();
                     if (lockedAnswersWithText) return (A) "no";
                     return (A) Boolean.valueOf(collectionLocked);
                 case "Items":   return (A) new Variant<>(itemsHidden() ? new ArrayList<DBusPath>() : items(), "ao");

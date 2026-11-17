@@ -130,6 +130,20 @@ final class FakeProviderFixture {
      * @return the bus address
      */
     String startBus() throws Exception {
+        return startBus("");
+    }
+
+    /**
+     * As {@link #startBus()}, on a bus that refuses every match rule: no client of it can ask for
+     * signals, as on a bus whose policy or whose limit of match rules denies the call.
+     */
+    String startBusThatRefusesMatchRules() throws Exception {
+        return startBus("""
+                <deny send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus" send_member="AddMatch"/>
+                """);
+    }
+
+    private String startBus(String morePolicy) throws Exception {
         // A PATH-based socket, not the Linux-default abstract one: the
         // dbus-java-transport-native-unixsocket provider only understands unix:path=... . The CI
         // provider images configure their bus the same way, and for the same reason -- see the
@@ -146,9 +160,10 @@ final class FakeProviderFixture {
                     <allow send_destination="*" eavesdrop="true"/>
                     <allow eavesdrop="true"/>
                     <allow own="*"/>
+                    %s
                   </policy>
                 </busconfig>
-                """.formatted(socket));
+                """.formatted(socket, morePolicy.strip()));
 
         bus = new ProcessBuilder("dbus-daemon", "--config-file=" + config, "--nofork")
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
