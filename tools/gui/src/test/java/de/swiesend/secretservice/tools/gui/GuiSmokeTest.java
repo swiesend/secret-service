@@ -12,6 +12,9 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JScrollPane;
+import javax.swing.SwingUtilities;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -20,6 +23,7 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.UIManager;
 import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -122,6 +126,21 @@ class GuiSmokeTest {
 
     @Test
     @Order(1)
+    @DisplayName("the window fits the screen and shows the item list and the log")
+    void fitsTheScreen() {
+        Rectangle screen = Gui.onEventThread(() -> frame.getGraphicsConfiguration().getBounds());
+        Rectangle window = Gui.onEventThread(frame::getBounds);
+        assertTrue(screen.contains(window), "the window " + window + " is within the screen " + screen);
+        assertTrue(scrollPaneHeight(Gui.find(JList.class, "items")) >= 80, "the item list shows a few lines");
+        assertTrue(scrollPaneHeight(Gui.find(JTextArea.class, "log")) >= 80, "the log shows a few lines");
+    }
+
+    private static int scrollPaneHeight(JComponent view) {
+        return Gui.onEventThread(() -> SwingUtilities.getAncestorOfClass(JScrollPane.class, view).getHeight());
+    }
+
+    @Test
+    @Order(2)
     @DisplayName("the window starts disconnected")
     void startsDisconnected() {
         assertTrue(enabled("connect"), "Connect is enabled");
@@ -131,7 +150,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(2)
+    @Order(3)
     @DisplayName("Connect creates the collection and opens it")
     void connects() {
         Gui.type("collection-id", "");
@@ -147,7 +166,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(3)
+    @Order(4)
     @DisplayName("Create stores an item, and the list shows it")
     void createsAnItem() {
         Gui.type("item-label", "smoke item");
@@ -160,7 +179,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(4)
+    @Order(5)
     @DisplayName("selecting the item shows its label and attributes, and Read Secret its secret")
     void readsTheItem() {
         JList<?> items = Gui.find(JList.class, "items");
@@ -180,7 +199,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("Search narrows the list, and List All shows every item again")
     void searches() {
         Gui.type("search", "no item has this name");
@@ -199,7 +218,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("Connect opens the collection by its id, without its password")
     void reconnectsById() {
         Gui.click("disconnect");
@@ -218,7 +237,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     @DisplayName("the window answers while the provider's dialog waits, and Cancel gives up the wait")
     void staysResponsiveWhileTheProviderAsks() throws IOException {
         String control = System.getenv(DIALOG_CONTROL);
@@ -258,7 +277,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
         JList<?> items = Gui.find(JList.class, "items");
@@ -276,7 +295,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     @DisplayName("Delete Collection asks, deletes the collection and disconnects")
     void deletesTheCollection() {
         Gui.click("delete-collection");
