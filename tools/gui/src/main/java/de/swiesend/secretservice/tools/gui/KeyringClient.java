@@ -13,9 +13,16 @@ import de.swiesend.secretservice.interfaces.Prompt.Completed;
 import de.swiesend.secretservice.interfaces.Service.CollectionChanged;
 import de.swiesend.secretservice.interfaces.Service.CollectionCreated;
 import de.swiesend.secretservice.interfaces.Service.CollectionDeleted;
+import de.swiesend.secretservice.ProviderDetector;
+import de.swiesend.secretservice.Static;
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
+import org.freedesktop.dbus.exceptions.DBusException;
+import org.freedesktop.dbus.interfaces.DBus;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,6 +32,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -60,6 +68,10 @@ final class KeyringClient {
         static OpenOutcome failed() {
             return new OpenOutcome(Optional.empty(), false);
         }
+    }
+
+    /** The process that serves the Secret Service on the bus. */
+    record Daemon(long pid, String command) {
     }
 
     /** What the window shows of the selected item. */
@@ -357,6 +369,106 @@ final class KeyringClient {
             log("WARNING: collection.delete() returned false.");
         }
         return deleted;
+    }
+
+    // -- The provider's daemon --
+
+    /** The command of gnome-keyring's daemon, the only one that the window stops. */
+    static final String GNOME_KEYRING_DAEMON = "gnome-keyring-daemon";
+
+    /**
+     * Whether gnome-keyring serves the Secret Service. Other providers are applications of their
+     * own, as KeePassXC, or parts of the desktop, as KWallet, which the window does not stop.
+     */
+    boolean isGnomeKeyring() {
+        return service != null && service.detectProvider() == ProviderDetector.Provider.GNOME_KEYRING;
+    }
+
+    /**
+     * The process that owns the Secret Service's name on this bus, as the bus tells it, where it is
+     * gnome-keyring's daemon of this user: not any process of that name, as {@code pkill -f} took.
+     */
+    Optional<Daemon> providerDaemon() {
+        if (!isGnomeKeyring()) {
+            log("The provider is not gnome-keyring: the window stops only gnome-keyring's daemon.");
+            return Optional.empty();
+        }
+        DBus bus;
+        try {
+            bus = system.getConnection().getRemoteObject("org.freedesktop.DBus", "/org/freedesktop/DBus", DBus.class);
+        } catch (DBusException e) {
+            log("ERROR: Could not reach the bus: %s", e.getMessage());
+            return Optional.empty();
+        }
+        long pid = bus.GetConnectionUnixProcessID(Static.Service.SECRETS).longValue();
+        Optional<ProcessHandle> process = ProcessHandle.of(pid);
+        if (process.isEmpty()) {
+            log("ERROR: The bus names process %d, which this user cannot see.", pid);
+            return Optional.empty();
+        }
+        String command = process.get().info().command().orElse("?");
+        String user = process.get().info().user().orElse("?");
+        if (!Path.of(command).getFileName().toString().equals(GNOME_KEYRING_DAEMON)) {
+            log("ERROR: Process %d serves the Secret Service, and is no %s but %s.", pid, GNOME_KEYRING_DAEMON, command);
+            return Optional.empty();
+        }
+        if (!user.equals(System.getProperty("user.name"))) {
+            log("ERROR: Process %d belongs to %s, not to this user.", pid, user);
+            return Optional.empty();
+        }
+        return Optional.of(new Daemon(pid, command));
+    }
+
+    /**
+     * Stops the daemon, which the user confirmed, and disconnects: the session ends with it. It
+     * stops only that process, and only while it still is the daemon.
+     *
+     * @return whether the process has ended
+     */
+    boolean stop(Daemon daemon) throws InterruptedException {
+        Optional<ProcessHandle> process = ProcessHandle.of(daemon.pid())
+                .filter(handle -> handle.info().command().orElse("").equals(daemon.command()));
+        if (process.isEmpty()) {
+            log("Process %d is no longer %s.", daemon.pid(), daemon.command());
+            disconnect();
+            return false;
+        }
+        disconnect();
+        boolean asked = process.get().destroy(); // SIGTERM, which gnome-keyring ends on
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!hasEnded(process.get())) {
+            if (System.nanoTime() > deadline) {
+                log("WARNING: Process %d has not ended within 5 s.", daemon.pid());
+                return false;
+            }
+            Thread.sleep(100);
+        }
+        log("Stopped %s (process %d)%s.", daemon.command(), daemon.pid(), asked ? "" : ", which had ended");
+        return true;
+    }
+
+    /**
+     * Whether the process has ended. One that its parent has not reaped yet, a zombie, still
+     * counts as alive for {@link ProcessHandle#isAlive()}, and has no command any more.
+     */
+    private static boolean hasEnded(ProcessHandle process) {
+        return !process.isAlive() || process.info().command().isEmpty();
+    }
+
+    /**
+     * Starts gnome-keyring's daemon for the Secret Service, where none serves it. Its output is
+     * the environment of the daemon, which names no secret.
+     *
+     * @return the daemon's exit code
+     */
+    int startGnomeKeyring() throws IOException, InterruptedException {
+        Process start = new ProcessBuilder(GNOME_KEYRING_DAEMON, "--start", "--components=secrets")
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(start.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        int exit = start.waitFor();
+        log("%s --start: exit=%d %s", GNOME_KEYRING_DAEMON, exit, output);
+        return exit;
     }
 
     // -- State --

@@ -419,4 +419,29 @@ class GuiSmokeTest {
         assertTrue(enabled("disconnect"), "the window stays connected");
         Gui.screenshot("collection-deleted");
     }
+
+    @Test
+    @Order(14)
+    @DisplayName("Kill Keyring stops the daemon that the bus names, after it names it, and Start Keyring starts one")
+    void stopsAndStartsTheDaemon() {
+        assertTrue(enabled("kill-keyring"), "Kill is enabled for gnome-keyring");
+        assertFalse(enabled("start-keyring"), "Start waits for the window to disconnect");
+
+        Gui.selectTab("bottom-tabs", "Danger zone");
+        Gui.click("kill-keyring");
+        String question = Gui.dialogMessage(SecretServiceGui.SecretServiceFrame.KILL_TITLE);
+        assertTrue(question.startsWith("Stop /usr/bin/gnome-keyring-daemon (process "), question);
+        Gui.screenshot("kill-keyring");
+        Gui.answer(SecretServiceGui.SecretServiceFrame.KILL_TITLE, UIManager.getString("OptionPane.yesButtonText"));
+        Gui.await("the window is disconnected", () -> enabled("connect"));
+        assertTrue(log().contains("Stopped /usr/bin/gnome-keyring-daemon (process "), log());
+
+        Gui.click("start-keyring");
+        Gui.answer(SecretServiceGui.SecretServiceFrame.START_TITLE, UIManager.getString("OptionPane.yesButtonText"));
+        Gui.await("the daemon has started", () -> log().contains("gnome-keyring-daemon --start: exit=0"));
+
+        Gui.click("connect");
+        Gui.await("the window is connected", () -> enabled("disconnect"));
+        Gui.await("the list shows the login keyring", () -> Gui.firstColumn("collections").contains(LOGIN));
+    }
 }

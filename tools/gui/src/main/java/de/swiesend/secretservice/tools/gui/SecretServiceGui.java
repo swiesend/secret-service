@@ -90,6 +90,8 @@ public final class SecretServiceGui {
         private static final Color DANGER = new Color(0xC62828);
         /** The title of the dialog that asks for the acknowledgement before a default collection opens. */
         static final String DEFAULT_RISK_TITLE = "Open the default collection";
+        static final String KILL_TITLE = "Kill Keyring";
+        static final String START_TITLE = "Start Keyring";
         /** How long the window keeps a secret that it has read. */
         private static final int SECRET_SHOWN_MILLIS = 60_000;
         /** How long the clipboard keeps a secret that the window copied there. */
@@ -186,6 +188,8 @@ public final class SecretServiceGui {
         private final Worker worker = new Worker(workerListener());
         /** Whether the window is connected to the provider. */
         private boolean connected = false;
+        /** Whether gnome-keyring serves the Secret Service, as the window found at Connect. */
+        private boolean gnomeKeyring = false;
         /** Whether a collection is open, and whether it is a default one. */
         private boolean collectionOpen = false;
         private boolean defaultOpen = false;
@@ -526,7 +530,9 @@ public final class SecretServiceGui {
             buttons.add(btnStartKeyring);
 
             JLabel warning = new JLabel("<html>These change the keyring beyond one item, and can affect"
-                    + " every application of the desktop session. Each asks before it acts.</html>");
+                    + " every application of the desktop session. Each asks before it acts. Kill stops"
+                    + " the gnome-keyring daemon that serves this bus, and only that one; Start starts"
+                    + " one while the window is disconnected.</html>");
             warning.setForeground(DANGER);
 
             JPanel panel = new JPanel(new BorderLayout(4, 4));
@@ -636,8 +642,9 @@ public final class SecretServiceGui {
             itemsList.setEnabled(items);
             btnDisconnect.setEnabled(connected && !busy);
             btnConnect.setEnabled(!connected && !busy);
-            btnKillKeyring.setEnabled(!busy);
-            btnStartKeyring.setEnabled(!busy);
+            // Only gnome-keyring's daemon, which the window can find; started only where none serves.
+            btnKillKeyring.setEnabled(connected && gnomeKeyring && !busy);
+            btnStartKeyring.setEnabled(!connected && !busy);
             btnDebugRefresh.setEnabled(!busy);
             btnCancel.setEnabled(busy);
             boolean session = connected && !busy;
@@ -675,9 +682,16 @@ public final class SecretServiceGui {
         // ── Connect / Disconnect ──────────────────────────────────────
 
         private void doConnect() {
-            worker.run("Connect", client::connect, collections -> {
+            record Connection(Optional<List<KeyringClient.CollectionEntry>> collections, boolean gnomeKeyring) {
+            }
+            worker.run("Connect", () -> {
+                Optional<List<KeyringClient.CollectionEntry>> collections = client.connect();
+                return new Connection(collections, collections.isPresent() && client.isGnomeKeyring());
+            }, connection -> {
+                Optional<List<KeyringClient.CollectionEntry>> collections = connection.collections();
                 if (collections.isPresent()) {
                     connected = true;
+                    gnomeKeyring = connection.gnomeKeyring();
                     showCollections(collections.get());
                     updateConnectionIcon(true);
                     updateControls();
@@ -839,6 +853,7 @@ public final class SecretServiceGui {
         /** Shows the window as it is without a connection. */
         private void disconnected() {
             connected = false;
+            gnomeKeyring = false;
             collectionClosed();
             showCollections(List.of());
             updateConnectionIcon(false);
@@ -1035,33 +1050,34 @@ public final class SecretServiceGui {
             });
         }
 
+        /**
+         * Stops gnome-keyring's daemon after the user confirmed it, the process that the bus names
+         * as the provider's, no other.
+         */
         private void killKeyring() {
-            int confirm = JOptionPane.showConfirmDialog(this,
-                    "Kill the gnome-keyring process? This may affect the desktop session.\n\nProceed?",
-                    "Kill Keyring", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-            if (confirm != JOptionPane.YES_OPTION) return;
-            worker.run("Kill keyring", () -> {
-                Process p = new ProcessBuilder("pkill", "-f", "gnome-keyring-daemon").start();
-                int rc = p.waitFor();
-                log("killKeyring(): pkill returned %d", rc);
-                return null;
-            }, ignored -> { });
+            worker.run("Find the keyring daemon", client::providerDaemon, daemon -> {
+                if (daemon.isEmpty()) return;
+                int confirm = JOptionPane.showConfirmDialog(this,
+                        "Stop " + daemon.get().command() + " (process " + daemon.get().pid() + ")?\n\n"
+                                + "It serves the Secret Service on this bus. Every application of the desktop\n"
+                                + "session loses the keyring until it starts again, and the window disconnects.",
+                        KILL_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (confirm != JOptionPane.YES_OPTION) return;
+                worker.run("Stop the keyring daemon", () -> client.stop(daemon.get()), stopped -> {
+                    disconnected();
+                    log("Disconnected.");
+                });
+            });
         }
 
+        /** Starts gnome-keyring's daemon after the user confirmed it, while the window is disconnected. */
         private void startKeyring() {
             int confirm = JOptionPane.showConfirmDialog(this,
-                    "Start the gnome-keyring-daemon for the current user?\n\nProceed?",
-                    "Start Keyring", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+                    "Start gnome-keyring-daemon for the Secret Service of this session?\n\n"
+                            + "Where a daemon runs already, it only prints its environment.",
+                    START_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
-            worker.run("Start keyring", () -> {
-                ProcessBuilder pb = new ProcessBuilder("gnome-keyring-daemon", "--start", "--components=secrets,pkcs11,ssh");
-                pb.redirectErrorStream(true);
-                Process p = pb.start();
-                String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                int rc = p.waitFor();
-                log("startKeyring(): exit=%d output=%s", rc, out.trim());
-                return null;
-            }, ignored -> { });
+            worker.run("Start the keyring daemon", client::startGnomeKeyring, exit -> { });
         }
 
         // ── Helpers ───────────────────────────────────────────────
