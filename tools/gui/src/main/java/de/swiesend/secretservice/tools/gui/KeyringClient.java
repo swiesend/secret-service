@@ -106,6 +106,10 @@ final class KeyringClient {
     private volatile Runnable itemsChanged = () -> { };
     private volatile Runnable collectionsChanged = () -> { };
     private boolean wasUnlockedOnce = false;
+    /** Whether the library may raise the provider's prompts, for each collection that opens. */
+    private boolean prompting = true;
+    /** How long the library waits for a prompt, for each connection; empty: the library's default. */
+    private Optional<Duration> timeout = Optional.empty();
 
     /**
      * @param log takes the lines for the window's log, from any thread
@@ -154,6 +158,7 @@ final class KeyringClient {
             }
             service = maybeService.get();
             log("Secret service created. Gnome Keyring: %s", service.isGnomeKeyringAvailable());
+            timeout.ifPresent(service::setTimeout);
 
             Optional<SessionInterface> maybeSession = service.openSession();
             if (maybeSession.isEmpty()) {
@@ -239,6 +244,7 @@ final class KeyringClient {
         closeCollection();
         collection = opened;
         collectionPath = path;
+        if (!prompting) collection.disablePrompt();
         String label = collection.getLabel().orElse("?");
         String id = collection.getId().orElse("?");
         log("Connected to collection label=\"%s\" id=\"%s\"%s.", label, id, isDefault ? " (default)" : "");
@@ -464,6 +470,45 @@ final class KeyringClient {
         boolean renamed = open().setLabel(label);
         log(renamed ? "Renamed the collection." : "WARNING: setLabel returned false.");
         return renamed;
+    }
+
+    /**
+     * Lets the library raise the provider's prompts, or keeps it from them: then the provider
+     * alone decides what a call without a prompt may do. For the open collection and each one
+     * that opens.
+     */
+    void setPrompting(boolean prompting) {
+        this.prompting = prompting;
+        if (collection != null) {
+            if (prompting) collection.enablePrompt();
+            else collection.disablePrompt();
+        }
+        log(prompting ? "Prompts are enabled." : "Prompts are disabled.");
+    }
+
+    /** How long the library waits for a prompt, for this connection and each that follows. */
+    void setTimeout(Duration timeout) {
+        this.timeout = Optional.of(timeout);
+        if (service != null) service.setTimeout(timeout);
+        log("The service's timeout is %d s.", timeout.getSeconds());
+    }
+
+    /** The items with exactly these attributes, through {@code getItems}, which unlocks first. */
+    List<ItemRow> filter(Map<String, String> attributes) {
+        List<String> paths = open().getItems(attributes).orElse(List.of());
+        log("Filter by %d attribute(s): %d item(s) matched.", attributes.size(), paths.size());
+        return rows(paths);
+    }
+
+    /**
+     * Reads every secret of the collection through {@code withSecrets}, which asks the user's
+     * permission, and tells only how many it read: the secrets stay in the callback.
+     */
+    Optional<Integer> readAllSecrets() {
+        Optional<Integer> read = open().withSecrets(Map::size);
+        if (read.isPresent()) log("Read the secrets of %d item(s).", read.get());
+        else log("WARNING: withSecrets returned nothing.");
+        return read;
     }
 
     /** Whether the open collection is locked now. */
