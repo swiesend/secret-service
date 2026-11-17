@@ -280,6 +280,15 @@ mvn -DskipTests -Dgpg.skip=true install   # install the core artifact locally
 mvn -f tools/gui/pom.xml exec:java         # launch the GUI
 ```
 
+Connect lists the provider's collections. A collection opens from the list, or is created by its
+label; the window then lists its items, without the provider's dialog also where it is locked, and
+follows the provider's signals. It creates, edits, locks, reads and deletes items, locks, unlocks
+and renames the collection, and switches the library's prompts and timeout. A default collection,
+the keyring of the desktop session where browsers and mail clients keep their passwords, opens only
+after you tick that you acknowledge the potential risk of damage. Every call to the keyring runs
+beside the window, which says what runs and offers Cancel while a dialog of the provider waits, and
+the library's log shows in the window's.
+
 Its smoke test uses the window as a developer does and leaves a screenshot of each step in
 `tools/gui/target/gui-screenshots`. It changes the keyring that it is connected to, so it skips
 itself unless it is told that the keyring is the run's own and that its dialogs are answered, as in

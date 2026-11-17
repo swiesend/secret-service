@@ -165,7 +165,9 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
   leg is required.
 - The standalone developer GUI lives in the separate `tools/gui` project (not in the test suite or
   the core jar). Launch it with `mvn -DskipTests -Dgpg.skip=true install` then
-  `mvn -f tools/gui/pom.xml exec:java`. Its smoke test, `GuiSmokeTest`, drives the window against
+  `mvn -f tools/gui/pom.xml exec:java`. `KeyringClient` makes its calls to the keyring, without
+  Swing, on the `Worker`'s thread, never on the event thread; the window opens a default collection
+  only after the user acknowledges the potential risk of damage. Its smoke test, `GuiSmokeTest`, drives the window against
   a real provider and saves screenshots to `tools/gui/target/gui-screenshots`; it skips itself
   unless `-Dsecret-service.system-test.dialogs-answered=true` and
   `-Dsecret-service.system-test.default-collection=throwaway` say that the keyring is the run's
