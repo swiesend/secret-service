@@ -71,13 +71,37 @@ public final class SecretServiceGui {
      * @param closed counted down when the window has closed
      */
     static JFrame show(CountDownLatch closed) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {
-        }
+        useTheDesktopStyle();
         SecretServiceFrame frame = new SecretServiceFrame(closed);
         frame.setVisible(true);
         return frame;
+    }
+
+    /** Swing's look of GTK, the toolkit of GNOME and most Linux desktops' dialogs. */
+    static final String GTK = "com.sun.java.swing.plaf.gtk.GTKLookAndFeel";
+
+    /**
+     * Takes the look of the desktop: on Windows and macOS their own, on Linux GTK's, which follows
+     * the desktop's GTK theme and fonts. The JDK names GTK's look as the system's only where it
+     * finds GNOME, and else Metal, Swing's own; so the GUI asks for GTK's first, and takes the
+     * system's where GTK is not there. A look that {@code -Dswing.defaultlaf} names stays. Where
+     * the look has no signs for its dialogs, as GTK's, the GUI draws its own.
+     */
+    static void useTheDesktopStyle() {
+        if (System.getProperty("swing.defaultlaf") == null) {
+            List<String> looks = new java.util.ArrayList<>();
+            if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")) looks.add(GTK);
+            looks.add(UIManager.getSystemLookAndFeelClassName());
+            for (String look : looks) {
+                try {
+                    UIManager.setLookAndFeel(look);
+                    break;
+                } catch (Exception | LinkageError unavailable) {
+                    // GTK's look is not supported without the GTK libraries; the next one is tried.
+                }
+            }
+        }
+        OptionPaneIcons.fillIn();
     }
 
     // ─── GUI implementation ───────────────────────────────────────────────
@@ -902,7 +926,7 @@ public final class SecretServiceGui {
             content.add(acknowledge, BorderLayout.SOUTH);
 
             JOptionPane pane = new JOptionPane(content, JOptionPane.WARNING_MESSAGE, JOptionPane.DEFAULT_OPTION,
-                    null, new Object[]{open, cancel}, cancel);
+                    OptionPaneIcons.warning(), new Object[]{open, cancel}, cancel);
             JDialog dialog = pane.createDialog(this, DEFAULT_RISK_TITLE);
             open.addActionListener(e -> {
                 pane.setValue(open);
@@ -1126,7 +1150,7 @@ public final class SecretServiceGui {
                             + "Label: " + tfDetailLabel.getText() + "\n" + "Path:  " + paths.get(0)
                     : "Delete " + paths.size() + " items from collection \"" + collectionName + "\"?";
             int confirm = JOptionPane.showConfirmDialog(this, what,
-                    "Confirm Delete Item", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                    "Confirm Delete Item", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, OptionPaneIcons.warning());
             if (confirm != JOptionPane.YES_OPTION) return;
             worker.run(paths.size() == 1 ? "Delete item" : "Delete items", () -> {
                 if (paths.size() == 1) client.deleteItem(paths.get(0));
@@ -1198,7 +1222,7 @@ public final class SecretServiceGui {
 
         private void doRenameCollection() {
             Object answer = JOptionPane.showInputDialog(this, "New label of the collection \"" + collectionName + "\":",
-                    RENAME_TITLE, JOptionPane.QUESTION_MESSAGE, null, null, collectionName);
+                    RENAME_TITLE, JOptionPane.QUESTION_MESSAGE, OptionPaneIcons.question(), null, collectionName);
             if (answer == null) return;
             String label = answer.toString().trim();
             if (label.isEmpty()) {
@@ -1308,7 +1332,7 @@ public final class SecretServiceGui {
                     "Delete the entire collection \"" + name + "\"?\n\n"
                             + "This cannot be undone!",
                     "Confirm Delete Collection \"" + name + "\"",
-                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, OptionPaneIcons.warning());
             if (confirm != JOptionPane.YES_OPTION) return;
             worker.run("Delete collection", client::deleteCollection, deleted -> {
                 if (deleted) {
@@ -1329,7 +1353,7 @@ public final class SecretServiceGui {
                         "Stop " + daemon.get().command() + " (process " + daemon.get().pid() + ")?\n\n"
                                 + "It serves the Secret Service on this bus. Every application of the desktop\n"
                                 + "session loses the keyring until it starts again, and the window disconnects.",
-                        KILL_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                        KILL_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, OptionPaneIcons.warning());
                 if (confirm != JOptionPane.YES_OPTION) return;
                 worker.run("Stop the keyring daemon", () -> client.stop(daemon.get()), stopped -> {
                     disconnected();
@@ -1343,7 +1367,7 @@ public final class SecretServiceGui {
             int confirm = JOptionPane.showConfirmDialog(this,
                     "Start gnome-keyring-daemon for the Secret Service of this session?\n\n"
                             + "Where a daemon runs already, it only prints its environment.",
-                    START_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+                    START_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, OptionPaneIcons.question());
             if (confirm != JOptionPane.YES_OPTION) return;
             worker.run("Start the keyring daemon", client::startGnomeKeyring, exit -> { });
         }

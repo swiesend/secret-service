@@ -287,7 +287,8 @@ and renames the collection, and switches the library's prompts and timeout. A de
 the keyring of the desktop session where browsers and mail clients keep their passwords, opens only
 after you tick that you acknowledge the potential risk of damage. Every call to the keyring runs
 beside the window, which says what runs and offers Cancel while a dialog of the provider waits, and
-the library's log shows in the window's.
+the library's log shows in the window's. The window takes the desktop's look, GTK's on Linux;
+`-Dswing.defaultlaf=<class>` chooses another.
 
 Its smoke test uses the window as a developer does and leaves a screenshot of each step in
 `tools/gui/target/gui-screenshots`. It changes the keyring that it is connected to, so it skips
