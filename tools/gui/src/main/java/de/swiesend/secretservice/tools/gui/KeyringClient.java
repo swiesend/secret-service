@@ -329,11 +329,14 @@ final class KeyringClient {
         return new ItemDetail(path, label, attributes);
     }
 
-    /** The secret of the item, which the caller erases. */
+    /**
+     * A copy of the item's secret, which the caller erases. The library erases its own array when
+     * {@code withSecret} returns.
+     */
     Optional<char[]> readSecret(String path) {
-        Optional<char[]> secret = open().getSecret(path);
-        if (secret.isPresent()) log("Secret revealed for: %s", path);
-        else log("Secret is empty for: %s", path);
+        Optional<char[]> secret = open().withSecret(path, char[]::clone);
+        if (secret.isPresent()) log("Read the secret of: %s", path);
+        else log("ERROR: Could not read the secret of: %s", path);
         return secret;
     }
 
