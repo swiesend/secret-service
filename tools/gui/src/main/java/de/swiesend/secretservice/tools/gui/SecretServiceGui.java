@@ -17,6 +17,7 @@ import java.awt.event.WindowEvent;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.CharBuffer;
+import java.time.Duration;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -93,6 +94,8 @@ public final class SecretServiceGui {
         /** The title of the dialog that asks for the acknowledgement before a default collection opens. */
         static final String DEFAULT_RISK_TITLE = "Open the default collection";
         static final String KILL_TITLE = "Kill Keyring";
+        /** The search mode that lists the items with exactly the attributes "key=value, ...". */
+        private static final String BY_ATTRIBUTES = "By Attributes (exact)";
         static final String RENAME_TITLE = "Rename collection";
         /** How long the window waits after a signal of the provider, which come in bursts. */
         private static final int REFRESH_DELAY_MILLIS = 300;
@@ -138,7 +141,11 @@ public final class SecretServiceGui {
 
         // Search bar (items panel)
         private final JTextField tfSearch = new JTextField(14);
-        private final JComboBox<String> cmbSearchMode = new JComboBox<>(new String[]{"By Name", "By Attribute Key", "By Attribute Value", "By Object ID", "By Object Path"});
+        private final JComboBox<String> cmbSearchMode = new JComboBox<>(new String[]{"By Name", "By Attribute Key", "By Attribute Value", "By Object ID", "By Object Path", BY_ATTRIBUTES});
+        private final JButton btnReadAll = new JButton("Read all");
+        // Library settings
+        private final JCheckBox cbPrompts = new JCheckBox("Prompts", true);
+        private final JSpinner spTimeout = new JSpinner(new SpinnerNumberModel(120, 1, 3600, 5));
         private final JComboBox<Integer> cmbMaxDistance = new JComboBox<>(new Integer[]{0, 1, 2, 3});
         private final JButton btnSearch = new JButton("Search");
 
@@ -269,6 +276,9 @@ public final class SecretServiceGui {
             cmbMaxDistance.setName("search-distance");
             btnSearch.setName("search-items");
             btnList.setName("list-items");
+            btnReadAll.setName("read-all");
+            cbPrompts.setName("prompts");
+            spTimeout.setName("timeout");
             tfDetailPath.setName("detail-path");
             tfDetailLabel.setName("detail-label");
             pfDetailNewSecret.setName("detail-new-secret");
@@ -468,6 +478,8 @@ public final class SecretServiceGui {
             options.add(cmbMaxDistance);
             options.add(btnSearch);
             options.add(btnList);
+            btnReadAll.setToolTipText("Reads every secret of the collection through withSecrets, and tells only how many");
+            options.add(btnReadAll);
 
             JPanel bar = new JPanel(new BorderLayout(4, 0));
             bar.add(tfSearch, BorderLayout.CENTER);
@@ -542,6 +554,14 @@ public final class SecretServiceGui {
             tables.add(buildStateSection("Collection", debugCollectionModel));
 
             JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            cbPrompts.setToolTipText("<html>Whether the library may raise the provider's prompts (enablePrompt, disablePrompt).<br>"
+                    + "Without them, the provider alone decides what a call may do.</html>");
+            spTimeout.setToolTipText("How long the library waits for a prompt (ServiceInterface.setTimeout)");
+            controls.add(new JLabel("Library:"));
+            controls.add(cbPrompts);
+            controls.add(new JLabel("Timeout (s):"));
+            controls.add(spTimeout);
+            controls.add(new JSeparator(SwingConstants.VERTICAL));
             controls.add(cbAutoSync);
             controls.add(btnDebugRefresh);
 
@@ -556,6 +576,7 @@ public final class SecretServiceGui {
             JPanel panel = new JPanel(new BorderLayout());
             panel.setBorder(new TitledBorder(title));
             JTable table = new JTable(model);
+            table.setName("state-" + title.toLowerCase(Locale.ROOT));
             table.setFillsViewportHeight(true);
             JScrollPane scroll = new JScrollPane(table);
             // Each table scrolls within its share: the tab keeps the height of the log.
@@ -644,6 +665,21 @@ public final class SecretServiceGui {
             btnUnlockCollection.addActionListener(e -> doLockCollection(false));
             btnRenameCollection.addActionListener(e -> doRenameCollection());
             btnList.addActionListener(e -> doListItems());
+            btnReadAll.addActionListener(e -> doReadAll());
+            cbPrompts.addItemListener(e -> {
+                boolean prompting = cbPrompts.isSelected();
+                worker.run(prompting ? "Enable prompts" : "Disable prompts", () -> {
+                    client.setPrompting(prompting);
+                    return null;
+                }, ignored -> autoSync());
+            });
+            spTimeout.addChangeListener(e -> {
+                Duration timeout = Duration.ofSeconds(((Number) spTimeout.getValue()).longValue());
+                worker.run("Set the timeout", () -> {
+                    client.setTimeout(timeout);
+                    return null;
+                }, ignored -> autoSync());
+            });
             btnSearch.addActionListener(e -> doSearch());
             // Allow pressing Enter in the search field to trigger search
             tfSearch.addActionListener(e -> doSearch());
@@ -697,6 +733,7 @@ public final class SecretServiceGui {
             btnRead.setEnabled(items);
             btnDeleteItem.setEnabled(items);
             btnList.setEnabled(items);
+            btnReadAll.setEnabled(items);
             btnSearch.setEnabled(items);
             tfSearch.setEnabled(items);
             cmbSearchMode.setEnabled(items);
@@ -1221,6 +1258,13 @@ public final class SecretServiceGui {
             if (!requireCollection()) return;
             String query = tfSearch.getText().trim();
             String mode = (String) cmbSearchMode.getSelectedItem();
+            if (BY_ATTRIBUTES.equals(mode)) {
+                Optional<Map<String, String>> attributes = parseAttributes(query);
+                if (attributes.isEmpty()) return;
+                listing = () -> client.filter(attributes.get());
+                worker.run("Filter", listing, this::showItems);
+                return;
+            }
             SearchMode searchMode = switch (mode) {
                 case "By Attribute Key" -> SearchMode.BY_ATTRIBUTE_KEY;
                 case "By Attribute Value" -> SearchMode.BY_ATTRIBUTE_VALUE;
@@ -1231,6 +1275,30 @@ public final class SecretServiceGui {
             int maxDistance = (Integer) cmbMaxDistance.getSelectedItem();
             listing = () -> client.search(query, searchMode, maxDistance);
             worker.run("Search", listing, this::showItems);
+        }
+
+        /** The attributes of "key=value, key2=value2", or empty, with an error in the log, for no pair. */
+        private Optional<Map<String, String>> parseAttributes(String query) {
+            Map<String, String> attributes = new java.util.TreeMap<>();
+            for (String pair : query.split(",")) {
+                if (pair.isBlank()) continue;
+                int equals = pair.indexOf('=');
+                if (equals <= 0) {
+                    log("ERROR: \"%s\" is no key=value.", pair.trim());
+                    return Optional.empty();
+                }
+                attributes.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
+            }
+            if (attributes.isEmpty()) {
+                log("ERROR: The filter needs at least one key=value.");
+                return Optional.empty();
+            }
+            return Optional.of(attributes);
+        }
+
+        private void doReadAll() {
+            if (!requireCollection()) return;
+            worker.run("Read all secrets", client::readAllSecrets, read -> autoSync());
         }
 
         private void doDeleteCollection() {

@@ -20,6 +20,7 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.JOptionPane;
 import javax.swing.JTextArea;
@@ -351,6 +352,51 @@ class GuiSmokeTest {
 
     @Test
     @Order(9)
+    @DisplayName("the exact filter lists the items with the attributes, and Read all reads every secret")
+    void filtersAndReadsAll() {
+        JComboBox<?> mode = Gui.find(JComboBox.class, "search-mode");
+        Gui.onEventThread(() -> {
+            mode.setSelectedItem("By Attributes (exact)");
+            return null;
+        });
+        Gui.type("search", "purpose=none");
+        Gui.click("search-items");
+        Gui.await("no item matches", () -> items() == 0);
+        Gui.type("search", "purpose=smoke");
+        Gui.click("search-items");
+        Gui.await("the item matches", () -> items() == 1);
+        assertTrue(log().contains("Filter by 1 attribute(s): 1 item(s) matched."), log());
+        Gui.onEventThread(() -> {
+            mode.setSelectedItem("By Name");
+            return null;
+        });
+
+        Gui.click("read-all");
+        Gui.await("the window has read every secret", () -> log().contains("Read the secrets of 1 item(s)."));
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("the timeout goes to the service")
+    void setsTheTimeout() {
+        Gui.selectTab("bottom-tabs", "State");
+        JSpinner timeout = Gui.find(JSpinner.class, "timeout");
+        Gui.onEventThread(() -> {
+            timeout.setValue(30);
+            return null;
+        });
+        Gui.await("the service reports the timeout", () -> String.valueOf(cell("state-service", "getTimeout()", 1)).startsWith("30s"));
+        Gui.screenshot("state");
+        Gui.onEventThread(() -> {
+            timeout.setValue(120);
+            return null;
+        });
+        Gui.await("the service reports the timeout", () -> String.valueOf(cell("state-service", "getTimeout()", 1)).startsWith("120s"));
+        Gui.selectTab("bottom-tabs", "Log");
+    }
+
+    @Test
+    @Order(11)
     @DisplayName("Save changes the item's label, attributes and secret")
     void editsTheItem() {
         selectFirstItem();
@@ -375,7 +421,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(10)
+    @Order(12)
     @DisplayName("Lock locks the collection, which lists its items without a prompt, and Unlock unlocks it")
     void locksAndUnlocksTheCollection() {
         Gui.click("lock-collection");
@@ -400,7 +446,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(11)
+    @Order(13)
     @DisplayName("Open opens the collection from the list, without its password")
     void reopensFromTheList() {
         Gui.click("disconnect");
@@ -417,7 +463,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(12)
+    @Order(14)
     @DisplayName("the window answers while the provider's dialog waits, and Cancel gives up the wait")
     void staysResponsiveWhileTheProviderAsks() throws IOException {
         String control = System.getenv(DIALOG_CONTROL);
@@ -454,7 +500,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(13)
+    @Order(15)
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
         selectFirstItem();
@@ -467,7 +513,34 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(14)
+    @Order(16)
+    @DisplayName("without prompts, Unlock does not ask and leaves the collection locked; with them, it asks")
+    void unlocksOnlyWithPrompts() {
+        Gui.click("lock-collection");
+        Gui.await("the list shows the collection locked", () -> "yes".equals(cell("collections", collection, 1)));
+
+        Gui.selectTab("bottom-tabs", "State");
+        Gui.click("prompts");
+        Gui.await("prompts are disabled", () -> log().contains("Prompts are disabled."));
+        long prompts = prompts();
+        Gui.click("unlock-collection");
+        Gui.await("the call has ended", () -> log().contains("WARNING: unlockWithUserPermission returned false."));
+        Gui.await("the window is ready", () -> "Ready".equals(label("status")));
+        assertEquals("yes", cell("collections", collection, 1), "the collection stays locked");
+        assertEquals(prompts, prompts(), "no prompt");
+
+        Gui.click("prompts");
+        Gui.await("prompts are enabled", () -> log().contains("Prompts are enabled."));
+        Gui.click("unlock-collection");
+        Gui.await("the list shows the collection unlocked", () -> "no".equals(cell("collections", collection, 1)));
+        // gnome-keyring may unlock it without a dialog by now: its unlock dialog stores the password
+        // of a collection that it unlocked once, as its box "Automatically unlock" is ticked.
+        assertTrue(prompts() > prompts, "the provider completed a prompt");
+        Gui.selectTab("bottom-tabs", "Log");
+    }
+
+    @Test
+    @Order(17)
     @DisplayName("the list shows an item that another client creates, from the provider's signal")
     void refreshesFromTheSignals() throws Exception {
         assertEquals(0, items());
@@ -481,7 +554,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(15)
+    @Order(18)
     @DisplayName("Delete Item deletes the selected items at once")
     void deletesSeveralItems() {
         Gui.selectTab("item-tabs", "New item");
@@ -504,7 +577,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(16)
+    @Order(19)
     @DisplayName("the default collection opens only after the acknowledgement of the potential risk of damage")
     void opensTheDefaultAfterTheAcknowledgement() {
         Gui.selectRow("collections", LOGIN);
@@ -535,7 +608,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(17)
+    @Order(20)
     @DisplayName("Rename gives the collection a new label")
     void renamesTheCollection() {
         Gui.click("rename-collection");
@@ -566,7 +639,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(18)
+    @Order(21)
     @DisplayName("Delete Collection asks, deletes the collection and closes it")
     void deletesTheCollection() {
         Gui.selectTab("bottom-tabs", "Danger zone");
@@ -580,7 +653,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(19)
+    @Order(22)
     @DisplayName("Kill Keyring stops the daemon that the bus names, after it names it, and Start Keyring starts one")
     void stopsAndStartsTheDaemon() {
         assertTrue(enabled("kill-keyring"), "Kill is enabled for gnome-keyring");
