@@ -7,6 +7,8 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.PrintWriter;
@@ -19,7 +21,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 
@@ -33,10 +34,10 @@ import java.util.concurrent.CountDownLatch;
  *   mvn -f tools/gui/pom.xml exec:java
  * }</pre>
  *
- * <p>The GUI allows selecting between the <em>default</em> collection and a custom
- * <em>test</em> collection, and supports creating, reading, listing, and deleting
- * secrets against whichever provider currently serves {@code org.freedesktop.secrets}
- * (gnome-keyring, KeePassXC, KWallet).
+ * <p>Connect lists the collections of whichever provider serves {@code org.freedesktop.secrets}
+ * (gnome-keyring, KeePassXC, KWallet, oo7); the GUI opens one of them, or creates a new one, and
+ * creates, reads, lists and deletes its items. A default collection, the keyring of the desktop
+ * session, opens only after the user has acknowledged the potential risk of damage.
  */
 public final class SecretServiceGui {
 
@@ -84,16 +85,23 @@ public final class SecretServiceGui {
         private static final int COLLECTION_PANEL_WIDTH = 230;
         private static final int LOG_HEIGHT = 150;
         private static final Color DANGER = new Color(0xC62828);
+        /** The title of the dialog that asks for the acknowledgement before a default collection opens. */
+        static final String DEFAULT_RISK_TITLE = "Open the default collection";
 
-        // Collection panel
-        private final ButtonGroup collectionGroup = new ButtonGroup();
-        private final JRadioButton rbDefault = new JRadioButton("Default collection");
-        private final JRadioButton rbTest = new JRadioButton("Custom collection", true);
-        /** Human-readable label used when creating a collection (gnome-keyring) or for display. */
-        private final JTextField tfCollectionLabel = new JTextField(14);
-        /** D-Bus collection id (last path segment, e.g. "test"). Used by collectionById(). */
-        private final JTextField tfCollectionId = new JTextField("test", 14);
-        private final JPasswordField pfCollectionPassword = new JPasswordField(14);
+        // Collection panel: the provider's collections, and a new one
+        private final DefaultTableModel collectionsModel = readOnlyTableModel("Collection", "Locked");
+        private final JTable collectionsTable = new JTable(collectionsModel);
+        private List<KeyringClient.CollectionEntry> collectionEntries = List.of();
+        private final JButton btnOpenCollection = new JButton("Open");
+        private final JButton btnRefreshCollections = new JButton("Refresh");
+        private final JLabel lblOpenCollection = new JLabel("No collection is open.");
+        /** The label of a new collection, which the provider creates, or opens if it has one. */
+        private final JTextField tfCollectionLabel = new JTextField(12);
+        private final JPasswordField pfCollectionPassword = new JPasswordField(12);
+        private final JButton btnCreateCollection = new JButton("Create / open");
+        /** Shows while a default collection is open. */
+        private final JLabel lblDefaultBanner = new JLabel(
+                "Default collection: changes affect every application of the desktop session.");
 
         // Create-item panel
         private final JTextField tfLabel = new JTextField(20);
@@ -160,8 +168,11 @@ public final class SecretServiceGui {
         /** The keyring calls, which run on {@link #worker}, never on the event thread. */
         private final KeyringClient client = new KeyringClient(this::log);
         private final Worker worker = new Worker(workerListener());
-        /** Whether a collection is open. */
+        /** Whether the window is connected to the provider. */
         private boolean connected = false;
+        /** Whether a collection is open, and whether it is a default one. */
+        private boolean collectionOpen = false;
+        private boolean defaultOpen = false;
         /** The name of the open collection, for the confirmations. */
         private String collectionName = "";
         private final CountDownLatch closeLatch;
@@ -199,10 +210,13 @@ public final class SecretServiceGui {
             btnCancel.setName("cancel");
             lblConnectionStatus.setName("connection-status");
             lblProvider.setName("provider");
-            rbDefault.setName("collection-default");
-            rbTest.setName("collection-custom");
+            collectionsTable.setName("collections");
+            btnOpenCollection.setName("open-collection");
+            btnRefreshCollections.setName("refresh-collections");
+            lblOpenCollection.setName("open-collection-name");
             tfCollectionLabel.setName("collection-label");
-            tfCollectionId.setName("collection-id");
+            btnCreateCollection.setName("create-collection");
+            lblDefaultBanner.setName("default-banner");
             pfCollectionPassword.setName("collection-password");
             tfLabel.setName("item-label");
             tfSecret.setName("item-secret");
@@ -295,34 +309,47 @@ public final class SecretServiceGui {
         }
 
         private JPanel buildCollectionPanel() {
-            JPanel panel = new JPanel(new GridBagLayout());
-            panel.setBorder(new TitledBorder("Collection"));
+            collectionsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            collectionsTable.setFillsViewportHeight(true);
+            collectionsTable.getColumnModel().getColumn(1).setMaxWidth(60);
+            collectionsTable.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getClickCount() == 2 && btnOpenCollection.isEnabled()) doOpenCollection();
+                }
+            });
+            JScrollPane tableScroll = new JScrollPane(collectionsTable);
+            tableScroll.setPreferredSize(new Dimension(COLLECTION_PANEL_WIDTH, 120));
+
+            JPanel listButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+            listButtons.add(btnOpenCollection);
+            listButtons.add(btnRefreshCollections);
+
+            JPanel existing = new JPanel(new BorderLayout(4, 4));
+            existing.add(tableScroll, BorderLayout.CENTER);
+            JPanel below = new JPanel(new BorderLayout(4, 4));
+            below.add(listButtons, BorderLayout.NORTH);
+            below.add(lblOpenCollection, BorderLayout.SOUTH);
+            existing.add(below, BorderLayout.SOUTH);
+
+            JPanel create = new JPanel(new GridBagLayout());
+            create.setBorder(new TitledBorder("New collection"));
+            addRow(create, 0, "Label:", tfCollectionLabel);
+            addRow(create, 1, "Password:", pfCollectionPassword);
             GridBagConstraints gbc = gbc();
+            gbc.gridx = 1; gbc.gridy = 2; gbc.anchor = GridBagConstraints.WEST; gbc.fill = GridBagConstraints.NONE;
+            create.add(btnCreateCollection, gbc);
+            JLabel hint = new JLabel("<html><small><i>An empty password lets the provider ask for it."
+                    + " A label that the provider has opens that collection.</i></small></html>");
+            hint.setPreferredSize(new Dimension(COLLECTION_PANEL_WIDTH - 20, 40));
+            gbc = gbc();
+            gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
+            create.add(hint, gbc);
 
-            collectionGroup.add(rbDefault);
-            collectionGroup.add(rbTest);
-            rbDefault.addActionListener(e -> updateControls());
-            rbTest.addActionListener(e -> updateControls());
-
-            gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
-            panel.add(rbDefault, gbc);
-            gbc.gridy = 1;
-            panel.add(rbTest, gbc);
-            gbc.gridwidth = 1;
-
-            addRow(panel, 2, "ID:", tfCollectionId);
-            addRow(panel, 3, "Label:", tfCollectionLabel);
-            addRow(panel, 4, "Password:", pfCollectionPassword);
-
-            JLabel hint = new JLabel("<html><small><i>ID: the last part of an existing collection's path,"
-                    + " e.g. \"test\"; in KeePassXC the name of the exposed group.<br>"
-                    + "Label: without an ID, the collection with this name, which the provider creates"
-                    + " if it has none; in KeePassXC the database name.</i></small></html>");
-            hint.setPreferredSize(new Dimension(COLLECTION_PANEL_WIDTH, 110));
-            hint.setVerticalAlignment(SwingConstants.TOP);
-            gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2; gbc.weighty = 1.0;
-            gbc.anchor = GridBagConstraints.NORTHWEST;
-            panel.add(hint, gbc);
+            JPanel panel = new JPanel(new BorderLayout(4, 6));
+            panel.setBorder(new TitledBorder("Collections"));
+            panel.add(existing, BorderLayout.CENTER);
+            panel.add(create, BorderLayout.SOUTH);
             return panel;
         }
 
@@ -339,7 +366,15 @@ public final class SecretServiceGui {
         private JPanel buildItemsPanel() {
             JPanel panel = new JPanel(new BorderLayout(4, 4));
             panel.setBorder(new TitledBorder("Items"));
-            panel.add(buildSearchBar(), BorderLayout.NORTH);
+            lblDefaultBanner.setOpaque(true);
+            lblDefaultBanner.setBackground(DANGER);
+            lblDefaultBanner.setForeground(Color.WHITE);
+            lblDefaultBanner.setBorder(new EmptyBorder(4, 6, 4, 6));
+            lblDefaultBanner.setVisible(false);
+            JPanel north = new JPanel(new BorderLayout(4, 4));
+            north.add(lblDefaultBanner, BorderLayout.NORTH);
+            north.add(buildSearchBar(), BorderLayout.SOUTH);
+            panel.add(north, BorderLayout.NORTH);
 
             itemsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
             JScrollPane listScroll = new JScrollPane(itemsList);
@@ -502,6 +537,11 @@ public final class SecretServiceGui {
         private void wireActions() {
             btnConnect.addActionListener(e -> doConnect());
             btnDisconnect.addActionListener(e -> doDisconnect());
+            btnOpenCollection.addActionListener(e -> doOpenCollection());
+            btnRefreshCollections.addActionListener(e -> doRefreshCollections());
+            btnCreateCollection.addActionListener(e -> doCreateCollection());
+            tfCollectionLabel.addActionListener(e -> doCreateCollection());
+            collectionsTable.getSelectionModel().addListSelectionListener(e -> updateControls());
             btnCancel.addActionListener(e -> {
                 log("Cancelling: %s", lblStatus.getText());
                 worker.cancel();
@@ -535,7 +575,7 @@ public final class SecretServiceGui {
          */
         private void updateControls() {
             boolean busy = worker.isBusy();
-            boolean items = connected && !busy;
+            boolean items = collectionOpen && !busy;
             tfLabel.setEnabled(items);
             tfSecret.setEnabled(items);
             tfAttributeKey.setEnabled(items);
@@ -549,7 +589,8 @@ public final class SecretServiceGui {
             tfSearch.setEnabled(items);
             cmbSearchMode.setEnabled(items);
             cmbMaxDistance.setEnabled(items);
-            btnDeleteCollection.setEnabled(items);
+            // The library refuses to delete a default collection, and so does the window.
+            btnDeleteCollection.setEnabled(items && !defaultOpen);
             itemsList.setEnabled(items);
             btnDisconnect.setEnabled(connected && !busy);
             btnConnect.setEnabled(!connected && !busy);
@@ -557,12 +598,14 @@ public final class SecretServiceGui {
             btnStartKeyring.setEnabled(!busy);
             btnDebugRefresh.setEnabled(!busy);
             btnCancel.setEnabled(busy);
-            rbDefault.setEnabled(!connected && !busy);
-            rbTest.setEnabled(!connected && !busy);
-            boolean customEditable = !connected && !busy && rbTest.isSelected();
-            tfCollectionLabel.setEnabled(customEditable);
-            tfCollectionId.setEnabled(customEditable);
-            pfCollectionPassword.setEnabled(customEditable);
+            boolean session = connected && !busy;
+            collectionsTable.setEnabled(session);
+            btnOpenCollection.setEnabled(session && collectionsTable.getSelectedRow() >= 0);
+            btnRefreshCollections.setEnabled(session);
+            tfCollectionLabel.setEnabled(session);
+            pfCollectionPassword.setEnabled(session);
+            btnCreateCollection.setEnabled(session);
+            lblDefaultBanner.setVisible(collectionOpen && defaultOpen);
         }
 
         private Worker.Listener workerListener() {
@@ -590,43 +633,144 @@ public final class SecretServiceGui {
         // ── Connect / Disconnect ──────────────────────────────────────
 
         private void doConnect() {
-            Callable<Optional<KeyringClient.Opened>> connect;
-            if (rbDefault.isSelected()) {
-                connect = client::connectToDefault;
-            } else {
-                String id = tfCollectionId.getText().trim();
-                String label = tfCollectionLabel.getText().trim();
-                if (id.isEmpty() && label.isEmpty()) {
-                    log("ERROR: Collection ID or Label must not be empty.");
-                    return;
-                }
-                if (!id.isEmpty()) {
-                    connect = () -> client.connectById(id);
-                } else {
-                    char[] password = pfCollectionPassword.getPassword();
-                    connect = () -> {
-                        try {
-                            return client.connectByLabel(label, CharBuffer.wrap(password));
-                        } finally {
-                            Arrays.fill(password, '\0');
-                        }
-                    };
-                }
-            }
-            worker.run("Connect", connect, opened -> {
-                if (opened.isPresent()) {
+            worker.run("Connect", client::connect, collections -> {
+                if (collections.isPresent()) {
                     connected = true;
-                    String label = opened.get().label();
-                    String id = opened.get().id();
-                    collectionName = rbDefault.isSelected() ? "Default"
-                            : label.equals(id) ? label : label + " [" + id + "]";
-                    if (!label.equals("?")) tfCollectionLabel.setText(label);
-                    if (!id.equals("?")) tfCollectionId.setText(id);
+                    showCollections(collections.get());
                     updateConnectionIcon(true);
                     updateControls();
                 }
                 refreshState();
             });
+        }
+
+        private void doRefreshCollections() {
+            worker.run("List collections", client::listCollections, this::showCollections);
+        }
+
+        private void showCollections(List<KeyringClient.CollectionEntry> entries) {
+            collectionEntries = List.copyOf(entries);
+            collectionsModel.setRowCount(0);
+            for (KeyringClient.CollectionEntry entry : entries) {
+                String name = entry.label().equals(entry.id()) ? entry.label() : entry.label() + " [" + entry.id() + "]";
+                collectionsModel.addRow(new Object[]{entry.isDefault() ? name + " (default)" : name,
+                        entry.locked().map(locked -> locked ? "yes" : "no").orElse("?")});
+            }
+            updateControls();
+        }
+
+        private void doOpenCollection() {
+            int row = collectionsTable.getSelectedRow();
+            if (row < 0) {
+                log("Select a collection first.");
+                return;
+            }
+            KeyringClient.CollectionEntry entry = collectionEntries.get(collectionsTable.convertRowIndexToModel(row));
+            boolean acknowledged = entry.isDefault() && acknowledgeDefaultRisk(entry.label());
+            if (entry.isDefault() && !acknowledged) {
+                log("Not opened: the risk of the default collection was not acknowledged.");
+                return;
+            }
+            worker.run("Open collection", () -> client.open(entry, acknowledged), this::opened);
+        }
+
+        private void doCreateCollection() {
+            String label = tfCollectionLabel.getText().trim();
+            if (label.isEmpty()) {
+                log("ERROR: A new collection needs a label.");
+                return;
+            }
+            // A label of a default collection opens that one: only after the acknowledgement.
+            Optional<KeyringClient.CollectionEntry> listed = collectionEntries.stream()
+                    .filter(entry -> entry.label().equals(label))
+                    .findFirst();
+            boolean acknowledged = false;
+            if (listed.isPresent() && listed.get().isDefault()) {
+                acknowledged = acknowledgeDefaultRisk(label);
+                if (!acknowledged) {
+                    log("Not opened: the risk of the default collection was not acknowledged.");
+                    return;
+                }
+            }
+            char[] password = pfCollectionPassword.getPassword();
+            pfCollectionPassword.setText("");
+            boolean finalAcknowledged = acknowledged;
+            worker.run("Open collection", () -> {
+                try {
+                    return client.create(label, CharBuffer.wrap(password), finalAcknowledged);
+                } finally {
+                    Arrays.fill(password, '\0');
+                }
+            }, outcome -> {
+                opened(outcome);
+                doRefreshCollections();
+            });
+        }
+
+        /**
+         * Asks the user to acknowledge the potential risk of damage before a default collection
+         * opens: Open stays disabled until the box is ticked.
+         *
+         * @return whether the user ticked the box and chose Open
+         */
+        private boolean acknowledgeDefaultRisk(String label) {
+            JCheckBox acknowledge = new JCheckBox("I acknowledge the potential risk of damage to this keyring.");
+            acknowledge.setName("acknowledge-risk");
+            JButton open = new JButton("Open the default collection");
+            open.setName("open-default");
+            open.setEnabled(false);
+            JButton cancel = new JButton("Cancel");
+            cancel.setName("cancel-default");
+            acknowledge.addItemListener(e -> open.setEnabled(acknowledge.isSelected()));
+
+            JLabel message = new JLabel("<html><body style='width: 380px'>"
+                    + "<p><b>\"" + escapeHtml(label) + "\" is a default collection.</b></p><br>"
+                    + "<p>It is the keyring of the desktop session: browsers, mail clients and other"
+                    + " applications keep their passwords in it, and find them by their attributes."
+                    + " Creating, changing or deleting items here can damage what those applications"
+                    + " have stored, and a deleted secret cannot be restored.</p><br>"
+                    + "<p>Use a collection of its own for testing where you can.</p></body></html>");
+            JPanel content = new JPanel(new BorderLayout(0, 10));
+            content.add(message, BorderLayout.CENTER);
+            content.add(acknowledge, BorderLayout.SOUTH);
+
+            JOptionPane pane = new JOptionPane(content, JOptionPane.WARNING_MESSAGE, JOptionPane.DEFAULT_OPTION,
+                    null, new Object[]{open, cancel}, cancel);
+            JDialog dialog = pane.createDialog(this, DEFAULT_RISK_TITLE);
+            open.addActionListener(e -> {
+                pane.setValue(open);
+                dialog.dispose();
+            });
+            cancel.addActionListener(e -> {
+                pane.setValue(cancel);
+                dialog.dispose();
+            });
+            dialog.setVisible(true);
+            return pane.getValue() == open && acknowledge.isSelected();
+        }
+
+        private static String escapeHtml(String text) {
+            return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+        }
+
+        /** Shows the collection that an open came to, or what kept it from opening. */
+        private void opened(KeyringClient.OpenOutcome outcome) {
+            if (outcome.needsAcknowledgement()) {
+                log("The collection is a default collection: select it in the list and open it from there.");
+                return;
+            }
+            if (outcome.opened().isEmpty()) return;
+            KeyringClient.Opened opened = outcome.opened().get();
+            collectionOpen = true;
+            defaultOpen = opened.isDefault();
+            collectionName = opened.label().equals(opened.id()) ? opened.label() : opened.label() + " [" + opened.id() + "]";
+            lblOpenCollection.setText("Open: " + collectionName + (opened.isDefault() ? " (default)" : ""));
+            itemsModel.clear();
+            clearDetail();
+            updateControls();
+            // Listing a locked collection unlocks it, through the provider's dialog: List All does.
+            if (!opened.locked()) doListItems();
+            autoSync();
         }
 
         private void doDisconnect() {
@@ -640,13 +784,22 @@ public final class SecretServiceGui {
         }
 
         /** Shows the window as it is without a collection. */
-        private void disconnected() {
-            connected = false;
+        private void collectionClosed() {
+            collectionOpen = false;
+            defaultOpen = false;
             collectionName = "";
+            lblOpenCollection.setText("No collection is open.");
             itemsModel.clear();
             clearDetail();
-            updateConnectionIcon(false);
             updateControls();
+        }
+
+        /** Shows the window as it is without a connection. */
+        private void disconnected() {
+            connected = false;
+            collectionClosed();
+            showCollections(List.of());
+            updateConnectionIcon(false);
             refreshState();
         }
 
@@ -674,7 +827,7 @@ public final class SecretServiceGui {
 
         private void doShowItemDetail() {
             String selected = itemsList.getSelectedValue();
-            if (selected == null || !connected) {
+            if (selected == null || !collectionOpen) {
                 clearDetail();
                 return;
             }
@@ -698,7 +851,7 @@ public final class SecretServiceGui {
         }
 
         private void doRevealSecret() {
-            if (!requireConnected()) return;
+            if (!requireCollection()) return;
             Optional<String> path = detailPath();
             if (path.isEmpty()) return;
             worker.run("Read secret", () -> client.readSecret(path.get()), secret -> {
@@ -714,7 +867,7 @@ public final class SecretServiceGui {
         // ── CRUD ──────────────────────────────────────────────────
 
         private void doCreate() {
-            if (!requireConnected()) return;
+            if (!requireCollection()) return;
             String label = tfLabel.getText().trim();
             String secret = tfSecret.getText();
             if (label.isEmpty() || secret.isEmpty()) {
@@ -733,7 +886,7 @@ public final class SecretServiceGui {
         }
 
         private void doDeleteItem() {
-            if (!requireConnected()) return;
+            if (!requireCollection()) return;
             Optional<String> path = detailPath();
             if (path.isEmpty()) return;
             int confirm = JOptionPane.showConfirmDialog(this,
@@ -754,7 +907,7 @@ public final class SecretServiceGui {
         }
 
         private void doListItems() {
-            if (!requireConnected()) return;
+            if (!requireCollection()) return;
             worker.run("List items", client::listItems, this::showItems);
         }
 
@@ -764,7 +917,7 @@ public final class SecretServiceGui {
         }
 
         private void doSearch() {
-            if (!requireConnected()) return;
+            if (!requireCollection()) return;
             String query = tfSearch.getText().trim();
             String mode = (String) cmbSearchMode.getSelectedItem();
             SearchMode searchMode = switch (mode) {
@@ -779,7 +932,7 @@ public final class SecretServiceGui {
         }
 
         private void doDeleteCollection() {
-            if (!requireConnected()) return;
+            if (!requireCollection()) return;
             String name = collectionName;
             int confirm = JOptionPane.showConfirmDialog(this,
                     "Delete the entire collection \"" + name + "\"?\n\n"
@@ -788,7 +941,10 @@ public final class SecretServiceGui {
                     JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
             worker.run("Delete collection", client::deleteCollection, deleted -> {
-                if (deleted) disconnected();
+                if (deleted) {
+                    collectionClosed();
+                    doRefreshCollections();
+                }
             });
         }
 
@@ -832,9 +988,9 @@ public final class SecretServiceGui {
             return Map.of();
         }
 
-        private boolean requireConnected() {
-            if (!connected) {
-                log("Not connected. Click Connect first.");
+        private boolean requireCollection() {
+            if (!collectionOpen) {
+                log("No collection is open. Open one first.");
                 return false;
             }
             return true;

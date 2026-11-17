@@ -11,16 +11,15 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
-import javax.swing.JButton;
+import javax.swing.AbstractButton;
 import javax.swing.JComponent;
-import javax.swing.JScrollPane;
-import javax.swing.SwingUtilities;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
-import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
@@ -28,6 +27,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -37,13 +37,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Uses the window as a developer does, against a real provider: it creates a collection of its
- * own, creates an item, reads and finds it, opens the collection again by its id, deletes the item
- * and deletes the collection. Each step leaves a screenshot in {@link Gui#SCREENSHOTS}.
+ * Uses the window as a developer does, against a real provider: it connects, creates a collection
+ * of its own, creates an item, reads and finds it, opens the collection again from the list,
+ * deletes the item, opens the default collection after the acknowledgement of its risk, and deletes
+ * its own collection. Each step leaves a screenshot in {@link Gui#SCREENSHOTS}.
  *
- * <p>The window changes the keyring it is connected to, and deleting an item from a collection
- * that the window opened without its password asks through the provider's unlock dialog. So the
- * test runs only where the keyring is the run's own and someone
+ * <p>The window changes the keyring it is connected to, opens the default collection, and
+ * deleting an item from a collection that the window opened without its password asks through the
+ * provider's unlock dialog. So the test runs only where the keyring is the run's own and someone
  * answers its dialogs, as in the {@code gnome-keyring-dialogs} container, whose dialogs take the
  * password {@code test}. The two system properties say so; they are the ones that enable the
  * library's system tests on the default collection.</p>
@@ -82,6 +83,9 @@ class GuiSmokeTest {
     /** The password of the test's collection, which the container's answerer types into the unlock dialog. */
     private static final String PASSWORD = "test";
 
+    /** The container's login keyring, which the default alias names. */
+    private static final String LOGIN = "Login [login] (default)";
+
     /** A label that is its own id at every provider, so the window names the collection by it alone. */
     private final String collection = "guismoke" + UUID.randomUUID().toString().substring(0, 8);
     private final CountDownLatch closed = new CountDownLatch(1);
@@ -119,9 +123,31 @@ class GuiSmokeTest {
         return Gui.onEventThread(label::getText);
     }
 
+    private boolean showing(String name) {
+        JComponent component = Gui.find(JComponent.class, name);
+        return Gui.onEventThread(component::isShowing);
+    }
+
     private boolean enabled(String button) {
-        JButton found = Gui.find(JButton.class, button);
+        AbstractButton found = Gui.find(AbstractButton.class, button);
         return Gui.onEventThread(found::isEnabled);
+    }
+
+    private void selectFirstItem() {
+        JList<?> items = Gui.find(JList.class, "items");
+        Gui.onEventThread(() -> {
+            items.setSelectedIndex(0);
+            return null;
+        });
+        Gui.selectTab("item-tabs", "Selected item");
+        Gui.await("the detail shows the item", () -> "smoke item".equals(label("detail-label")));
+    }
+
+    /** Opens the collection of the list, which is no default one. */
+    private void openFromTheList(String name) {
+        Gui.selectRow("collections", name);
+        Gui.click("open-collection");
+        Gui.await("the collection is open", () -> label("open-collection-name").equals("Open: " + name));
     }
 
     @Test
@@ -145,30 +171,46 @@ class GuiSmokeTest {
     void startsDisconnected() {
         assertTrue(enabled("connect"), "Connect is enabled");
         assertFalse(enabled("disconnect"), "Disconnect is disabled");
+        assertFalse(enabled("create-collection"), "a collection is created only once connected");
         assertFalse(enabled("create-item"), "Create is disabled");
         Gui.screenshot("start");
     }
 
     @Test
     @Order(3)
-    @DisplayName("Connect creates the collection and opens it")
+    @DisplayName("Connect lists the provider's collections and opens none")
     void connects() {
-        Gui.type("collection-id", "");
-        Gui.type("collection-label", collection);
-        Gui.type("collection-password", PASSWORD);
         Gui.click("connect");
-        Gui.await("the collection is open", () -> enabled("disconnect"));
-
-        assertTrue(log().contains("Connected to collection label=\"" + collection + "\""), log());
+        Gui.await("the window is connected", () -> enabled("disconnect"));
         assertEquals("Connected", label("connection-status"));
-        assertEquals(0, items());
-        Gui.screenshot("connected");
+        assertTrue(Gui.firstColumn("collections").contains(LOGIN), String.valueOf(Gui.firstColumn("collections")));
+        assertEquals("No collection is open.", label("open-collection-name"));
+        assertFalse(enabled("create-item"), "no item is created without a collection");
+        assertFalse(enabled("open-collection"), "Open waits for a selection");
     }
 
     @Test
     @Order(4)
+    @DisplayName("Create / open creates the collection with its password and opens it")
+    void createsTheCollection() {
+        Gui.type("collection-label", collection);
+        Gui.type("collection-password", PASSWORD);
+        Gui.click("create-collection");
+        Gui.await("the collection is open", () -> label("open-collection-name").equals("Open: " + collection));
+
+        assertTrue(log().contains("Connected to collection label=\"" + collection + "\""), log());
+        assertFalse(showing("default-banner"), "the banner shows only for a default collection");
+        assertTrue(enabled("delete-collection"), "the collection can be deleted");
+        Gui.await("the list shows the new collection", () -> Gui.firstColumn("collections").contains(collection));
+        assertEquals(0, items());
+        Gui.screenshot("collection-created");
+    }
+
+    @Test
+    @Order(5)
     @DisplayName("Create stores an item, and the list shows it")
     void createsAnItem() {
+        Gui.selectTab("item-tabs", "New item");
         Gui.type("item-label", "smoke item");
         Gui.type("item-secret", "s3cret");
         Gui.type("item-attribute-key", "purpose");
@@ -179,15 +221,10 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("selecting the item shows its label and attributes, and Read Secret its secret")
     void readsTheItem() {
-        JList<?> items = Gui.find(JList.class, "items");
-        Gui.onEventThread(() -> {
-            items.setSelectedIndex(0);
-            return null;
-        });
-        Gui.await("the detail shows the label", () -> "smoke item".equals(label("detail-label")));
+        selectFirstItem();
         JTable attributes = Gui.find(JTable.class, "detail-attributes");
         assertEquals("purpose", Gui.onEventThread(() -> attributes.getValueAt(0, 0)));
         assertEquals("smoke", Gui.onEventThread(() -> attributes.getValueAt(0, 1)));
@@ -199,7 +236,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("Search narrows the list, and List All shows every item again")
     void searches() {
         Gui.type("search", "no item has this name");
@@ -218,37 +255,30 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(7)
-    @DisplayName("Connect opens the collection by its id, without its password")
-    void reconnectsById() {
+    @Order(8)
+    @DisplayName("Open opens the collection from the list, without its password")
+    void reopensFromTheList() {
         Gui.click("disconnect");
         Gui.await("the window is disconnected", () -> enabled("connect"));
         assertEquals(0, items());
+        assertTrue(Gui.firstColumn("collections").isEmpty(), "the list is empty without a connection");
 
-        // Connect filled in the id: the window opens the collection by it, and gnome-keyring
-        // learns no password, so that it asks through its unlock dialog.
-        assertEquals(collection, Gui.onEventThread(() -> Gui.find(JTextField.class, "collection-id").getText()));
-        Gui.type("collection-password", "");
+        // A new session: the window opens the collection by its id, and gnome-keyring learns no
+        // password, so that it asks through its unlock dialog.
         Gui.click("connect");
-        Gui.await("the collection is open", () -> enabled("disconnect"));
-        assertTrue(log().contains("Opening collection by id: " + collection), log());
-        Gui.click("list-items");
+        Gui.await("the window is connected", () -> enabled("disconnect"));
+        openFromTheList(collection);
         Gui.await("the list shows the item", () -> items() == 1);
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("the window answers while the provider's dialog waits, and Cancel gives up the wait")
     void staysResponsiveWhileTheProviderAsks() throws IOException {
         String control = System.getenv(DIALOG_CONTROL);
         Assumptions.assumeTrue(control != null, "Needs the dialog answerer of the gnome-keyring-dialogs container");
         Path hold = Path.of(control, "hold");
-        JList<?> items = Gui.find(JList.class, "items");
-        Gui.onEventThread(() -> {
-            items.setSelectedIndex(0);
-            return null;
-        });
-        Gui.await("the detail shows the item", () -> "smoke item".equals(label("detail-label")));
+        selectFirstItem();
 
         Files.writeString(hold, "");
         try {
@@ -277,15 +307,10 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
-        JList<?> items = Gui.find(JList.class, "items");
-        Gui.onEventThread(() -> {
-            items.setSelectedIndex(0);
-            return null;
-        });
-        Gui.await("the detail shows the item", () -> "smoke item".equals(label("detail-label")));
+        selectFirstItem();
         Gui.click("delete-item");
         Gui.answer("Confirm Delete Item", UIManager.getString("OptionPane.yesButtonText"));
         Gui.await("the list is empty", () -> items() == 0);
@@ -295,14 +320,47 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(10)
-    @DisplayName("Delete Collection asks, deletes the collection and disconnects")
+    @Order(11)
+    @DisplayName("the default collection opens only after the acknowledgement of the potential risk of damage")
+    void opensTheDefaultAfterTheAcknowledgement() {
+        Gui.selectRow("collections", LOGIN);
+
+        // Cancel keeps the open collection.
+        Gui.click("open-collection");
+        Gui.await("the window asks", () -> Gui.lookup(AbstractButton.class, "open-default").isPresent());
+        assertFalse(enabled("open-default"), "Open waits for the acknowledgement");
+        Gui.click("cancel-default");
+        Gui.await("the dialog has closed", () -> Gui.lookup(AbstractButton.class, "open-default").isEmpty());
+        assertEquals("Open: " + collection, label("open-collection-name"));
+        assertTrue(log().contains("Not opened: the risk of the default collection was not acknowledged."), log());
+
+        Gui.click("open-collection");
+        Gui.await("the window asks", () -> Gui.lookup(AbstractButton.class, "open-default").isPresent());
+        Gui.click("acknowledge-risk");
+        Gui.await("Open is enabled", () -> enabled("open-default"));
+        Gui.screenshot("default-acknowledgement");
+        Gui.click("open-default");
+        Gui.await("the default collection is open", () -> label("open-collection-name").equals("Open: Login [login] (default)"));
+
+        assertTrue(showing("default-banner"), "the banner shows while the default collection is open");
+        assertFalse(enabled("delete-collection"), "the default collection cannot be deleted");
+        Gui.screenshot("default-open");
+
+        openFromTheList(collection);
+        assertFalse(showing("default-banner"), "the banner goes with the default collection");
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("Delete Collection asks, deletes the collection and closes it")
     void deletesTheCollection() {
+        Gui.selectTab("bottom-tabs", "Danger zone");
         Gui.click("delete-collection");
         Gui.answer("Confirm Delete Collection \"" + collection + "\"", UIManager.getString("OptionPane.yesButtonText"));
-        Gui.await("the window is disconnected", () -> enabled("connect"));
+        Gui.await("the collection is closed", () -> "No collection is open.".equals(label("open-collection-name")));
         assertTrue(log().contains("Collection deleted."), log());
-        assertEquals("Disconnected", label("connection-status"));
+        Gui.await("the list has lost the collection", () -> !Gui.firstColumn("collections").contains(collection));
+        assertTrue(enabled("disconnect"), "the window stays connected");
         Gui.screenshot("collection-deleted");
     }
 }
