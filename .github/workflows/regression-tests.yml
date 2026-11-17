@@ -53,13 +53,27 @@ jobs:
       # tools/gui is a project of its own, outside the reactor, on the library that it installs
       # first: no other required check compiles it and its test, and a change of the library's API
       # could break them unseen. The test itself runs in gui-tests.yml.
+      #
+      # The GUI takes its version from the root POM, which its <parent> names. Where a release sets
+      # the new version in core/pom.xml and the root POM and leaves <parent> as it was, Maven takes
+      # the old root POM from the local repository, which the cache restores, without a warning,
+      # and the GUI builds against the old library: the step compares the two versions first.
       - name: Compile the developer GUI
         run: |
           docker run --rm \
             -v "${{ github.workspace }}":/workspace \
             -v "$HOME/.m2/repository":/root/.m2/repository \
             secret-service-test \
-            bash -c "mvn -B -q -DskipTests -Dgpg.skip=true install && mvn -B -q -f tools/gui/pom.xml test-compile"
+            bash -c '
+              set -e
+              mvn -B -q -DskipTests -Dgpg.skip=true install
+              library=$(mvn -B -q -f core/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)
+              gui=$(mvn -B -q -f tools/gui/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)
+              if [ "$gui" != "$library" ]; then
+                echo "::error file=tools/gui/pom.xml::The GUI is version $gui, the library $library: set the version of <parent> in tools/gui/pom.xml to $library."
+                exit 1
+              fi
+              mvn -B -q -f tools/gui/pom.xml test-compile'
 
   # The same suite on JDK 25, the newest LTS: an application can run the library on any JDK from
   # 17 on, and the JDK 17 job above sees none of the newer ones. A job of its own, not a matrix,
