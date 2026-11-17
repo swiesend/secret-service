@@ -130,6 +130,9 @@ public final class SecretServiceGui {
 
         // Log area
         private final JTextArea logArea = new JTextArea();
+        private final JComboBox<LibraryLog.Threshold> cmbLogLevel = new JComboBox<>(LibraryLog.Threshold.values());
+        /** The library's log, in {@link #logArea}. */
+        private final LibraryLog libraryLog = new LibraryLog(this::log, LibraryLog.Threshold.INFO);
 
         // Buttons
         private final JButton btnConnect = new JButton("Connect");
@@ -240,6 +243,7 @@ public final class SecretServiceGui {
             btnKillKeyring.setName("kill-keyring");
             btnStartKeyring.setName("start-keyring");
             logArea.setName("log");
+            cmbLogLevel.setName("log-level");
             btnClearLog.setName("clear-log");
             btnDebugRefresh.setName("refresh-state");
             cbAutoSync.setName("auto-sync");
@@ -519,7 +523,11 @@ public final class SecretServiceGui {
             JScrollPane scroll = new JScrollPane(logArea);
             scroll.setPreferredSize(new Dimension(0, LOG_HEIGHT));
             panel.add(scroll, BorderLayout.CENTER);
-            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+            cmbLogLevel.setSelectedItem(LibraryLog.Threshold.INFO);
+            cmbLogLevel.setToolTipText("The level from which the library's log shows, in the lines that start with \"lib\"");
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+            buttons.add(new JLabel("Library log:"));
+            buttons.add(cmbLogLevel);
             buttons.add(btnClearLog);
             panel.add(buttons, BorderLayout.SOUTH);
             return panel;
@@ -563,6 +571,11 @@ public final class SecretServiceGui {
             btnKillKeyring.addActionListener(e -> killKeyring());
             btnStartKeyring.addActionListener(e -> startKeyring());
             btnClearLog.addActionListener(e -> logArea.setText(""));
+            cmbLogLevel.addActionListener(e -> {
+                LibraryLog.Threshold threshold = (LibraryLog.Threshold) cmbLogLevel.getSelectedItem();
+                libraryLog.setThreshold(threshold);
+                log("The library's log shows from %s.", threshold);
+            });
             itemsList.addListSelectionListener(e -> {
                 if (!e.getValueIsAdjusting()) doShowItemDetail();
             });
@@ -805,6 +818,7 @@ public final class SecretServiceGui {
 
         /** Gives up a wait for the user, then disconnects on the worker and counts the latch down. */
         private void closed() {
+            libraryLog.close();
             worker.cancel();
             worker.run("Close", () -> {
                 try {
