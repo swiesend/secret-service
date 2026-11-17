@@ -21,7 +21,10 @@ import javax.swing.JLabel;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JOptionPane;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.text.JTextComponent;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import java.awt.GraphicsEnvironment;
@@ -131,6 +134,38 @@ class GuiSmokeTest {
         return Gui.onEventThread(label::getText);
     }
 
+    private String text(String name) {
+        JTextComponent field = Gui.find(JTextComponent.class, name);
+        return Gui.onEventThread(field::getText);
+    }
+
+    /** Sets the attributes in the editor with that name, as a user who adds rows. */
+    private static void attributes(String editor, Map<String, String> attributes) {
+        JTable table = Gui.find(JTable.class, editor);
+        attributes.forEach((key, value) -> {
+            int rows = Gui.onEventThread(table::getRowCount);
+            Gui.click(editor + "-add");
+            Gui.await("the editor has a new row", () -> table.getRowCount() == rows + 1);
+            Gui.onEventThread(() -> {
+                if (table.isEditing()) table.getCellEditor().cancelCellEditing();
+                table.setValueAt(key, rows, 0);
+                table.setValueAt(value, rows, 1);
+                return null;
+            });
+        });
+    }
+
+    /** The value in that column of the row of the table whose first column is that text. */
+    private static String cell(String table, String firstColumn, int column) {
+        JTable found = Gui.find(JTable.class, table);
+        return Gui.onEventThread(() -> {
+            for (int row = 0; row < found.getRowCount(); row++) {
+                if (firstColumn.equals(String.valueOf(found.getValueAt(row, 0)))) return String.valueOf(found.getValueAt(row, column));
+            }
+            return null;
+        });
+    }
+
     private boolean showing(String name) {
         JComponent component = Gui.find(JComponent.class, name);
         return Gui.onEventThread(component::isShowing);
@@ -148,7 +183,7 @@ class GuiSmokeTest {
             return null;
         });
         Gui.selectTab("item-tabs", "Selected item");
-        Gui.await("the detail shows the item", () -> "smoke item".equals(label("detail-label")));
+        Gui.await("the detail shows the item", () -> text("detail-label").startsWith("smoke item"));
     }
 
     /** Opens the collection of the list, which is no default one. */
@@ -238,8 +273,7 @@ class GuiSmokeTest {
         Gui.selectTab("item-tabs", "New item");
         Gui.type("item-label", "smoke item");
         Gui.type("item-secret", "s3cret");
-        Gui.type("item-attribute-key", "purpose");
-        Gui.type("item-attribute-value", "smoke");
+        attributes("item-attributes", Map.of("purpose", "smoke"));
         Gui.click("create-item");
         Gui.await("the list shows the item", () -> items() == 1);
         JPasswordField secret = Gui.find(JPasswordField.class, "item-secret");
@@ -317,6 +351,56 @@ class GuiSmokeTest {
 
     @Test
     @Order(9)
+    @DisplayName("Save changes the item's label, attributes and secret")
+    void editsTheItem() {
+        selectFirstItem();
+        Gui.type("detail-label", "smoke item, edited");
+        attributes("detail-attributes", Map.of("edited", "yes"));
+        Gui.type("detail-new-secret", "n3w s3cret");
+        Gui.click("save-item");
+        Gui.await("the table shows the new label", () -> "smoke item, edited".equals(cell("items", "smoke item, edited", 0)));
+        assertTrue(cell("items", "smoke item, edited", 1).contains("edited=yes"), cell("items", "smoke item, edited", 1));
+        assertTrue(cell("items", "smoke item, edited", 1).contains("purpose=smoke"), "the other attributes stay");
+        assertEquals("", text("detail-new-secret"), "the field of the new secret is cleared");
+
+        selectFirstItem();
+        SecretView secret = Gui.find(SecretView.class, "detail-secret");
+        Gui.click("read-secret");
+        Gui.await("the detail holds the new secret", () -> secret.holds("n3w s3cret"));
+        // The items are listed again on the provider's signals, and the secret stays shown.
+        Gui.click("list-items");
+        Gui.await("the list has been listed again", () -> "Ready".equals(label("status")));
+        assertTrue(Gui.onEventThread(() -> secret.holds("n3w s3cret")), "the secret stays after the list is refreshed");
+        Gui.screenshot("item-edited");
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("Lock locks the collection, which lists its items without a prompt, and Unlock unlocks it")
+    void locksAndUnlocksTheCollection() {
+        Gui.click("lock-collection");
+        Gui.await("the list shows the collection locked", () -> "yes".equals(cell("collections", collection, 1)));
+        Gui.await("the call has ended", () -> "Ready".equals(label("status")));
+        long prompts = prompts();
+        Gui.click("list-items");
+        Gui.await("the locked collection lists its item", () -> items() == 1 && "Ready".equals(label("status")));
+        assertEquals(prompts, prompts(), "listing the locked collection raised no prompt");
+        Gui.screenshot("collection-locked");
+
+        // The window created the collection with its password in this session, which the library
+        // unlocks it with, without a dialog.
+        Gui.click("unlock-collection");
+        Gui.await("the list shows the collection unlocked", () -> "no".equals(cell("collections", collection, 1)));
+        assertTrue(log().contains("Unlocked the collection."), log());
+    }
+
+    /** How many prompts of the provider have completed, as the window's log of the signals tells. */
+    private long prompts() {
+        return log().lines().filter(line -> line.contains("> Prompt.Completed(")).count();
+    }
+
+    @Test
+    @Order(11)
     @DisplayName("Open opens the collection from the list, without its password")
     void reopensFromTheList() {
         Gui.click("disconnect");
@@ -333,7 +417,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(10)
+    @Order(12)
     @DisplayName("the window answers while the provider's dialog waits, and Cancel gives up the wait")
     void staysResponsiveWhileTheProviderAsks() throws IOException {
         String control = System.getenv(DIALOG_CONTROL);
@@ -370,7 +454,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(11)
+    @Order(13)
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
         selectFirstItem();
@@ -383,7 +467,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(12)
+    @Order(14)
     @DisplayName("the list shows an item that another client creates, from the provider's signal")
     void refreshesFromTheSignals() throws Exception {
         assertEquals(0, items());
@@ -392,14 +476,35 @@ class GuiSmokeTest {
             assertTrue(other.createItem("outside item", "0utside", Map.of("purpose", "outside")).isPresent());
         }
         Gui.await("the list shows the item of the other client", () -> items() == 1);
-        JTable table = Gui.find(JTable.class, "items");
-        assertEquals("outside item", Gui.onEventThread(() -> table.getValueAt(0, 0)));
-        assertTrue(String.valueOf(Gui.onEventThread(() -> table.getValueAt(0, 1))).contains("purpose=outside"));
+        assertTrue(cell("items", "outside item", 1).contains("purpose=outside"), cell("items", "outside item", 1));
         Gui.screenshot("item-from-another-client");
     }
 
     @Test
-    @Order(13)
+    @Order(15)
+    @DisplayName("Delete Item deletes the selected items at once")
+    void deletesSeveralItems() {
+        Gui.selectTab("item-tabs", "New item");
+        Gui.type("item-label", "second item");
+        Gui.type("item-secret", "s3cond");
+        Gui.click("create-item");
+        Gui.await("the list shows both items", () -> items() == 2);
+
+        JTable table = Gui.find(JTable.class, "items");
+        Gui.onEventThread(() -> {
+            table.setRowSelectionInterval(0, 1);
+            return null;
+        });
+        Gui.click("delete-item");
+        String question = Gui.dialogMessage("Confirm Delete Item");
+        assertTrue(question.startsWith("Delete 2 items from collection"), question);
+        Gui.answer("Confirm Delete Item", UIManager.getString("OptionPane.yesButtonText"));
+        Gui.await("the list is empty", () -> items() == 0);
+        assertTrue(log().contains("Deleted 2 item(s)."), log());
+    }
+
+    @Test
+    @Order(16)
     @DisplayName("the default collection opens only after the acknowledgement of the potential risk of damage")
     void opensTheDefaultAfterTheAcknowledgement() {
         Gui.selectRow("collections", LOGIN);
@@ -430,21 +535,52 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(14)
+    @Order(17)
+    @DisplayName("Rename gives the collection a new label")
+    void renamesTheCollection() {
+        Gui.click("rename-collection");
+        JOptionPane pane = Gui.optionPane(SecretServiceGui.SecretServiceFrame.RENAME_TITLE);
+        JTextField input = Gui.onEventThread(() -> searchField(pane));
+        Gui.onEventThread(() -> {
+            input.setText(collection + " renamed");
+            return null;
+        });
+        Gui.answer(SecretServiceGui.SecretServiceFrame.RENAME_TITLE, UIManager.getString("OptionPane.okButtonText"));
+        Gui.await("the list shows the new label", () -> Gui.firstColumn("collections").contains(renamed()));
+        assertEquals("Open: " + renamed(), label("open-collection-name"));
+    }
+
+    private String renamed() {
+        return collection + " renamed [" + collection + "]";
+    }
+
+    private static JTextField searchField(java.awt.Container container) {
+        for (java.awt.Component child : container.getComponents()) {
+            if (child instanceof JTextField field) return field;
+            if (child instanceof java.awt.Container inner) {
+                JTextField found = searchField(inner);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    @Test
+    @Order(18)
     @DisplayName("Delete Collection asks, deletes the collection and closes it")
     void deletesTheCollection() {
         Gui.selectTab("bottom-tabs", "Danger zone");
         Gui.click("delete-collection");
-        Gui.answer("Confirm Delete Collection \"" + collection + "\"", UIManager.getString("OptionPane.yesButtonText"));
+        Gui.answer("Confirm Delete Collection \"" + renamed() + "\"", UIManager.getString("OptionPane.yesButtonText"));
         Gui.await("the collection is closed", () -> "No collection is open.".equals(label("open-collection-name")));
         assertTrue(log().contains("Collection deleted."), log());
-        Gui.await("the list has lost the collection", () -> !Gui.firstColumn("collections").contains(collection));
+        Gui.await("the list has lost the collection", () -> !Gui.firstColumn("collections").contains(renamed()));
         assertTrue(enabled("disconnect"), "the window stays connected");
         Gui.screenshot("collection-deleted");
     }
 
     @Test
-    @Order(15)
+    @Order(19)
     @DisplayName("Kill Keyring stops the daemon that the bus names, after it names it, and Start Keyring starts one")
     void stopsAndStartsTheDaemon() {
         assertTrue(enabled("kill-keyring"), "Kill is enabled for gnome-keyring");

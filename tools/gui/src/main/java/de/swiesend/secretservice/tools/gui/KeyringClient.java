@@ -411,6 +411,66 @@ final class KeyringClient {
         return secret;
     }
 
+    /**
+     * Updates the item: a {@code null} label or secret stays as it is, and the attributes replace
+     * the item's.
+     */
+    boolean updateItem(String path, String label, CharSequence secret, Map<String, String> attributes) {
+        boolean updated = open().updateItem(path, label, secret, attributes);
+        if (updated) log("Updated item: %s%s", path, secret != null ? " (with a new secret)" : "");
+        else log("WARNING: updateItem returned false for: %s", path);
+        return updated;
+    }
+
+    boolean lockItem(String path) {
+        boolean locked = open().lockItem(path);
+        log(locked ? "Locked item: %s" : "WARNING: lockItem returned false for: %s", path);
+        return locked;
+    }
+
+    boolean unlockItem(String path) {
+        boolean unlocked = open().unlockItem(path);
+        log(unlocked ? "Unlocked item: %s" : "WARNING: unlockItem returned false for: %s", path);
+        return unlocked;
+    }
+
+    /** Deletes the items, after the user's permission through the provider's dialog. */
+    boolean deleteItems(List<String> paths) {
+        boolean deleted = open().deleteItems(paths);
+        if (deleted) log("Deleted %d item(s).", paths.size());
+        else log("WARNING: deleteItems returned false for %d item(s).", paths.size());
+        return deleted;
+    }
+
+    /** Locks the open collection. */
+    boolean lockCollection() {
+        boolean locked = open().lock();
+        log(locked ? "Locked the collection." : "WARNING: lock returned false.");
+        return locked;
+    }
+
+    /**
+     * Unlocks the open collection through the provider's dialog, which the library raises also
+     * where it knows the password: {@code unlockWithUserPermission}.
+     */
+    boolean unlockCollection() {
+        boolean unlocked = open().unlockWithUserPermission();
+        log(unlocked ? "Unlocked the collection." : "WARNING: unlockWithUserPermission returned false.");
+        return unlocked;
+    }
+
+    /** Gives the open collection a new label. */
+    boolean renameCollection(String label) {
+        boolean renamed = open().setLabel(label);
+        log(renamed ? "Renamed the collection." : "WARNING: setLabel returned false.");
+        return renamed;
+    }
+
+    /** Whether the open collection is locked now. */
+    boolean isLocked() {
+        return open().isLocked();
+    }
+
     boolean deleteItem(String path) {
         boolean deleted = open().deleteItem(path);
         if (deleted) log("Deleted item: %s", path);

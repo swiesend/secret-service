@@ -193,6 +193,12 @@ final class Gui {
         }
     }
 
+    /** The option pane in the dialog with that title, once the dialog shows. */
+    static javax.swing.JOptionPane optionPane(String title) {
+        await("a dialog titled \"" + title + "\"", () -> dialog(title) != null);
+        return onEventThread(() -> search(dialog(title), javax.swing.JOptionPane.class));
+    }
+
     /** The message of the option pane in the dialog with that title, once the dialog shows. */
     static String dialogMessage(String title) {
         await("a dialog titled \"" + title + "\"", () -> dialog(title) != null);
