@@ -79,6 +79,12 @@ public final class SecretServiceGui {
 
         private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
+        /** The smallest size at which the item list and the log still show a few lines. */
+        private static final Dimension MINIMUM_SIZE = new Dimension(760, 560);
+        private static final int COLLECTION_PANEL_WIDTH = 230;
+        private static final int LOG_HEIGHT = 150;
+        private static final Color DANGER = new Color(0xC62828);
+
         // Collection panel
         private final ButtonGroup collectionGroup = new ButtonGroup();
         private final JRadioButton rbDefault = new JRadioButton("Default collection");
@@ -115,7 +121,7 @@ public final class SecretServiceGui {
         private final JTable attributesTable = new JTable(attributesTableModel);
 
         // Log area
-        private final JTextArea logArea = new JTextArea(12, 50);
+        private final JTextArea logArea = new JTextArea();
 
         // Buttons
         private final JButton btnConnect = new JButton("Connect");
@@ -173,9 +179,7 @@ public final class SecretServiceGui {
             buildUi();
             nameComponents();
             wireActions();
-            setMinimumSize(new Dimension(800, 700));
-            pack();
-            setLocationRelativeTo(null);
+            fitToScreen();
             updateControls();
             refreshState();
         }
@@ -228,295 +232,261 @@ public final class SecretServiceGui {
         }
 
         // ── Layout ────────────────────────────────────────────────────
+        //
+        // The toolbar on top: the connection and what runs. Below it the collection on the left
+        // and its items in the middle, with the selected item and a new one in tabs under the
+        // list. At the bottom the log, the library's state and the danger zone, in tabs.
 
         private void buildUi() {
-            JTabbedPane tabs = new JTabbedPane();
+            JPanel content = new JPanel(new BorderLayout(6, 6));
+            content.setBorder(new EmptyBorder(6, 6, 6, 6));
+            content.add(buildToolbar(), BorderLayout.NORTH);
 
-            // ── Main tab ──
-            JPanel mainTab = new JPanel(new BorderLayout(8, 8));
-            mainTab.setBorder(new EmptyBorder(10, 10, 10, 10));
+            JPanel work = new JPanel(new BorderLayout(6, 6));
+            work.add(buildCollectionPanel(), BorderLayout.WEST);
+            work.add(buildItemsPanel(), BorderLayout.CENTER);
 
-            JPanel topPanel = new JPanel(new BorderLayout(0, 4));
-            topPanel.add(buildSystemPanel(), BorderLayout.NORTH);
-            topPanel.add(buildCollectionPanel(), BorderLayout.SOUTH);
-            mainTab.add(topPanel, BorderLayout.NORTH);
-            mainTab.add(buildCenterPanel(), BorderLayout.CENTER);
-            mainTab.add(buildLogPanel(), BorderLayout.SOUTH);
-            tabs.addTab("Main", mainTab);
+            JTabbedPane bottom = new JTabbedPane();
+            bottom.setName("bottom-tabs");
+            bottom.addTab("Log", buildLogPanel());
+            bottom.addTab("State", buildStateTab());
+            bottom.addTab("Danger zone", buildDangerZone());
 
-            // ── Debug tab ──
-            tabs.addTab("Debug", buildDebugTab());
-
-            setContentPane(tabs);
+            JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, work, bottom);
+            split.setResizeWeight(1.0); // a taller window gives its height to the items
+            split.setBorder(null);
+            content.add(split, BorderLayout.CENTER);
+            setContentPane(content);
         }
 
-        private JPanel buildSystemPanel() {
-            JPanel panel = new JPanel();
-            panel.setBorder(new TitledBorder("System"));
-            panel.setLayout(new GridBagLayout());
-            GridBagConstraints gbc = gbc();
+        /** Fits the window to the screen it opens on, at least {@link #MINIMUM_SIZE}. */
+        private void fitToScreen() {
+            pack();
+            Rectangle screen = getGraphicsConfiguration().getBounds();
+            Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(getGraphicsConfiguration());
+            int width = Math.min(Math.max(getWidth(), MINIMUM_SIZE.width), screen.width - insets.left - insets.right);
+            int height = Math.min(Math.max(getHeight(), MINIMUM_SIZE.height), screen.height - insets.top - insets.bottom);
+            setMinimumSize(new Dimension(Math.min(MINIMUM_SIZE.width, width), Math.min(MINIMUM_SIZE.height, height)));
+            setSize(width, height);
+            setLocationRelativeTo(null);
+        }
 
-            // Row 0: connection icon + Connect / Disconnect
-            gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 6; gbc.anchor = GridBagConstraints.CENTER;
-            JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-            btnRow.add(lblConnectionStatus);
-            btnRow.add(btnConnect);
-            btnRow.add(btnDisconnect);
-            btnRow.add(btnCancel);
-            panel.add(btnRow, gbc);
-
-            // Row 1: D-Bus status indicators
-            gbc.gridwidth = 1;
-            gbc.gridx = 0; gbc.gridy = 1; gbc.anchor = GridBagConstraints.EAST;
-            panel.add(new JLabel("D-Bus:"), gbc);
-            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            panel.add(lblDbusConnected, gbc);
-
-            gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
-            panel.add(new JLabel("Service:"), gbc);
-            gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            panel.add(lblDbusAvailable, gbc);
-
-            gbc.gridx = 4; gbc.anchor = GridBagConstraints.EAST;
-            panel.add(new JLabel("Provider:"), gbc);
-            gbc.gridx = 5; gbc.anchor = GridBagConstraints.WEST;
-            panel.add(lblProvider, gbc);
-
-            // Row 2: what the worker does
-            gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 6; gbc.anchor = GridBagConstraints.CENTER;
-            panel.add(lblStatus, gbc);
-            gbc.gridwidth = 1;
-
+        private JPanel buildToolbar() {
+            JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+            bar.add(lblConnectionStatus);
+            bar.add(btnConnect);
+            bar.add(btnDisconnect);
+            bar.add(new JSeparator(SwingConstants.VERTICAL));
+            bar.add(new JLabel("D-Bus:"));
+            bar.add(lblDbusConnected);
+            bar.add(new JLabel("Service:"));
+            bar.add(lblDbusAvailable);
+            bar.add(new JLabel("Provider:"));
+            bar.add(lblProvider);
+            bar.add(new JSeparator(SwingConstants.VERTICAL));
+            bar.add(lblStatus);
+            bar.add(btnCancel);
             updateConnectionIcon(false);
+
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.add(bar, BorderLayout.CENTER);
+            panel.add(new JSeparator(), BorderLayout.SOUTH);
             return panel;
         }
 
         private JPanel buildCollectionPanel() {
-            JPanel panel = new JPanel();
+            JPanel panel = new JPanel(new GridBagLayout());
             panel.setBorder(new TitledBorder("Collection"));
-            panel.setLayout(new GridBagLayout());
             GridBagConstraints gbc = gbc();
 
             collectionGroup.add(rbDefault);
             collectionGroup.add(rbTest);
+            rbDefault.addActionListener(e -> updateControls());
+            rbTest.addActionListener(e -> updateControls());
 
-            rbDefault.addActionListener(e -> {
-                tfCollectionLabel.setEnabled(false);
-                tfCollectionId.setEnabled(false);
-                pfCollectionPassword.setEnabled(false);
-            });
-            rbTest.addActionListener(e -> {
-                tfCollectionLabel.setEnabled(true);
-                tfCollectionId.setEnabled(true);
-                pfCollectionPassword.setEnabled(true);
-            });
-
-            gbc.gridx = 0; gbc.gridy = 0;
+            gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
             panel.add(rbDefault, gbc);
-            gbc.gridx = 1;
+            gbc.gridy = 1;
             panel.add(rbTest, gbc);
-
-            gbc.gridx = 0; gbc.gridy = 1; gbc.anchor = GridBagConstraints.EAST;
-            panel.add(new JLabel("Label:"), gbc);
-            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            panel.add(tfCollectionLabel, gbc);
-            gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
-            panel.add(new JLabel("ID:"), gbc);
-            gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            panel.add(tfCollectionId, gbc);
-
-            gbc.gridx = 0; gbc.gridy = 2; gbc.anchor = GridBagConstraints.EAST;
-            panel.add(new JLabel("Password:"), gbc);
-            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            panel.add(pfCollectionPassword, gbc);
-
-            JLabel hintId = new JLabel("<html><small><i>ID = D-Bus path segment (e.g. \"test\"). Used when opening an existing collection by id."
-                    + " In KeePassXC this is the name of the exposed group.</i></small></html>");
-            JLabel hintLabel = new JLabel("<html><small><i>Label = human-readable name (e.g. \"Test\"). Used when creating a new collection."
-                    + " In KeePassXC this is the database name.</i></small></html>");
-            gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.WEST;
-            panel.add(hintLabel, gbc);
-            gbc.gridy = 4;
-            panel.add(hintId, gbc);
             gbc.gridwidth = 1;
 
+            addRow(panel, 2, "ID:", tfCollectionId);
+            addRow(panel, 3, "Label:", tfCollectionLabel);
+            addRow(panel, 4, "Password:", pfCollectionPassword);
+
+            JLabel hint = new JLabel("<html><small><i>ID: the last part of an existing collection's path,"
+                    + " e.g. \"test\"; in KeePassXC the name of the exposed group.<br>"
+                    + "Label: without an ID, the collection with this name, which the provider creates"
+                    + " if it has none; in KeePassXC the database name.</i></small></html>");
+            hint.setPreferredSize(new Dimension(COLLECTION_PANEL_WIDTH, 110));
+            hint.setVerticalAlignment(SwingConstants.TOP);
+            gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2; gbc.weighty = 1.0;
+            gbc.anchor = GridBagConstraints.NORTHWEST;
+            panel.add(hint, gbc);
             return panel;
         }
 
-        private JPanel buildCenterPanel() {
-            JPanel panel = new JPanel(new BorderLayout(8, 8));
-
-            // ── Create-item fields ──────────────────────────────────
-            JPanel createPanel = new JPanel();
-            createPanel.setBorder(new TitledBorder("Create Item"));
-            createPanel.setLayout(new GridBagLayout());
+        /** Adds a label and its field as row {@code y} of a two-column grid. */
+        private static void addRow(JPanel panel, int y, String label, JComponent field) {
             GridBagConstraints gbc = gbc();
+            gbc.gridx = 0; gbc.gridy = y; gbc.anchor = GridBagConstraints.EAST; gbc.fill = GridBagConstraints.NONE;
+            panel.add(new JLabel(label), gbc);
+            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST; gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.weightx = 1.0;
+            panel.add(field, gbc);
+        }
 
-            gbc.gridx = 0; gbc.gridy = 0; gbc.anchor = GridBagConstraints.EAST;
-            createPanel.add(new JLabel("Label:"), gbc);
-            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST; gbc.gridwidth = 3;
-            createPanel.add(tfLabel, gbc);
+        private JPanel buildItemsPanel() {
+            JPanel panel = new JPanel(new BorderLayout(4, 4));
+            panel.setBorder(new TitledBorder("Items"));
+            panel.add(buildSearchBar(), BorderLayout.NORTH);
 
-            gbc.gridwidth = 1;
-            gbc.gridx = 0; gbc.gridy = 1; gbc.anchor = GridBagConstraints.EAST;
-            createPanel.add(new JLabel("Secret:"), gbc);
-            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST; gbc.gridwidth = 3;
-            createPanel.add(tfSecret, gbc);
-
-            gbc.gridwidth = 1;
-            gbc.gridx = 0; gbc.gridy = 2; gbc.anchor = GridBagConstraints.EAST;
-            createPanel.add(new JLabel("Attribute key:"), gbc);
-            gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST;
-            createPanel.add(tfAttributeKey, gbc);
-            gbc.gridx = 2; gbc.anchor = GridBagConstraints.EAST;
-            createPanel.add(new JLabel("value:"), gbc);
-            gbc.gridx = 3; gbc.anchor = GridBagConstraints.WEST;
-            createPanel.add(tfAttributeValue, gbc);
-
-            gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 4; gbc.anchor = GridBagConstraints.CENTER;
-            JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
-            createRow.add(btnCreate);
-            createRow.add(btnClearCreate);
-            createPanel.add(createRow, gbc);
-
-            panel.add(createPanel, BorderLayout.NORTH);
-
-            // ── Center split: items list (left) + detail (right) ────
-            JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-            splitPane.setResizeWeight(0.45);
-
-            // Items list
-            JPanel listPanel = new JPanel(new BorderLayout(4, 4));
-            listPanel.setBorder(new TitledBorder("Items (select to inspect)"));
             itemsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
             JScrollPane listScroll = new JScrollPane(itemsList);
-            listScroll.setPreferredSize(new Dimension(260, 160));
+            listScroll.setPreferredSize(new Dimension(420, 150));
+            listScroll.setMinimumSize(new Dimension(200, 80));
 
-            // Search bar
-            JPanel searchPanel = new JPanel(new BorderLayout(4, 2));
-            JPanel searchFields = new JPanel(new BorderLayout(4, 0));
+            JTabbedPane itemTabs = new JTabbedPane();
+            itemTabs.setName("item-tabs");
+            itemTabs.addTab("Selected item", buildDetailPanel());
+            itemTabs.addTab("New item", buildCreatePanel());
+
+            JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, itemTabs);
+            split.setResizeWeight(0.5);
+            split.setBorder(null);
+            panel.add(split, BorderLayout.CENTER);
+            return panel;
+        }
+
+        private JPanel buildSearchBar() {
             cmbMaxDistance.setSelectedItem(1);
             cmbMaxDistance.setToolTipText("<html>Fuzzy search tolerance (Levenshtein distance):<br>"
-                    + "<b>0</b> – substring match only (fastest, exact)<br>"
-                    + "<b>1</b> – tolerates 1 typo / transposition<br>"
-                    + "<b>2</b> – tolerates 2 edits<br>"
-                    + "<b>3</b> – very loose matching</html>");
+                    + "<b>0</b> - substring match only (fastest, exact)<br>"
+                    + "<b>1</b> - tolerates 1 typo / transposition<br>"
+                    + "<b>2</b> - tolerates 2 edits<br>"
+                    + "<b>3</b> - very loose matching</html>");
             JLabel lblDistance = new JLabel("~");
             lblDistance.setToolTipText("Fuzzy distance: 0 = exact substring, 1-3 = tolerate typos");
-            JPanel modeAndDistance = new JPanel(new BorderLayout(2, 0));
-            modeAndDistance.add(cmbSearchMode, BorderLayout.CENTER);
-            JPanel distancePanel = new JPanel(new BorderLayout(2, 0));
-            distancePanel.add(lblDistance, BorderLayout.WEST);
-            distancePanel.add(cmbMaxDistance, BorderLayout.CENTER);
-            modeAndDistance.add(distancePanel, BorderLayout.EAST);
-            searchFields.add(tfSearch, BorderLayout.CENTER);
-            searchFields.add(modeAndDistance, BorderLayout.EAST);
-            searchPanel.add(searchFields, BorderLayout.CENTER);
-            searchPanel.add(btnSearch, BorderLayout.EAST);
 
-            listPanel.add(searchPanel, BorderLayout.NORTH);
-            listPanel.add(listScroll, BorderLayout.CENTER);
-            listPanel.add(btnList, BorderLayout.SOUTH);
-            splitPane.setLeftComponent(listPanel);
+            JPanel options = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+            options.add(cmbSearchMode);
+            options.add(lblDistance);
+            options.add(cmbMaxDistance);
+            options.add(btnSearch);
+            options.add(btnList);
 
-            // Item detail
-            JPanel detailPanel = new JPanel();
-            detailPanel.setBorder(new TitledBorder("Selected Item"));
-            detailPanel.setLayout(new GridBagLayout());
-            GridBagConstraints dg = gbc();
+            JPanel bar = new JPanel(new BorderLayout(4, 0));
+            bar.add(tfSearch, BorderLayout.CENTER);
+            bar.add(options, BorderLayout.EAST);
+            return bar;
+        }
 
-            dg.gridx = 0; dg.gridy = 0; dg.anchor = GridBagConstraints.EAST;
-            detailPanel.add(new JLabel("Path:"), dg);
-            dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            detailPanel.add(lblDetailPath, dg);
+        private JPanel buildDetailPanel() {
+            JPanel panel = new JPanel(new GridBagLayout());
+            panel.setBorder(new EmptyBorder(4, 4, 4, 4));
+            addRow(panel, 0, "Path:", lblDetailPath);
+            addRow(panel, 1, "Label:", lblDetailLabel);
+            addRow(panel, 2, "Secret:", lblDetailSecret);
 
-            dg.weightx = 0;
-            dg.gridx = 0; dg.gridy = 1; dg.anchor = GridBagConstraints.EAST;
-            detailPanel.add(new JLabel("Label:"), dg);
-            dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            detailPanel.add(lblDetailLabel, dg);
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+            buttons.add(btnRead);
+            buttons.add(btnDeleteItem);
+            GridBagConstraints gbc = gbc();
+            gbc.gridx = 1; gbc.gridy = 3; gbc.anchor = GridBagConstraints.WEST; gbc.fill = GridBagConstraints.NONE;
+            panel.add(buttons, gbc);
 
-            dg.weightx = 0;
-            dg.gridx = 0; dg.gridy = 2; dg.anchor = GridBagConstraints.EAST;
-            detailPanel.add(new JLabel("Secret:"), dg);
-            dg.gridx = 1; dg.anchor = GridBagConstraints.WEST; dg.weightx = 1.0;
-            detailPanel.add(lblDetailSecret, dg);
-
-            dg.weightx = 0;
-            dg.gridx = 0; dg.gridy = 3; dg.gridwidth = 2; dg.anchor = GridBagConstraints.CENTER;
-            JPanel detailBtnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
-            detailBtnRow.add(btnRead);
-            detailPanel.add(detailBtnRow, dg);
-
-            dg.gridx = 0; dg.gridy = 4; dg.gridwidth = 2; dg.weighty = 1.0;
-            dg.fill = GridBagConstraints.BOTH;
             JScrollPane attributesScroll = new JScrollPane(attributesTable);
-            attributesScroll.setPreferredSize(new Dimension(0, 80));
+            attributesScroll.setPreferredSize(new Dimension(300, 70));
             attributesTable.setFillsViewportHeight(true);
-            detailPanel.add(attributesScroll, dg);
-
-            splitPane.setRightComponent(detailPanel);
-            panel.add(splitPane, BorderLayout.CENTER);
-
-            // ── Danger Zone ─────────────────────────────────────────
-            JPanel dangerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 4));
-            dangerPanel.setBorder(BorderFactory.createTitledBorder(
-                    BorderFactory.createLineBorder(Color.RED), "Danger Zone",
-                    TitledBorder.DEFAULT_JUSTIFICATION, TitledBorder.DEFAULT_POSITION,
-                    dangerPanel.getFont(), Color.RED));
-            btnDeleteItem.setForeground(Color.RED);
-            btnDeleteCollection.setForeground(Color.RED);
-            dangerPanel.add(btnDeleteItem);
-            dangerPanel.add(btnDeleteCollection);
-            dangerPanel.add(btnKillKeyring);
-            dangerPanel.add(btnStartKeyring);
-            panel.add(dangerPanel, BorderLayout.SOUTH);
-
+            gbc = gbc();
+            gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2; gbc.weightx = 1.0; gbc.weighty = 1.0;
+            gbc.fill = GridBagConstraints.BOTH;
+            panel.add(attributesScroll, gbc);
             return panel;
         }
 
-        // ── Debug tab ─────────────────────────────────────────────────
+        private JPanel buildCreatePanel() {
+            JPanel panel = new JPanel(new GridBagLayout());
+            panel.setBorder(new EmptyBorder(4, 4, 4, 4));
+            addRow(panel, 0, "Label:", tfLabel);
+            addRow(panel, 1, "Secret:", tfSecret);
 
-        private JPanel buildDebugTab() {
-            JPanel panel = new JPanel(new BorderLayout(8, 8));
-            panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+            JPanel attribute = new JPanel(new BorderLayout(4, 0));
+            attribute.add(tfAttributeKey, BorderLayout.WEST);
+            attribute.add(new JLabel("="), BorderLayout.CENTER);
+            attribute.add(tfAttributeValue, BorderLayout.EAST);
+            addRow(panel, 2, "Attribute:", attribute);
 
-            // Four state sections stacked vertically
-            JPanel grid = new JPanel(new GridLayout(4, 1, 8, 8));
-            grid.add(buildDebugSection("System", debugSystemModel));
-            grid.add(buildDebugSection("Service", debugServiceModel));
-            grid.add(buildDebugSection("Session", debugSessionModel));
-            grid.add(buildDebugSection("Collection", debugCollectionModel));
-            panel.add(grid, BorderLayout.CENTER);
-
-            JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 4));
-            bottom.add(cbAutoSync);
-            bottom.add(btnDebugRefresh);
-            panel.add(bottom, BorderLayout.SOUTH);
-
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+            buttons.add(btnCreate);
+            buttons.add(btnClearCreate);
+            GridBagConstraints gbc = gbc();
+            gbc.gridx = 1; gbc.gridy = 3; gbc.anchor = GridBagConstraints.NORTHWEST;
+            gbc.fill = GridBagConstraints.NONE; gbc.weighty = 1.0;
+            panel.add(buttons, gbc);
             return panel;
         }
 
-        private static JPanel buildDebugSection(String title, DefaultTableModel model) {
-            JPanel section = new JPanel(new BorderLayout());
-            section.setBorder(new TitledBorder(title));
+        private JPanel buildStateTab() {
+            JPanel tables = new JPanel(new GridLayout(2, 2, 6, 6));
+            tables.add(buildStateSection("System", debugSystemModel));
+            tables.add(buildStateSection("Service", debugServiceModel));
+            tables.add(buildStateSection("Session", debugSessionModel));
+            tables.add(buildStateSection("Collection", debugCollectionModel));
+
+            JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            controls.add(cbAutoSync);
+            controls.add(btnDebugRefresh);
+
+            JPanel panel = new JPanel(new BorderLayout(4, 4));
+            panel.setBorder(new EmptyBorder(4, 4, 4, 4));
+            panel.add(tables, BorderLayout.CENTER);
+            panel.add(controls, BorderLayout.SOUTH);
+            return panel;
+        }
+
+        private static JPanel buildStateSection(String title, DefaultTableModel model) {
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.setBorder(new TitledBorder(title));
             JTable table = new JTable(model);
             table.setFillsViewportHeight(true);
-            table.getColumnModel().getColumn(0).setPreferredWidth(180);
-            table.getColumnModel().getColumn(1).setPreferredWidth(260);
-            section.add(new JScrollPane(table), BorderLayout.CENTER);
-            return section;
+            JScrollPane scroll = new JScrollPane(table);
+            // Each table scrolls within its share: the tab keeps the height of the log.
+            scroll.setPreferredSize(new Dimension(200, 40));
+            panel.add(scroll, BorderLayout.CENTER);
+            return panel;
+        }
+
+        private JPanel buildDangerZone() {
+            btnDeleteCollection.setForeground(DANGER);
+            btnKillKeyring.setForeground(DANGER);
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 4));
+            buttons.add(btnDeleteCollection);
+            buttons.add(btnKillKeyring);
+            buttons.add(btnStartKeyring);
+
+            JLabel warning = new JLabel("<html>These change the keyring beyond one item, and can affect"
+                    + " every application of the desktop session. Each asks before it acts.</html>");
+            warning.setForeground(DANGER);
+
+            JPanel panel = new JPanel(new BorderLayout(4, 4));
+            panel.setBorder(new EmptyBorder(6, 6, 6, 6));
+            panel.add(warning, BorderLayout.NORTH);
+            panel.add(buttons, BorderLayout.CENTER);
+            return panel;
         }
 
         private JPanel buildLogPanel() {
             JPanel panel = new JPanel(new BorderLayout(4, 4));
-            panel.setBorder(new TitledBorder("Log"));
+            panel.setBorder(new EmptyBorder(4, 4, 4, 4));
             logArea.setEditable(false);
             logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
             JScrollPane scroll = new JScrollPane(logArea);
-            scroll.setPreferredSize(new Dimension(0, 180));
+            scroll.setPreferredSize(new Dimension(0, LOG_HEIGHT));
             panel.add(scroll, BorderLayout.CENTER);
-            panel.add(btnClearLog, BorderLayout.SOUTH);
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+            buttons.add(btnClearLog);
+            panel.add(buttons, BorderLayout.SOUTH);
             return panel;
         }
 
