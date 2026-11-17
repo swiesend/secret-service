@@ -32,6 +32,7 @@
         <secret-service.version>3.0.0-alpha</secret-service.version>
         <slf4j.version>2.0.17</slf4j.version>
         <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
+        <junit-jupiter.version>5.10.5</junit-jupiter.version>
     </properties>
 
     <dependencies>
@@ -47,6 +48,20 @@
             <artifactId>slf4j-simple</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
+
+        <!-- The smoke test: see GuiSmokeTest for where it runs -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit-jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit-jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -58,6 +73,11 @@
                 <configuration>
                     <release>17</release>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
             </plugin>
             <!-- Launch with: mvn -f tools/gui/pom.xml exec:java -->
             <plugin>

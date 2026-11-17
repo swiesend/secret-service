@@ -273,6 +273,19 @@ mvn -DskipTests -Dgpg.skip=true install   # install the core artifact locally
 mvn -f tools/gui/pom.xml exec:java         # launch the GUI
 ```
 
+Its smoke test uses the window as a developer does and leaves a screenshot of each step in
+`tools/gui/target/gui-screenshots`. It changes the keyring that it is connected to, so it skips
+itself unless it is told that the keyring is the run's own and that its dialogs are answered, as in
+the `gnome-keyring-dialogs` container:
+
+```bash
+docker build -f .github/providers/gnome-keyring-dialogs/Dockerfile -t secret-service-gui-test .
+docker run --rm -v "$(pwd)":/workspace secret-service-gui-test bash -c '
+  mvn -B -q -DskipTests -Dgpg.skip=true install &&
+  mvn -B -f tools/gui/pom.xml test -Dsecret-service.system-test.dialogs-answered=true \
+    -Dsecret-service.system-test.default-collection=throwaway'
+```
+
 ## Contributing
 
 You are welcome to point out issues, file PRs and comment on the project.
