@@ -1,6 +1,7 @@
 package de.swiesend.secretservice.tools.gui;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
@@ -19,6 +20,10 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.UIManager;
 import java.awt.GraphicsEnvironment;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -59,6 +64,16 @@ class GuiSmokeTest {
 
     /** {@code throwaway} where the keyring belongs to the run. */
     static final String DEFAULT_COLLECTION = "secret-service.system-test.default-collection";
+
+    /**
+     * The environment variable with the directory through which the test holds back the
+     * container's dialog answerer, as a user who is away: while the file {@code hold} is in it, the
+     * answerer leaves the dialogs open.
+     */
+    static final String DIALOG_CONTROL = "SECRET_SERVICE_DIALOG_CONTROL";
+
+    /** How long the event thread may take for a task: longer, and the window stops answering. */
+    private static final Duration RESPONSIVE = Duration.ofMillis(500);
 
     /** The password of the test's collection, which the container's answerer types into the unlock dialog. */
     private static final String PASSWORD = "test";
@@ -204,6 +219,46 @@ class GuiSmokeTest {
 
     @Test
     @Order(7)
+    @DisplayName("the window answers while the provider's dialog waits, and Cancel gives up the wait")
+    void staysResponsiveWhileTheProviderAsks() throws IOException {
+        String control = System.getenv(DIALOG_CONTROL);
+        Assumptions.assumeTrue(control != null, "Needs the dialog answerer of the gnome-keyring-dialogs container");
+        Path hold = Path.of(control, "hold");
+        JList<?> items = Gui.find(JList.class, "items");
+        Gui.onEventThread(() -> {
+            items.setSelectedIndex(0);
+            return null;
+        });
+        Gui.await("the detail shows the item", () -> "smoke item".equals(label("detail-label")));
+
+        Files.writeString(hold, "");
+        try {
+            // Deleting asks for the user's permission through the unlock dialog, which waits.
+            Gui.click("delete-item");
+            Gui.answer("Confirm Delete Item", UIManager.getString("OptionPane.yesButtonText"));
+            Gui.await("the provider's dialog shows", Gui::providerDialogShows);
+
+            assertTrue(label("status").startsWith("Delete item"), label("status"));
+            assertTrue(enabled("cancel"), "Cancel is enabled while the call waits");
+            assertFalse(enabled("delete-item"), "the item controls are disabled while the call waits");
+            Duration pause = Gui.longestPause(Duration.ofSeconds(2));
+            assertTrue(pause.compareTo(RESPONSIVE) < 0, "the event thread answers within " + pause.toMillis() + " ms");
+            Gui.screenshot("dialog-waits");
+
+            Gui.click("cancel");
+            Gui.await("the call has given up", () -> "Ready".equals(label("status")));
+            assertEquals(1, items(), "the item stays");
+            assertTrue(log().contains("WARNING: deleteItem returned false"), log());
+            assertTrue(log().contains("Delete item: cancelled."), log());
+        } finally {
+            // The unlock dialog of gnome-keyring stays open; the answerer answers it now.
+            Files.deleteIfExists(hold);
+        }
+        Gui.await("the answerer has answered the dialog", () -> !Gui.providerDialogShows());
+    }
+
+    @Test
+    @Order(8)
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
         JList<?> items = Gui.find(JList.class, "items");
@@ -221,7 +276,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("Delete Collection asks, deletes the collection and disconnects")
     void deletesTheCollection() {
         Gui.click("delete-collection");

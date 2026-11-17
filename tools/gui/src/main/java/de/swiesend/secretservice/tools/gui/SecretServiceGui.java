@@ -1,20 +1,6 @@
 package de.swiesend.secretservice.tools.gui;
 
-import de.swiesend.secretservice.ProviderDetector;
-import de.swiesend.secretservice.functional.SecretService;
 import de.swiesend.secretservice.functional.SearchMode;
-import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
-import de.swiesend.secretservice.functional.interfaces.ServiceInterface;
-import de.swiesend.secretservice.functional.interfaces.SessionInterface;
-import de.swiesend.secretservice.functional.interfaces.SystemInterface;
-import de.swiesend.secretservice.interfaces.Collection.ItemChanged;
-import de.swiesend.secretservice.interfaces.Collection.ItemCreated;
-import de.swiesend.secretservice.interfaces.Collection.ItemDeleted;
-import de.swiesend.secretservice.interfaces.Prompt.Completed;
-import de.swiesend.secretservice.interfaces.Service.CollectionChanged;
-import de.swiesend.secretservice.interfaces.Service.CollectionCreated;
-import de.swiesend.secretservice.interfaces.Service.CollectionDeleted;
-import org.freedesktop.dbus.connections.impl.DBusConnection;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -25,11 +11,16 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.time.Duration;
+import java.nio.CharBuffer;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
-import java.util.*;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -155,15 +146,18 @@ public final class SecretServiceGui {
         private final JLabel lblDbusAvailable = new JLabel("—");
         private final JLabel lblProvider = new JLabel("—");
 
-        // GUI-tracked state
-        private boolean wasUnlockedOnce = false;
-        private final List<AutoCloseable> signalRegistrations = new ArrayList<>();
+        // Busy state: what the worker does, and Cancel, which gives up a wait for the provider
+        private static final String READY = "Ready";
+        private final JLabel lblStatus = new JLabel(READY);
+        private final JButton btnCancel = new JButton("Cancel");
 
-        // Functional API references
-        private SystemInterface system;
-        private ServiceInterface service;
-        private SessionInterface session;
-        private CollectionInterface collection;
+        /** The keyring calls, which run on {@link #worker}, never on the event thread. */
+        private final KeyringClient client = new KeyringClient(this::log);
+        private final Worker worker = new Worker(workerListener());
+        /** Whether a collection is open. */
+        private boolean connected = false;
+        /** The name of the open collection, for the confirmations. */
+        private String collectionName = "";
         private final CountDownLatch closeLatch;
 
         SecretServiceFrame(CountDownLatch closeLatch) {
@@ -173,8 +167,7 @@ public final class SecretServiceGui {
             addWindowListener(new WindowAdapter() {
                 @Override
                 public void windowClosed(WindowEvent e) {
-                    disconnectQuietly();
-                    closeLatch.countDown();
+                    closed();
                 }
             });
             buildUi();
@@ -183,7 +176,8 @@ public final class SecretServiceGui {
             setMinimumSize(new Dimension(800, 700));
             pack();
             setLocationRelativeTo(null);
-            setItemControlsEnabled(false);
+            updateControls();
+            refreshState();
         }
 
         private static DefaultTableModel readOnlyTableModel(String... columns) {
@@ -197,6 +191,8 @@ public final class SecretServiceGui {
             setName("secret-service-gui");
             btnConnect.setName("connect");
             btnDisconnect.setName("disconnect");
+            lblStatus.setName("status");
+            btnCancel.setName("cancel");
             lblConnectionStatus.setName("connection-status");
             lblProvider.setName("provider");
             rbDefault.setName("collection-default");
@@ -266,6 +262,7 @@ public final class SecretServiceGui {
             btnRow.add(lblConnectionStatus);
             btnRow.add(btnConnect);
             btnRow.add(btnDisconnect);
+            btnRow.add(btnCancel);
             panel.add(btnRow, gbc);
 
             // Row 1: D-Bus status indicators
@@ -284,6 +281,11 @@ public final class SecretServiceGui {
             panel.add(new JLabel("Provider:"), gbc);
             gbc.gridx = 5; gbc.anchor = GridBagConstraints.WEST;
             panel.add(lblProvider, gbc);
+
+            // Row 2: what the worker does
+            gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 6; gbc.anchor = GridBagConstraints.CENTER;
+            panel.add(lblStatus, gbc);
+            gbc.gridwidth = 1;
 
             updateConnectionIcon(false);
             return panel;
@@ -530,6 +532,10 @@ public final class SecretServiceGui {
         private void wireActions() {
             btnConnect.addActionListener(e -> doConnect());
             btnDisconnect.addActionListener(e -> doDisconnect());
+            btnCancel.addActionListener(e -> {
+                log("Cancelling: %s", lblStatus.getText());
+                worker.cancel();
+            });
             btnCreate.addActionListener(e -> doCreate());
             btnClearCreate.addActionListener(e -> {
                 tfLabel.setText("");
@@ -550,183 +556,141 @@ public final class SecretServiceGui {
             itemsList.addListSelectionListener(e -> {
                 if (!e.getValueIsAdjusting()) doShowItemDetail();
             });
-            btnDebugRefresh.addActionListener(e -> refreshDebugState());
+            btnDebugRefresh.addActionListener(e -> refreshState());
         }
 
-        private void setItemControlsEnabled(boolean enabled) {
-            tfLabel.setEnabled(enabled);
-            tfSecret.setEnabled(enabled);
-            tfAttributeKey.setEnabled(enabled);
-            tfAttributeValue.setEnabled(enabled);
-            btnCreate.setEnabled(enabled);
-            btnClearCreate.setEnabled(enabled);
-            btnRead.setEnabled(enabled);
-            btnDeleteItem.setEnabled(enabled);
-            btnList.setEnabled(enabled);
-            btnSearch.setEnabled(enabled);
-            tfSearch.setEnabled(enabled);
-            cmbSearchMode.setEnabled(enabled);
-            cmbMaxDistance.setEnabled(enabled);
-            btnDeleteCollection.setEnabled(enabled);
-            itemsList.setEnabled(enabled);
-            btnDisconnect.setEnabled(enabled);
-            btnConnect.setEnabled(!enabled);
-            rbDefault.setEnabled(!enabled);
-            rbTest.setEnabled(!enabled);
-            boolean customEditable = !enabled && rbTest.isSelected();
+        /**
+         * Enables what the window can do now: nothing that calls the keyring while the worker is
+         * busy, and the item controls only while a collection is open.
+         */
+        private void updateControls() {
+            boolean busy = worker.isBusy();
+            boolean items = connected && !busy;
+            tfLabel.setEnabled(items);
+            tfSecret.setEnabled(items);
+            tfAttributeKey.setEnabled(items);
+            tfAttributeValue.setEnabled(items);
+            btnCreate.setEnabled(items);
+            btnClearCreate.setEnabled(items);
+            btnRead.setEnabled(items);
+            btnDeleteItem.setEnabled(items);
+            btnList.setEnabled(items);
+            btnSearch.setEnabled(items);
+            tfSearch.setEnabled(items);
+            cmbSearchMode.setEnabled(items);
+            cmbMaxDistance.setEnabled(items);
+            btnDeleteCollection.setEnabled(items);
+            itemsList.setEnabled(items);
+            btnDisconnect.setEnabled(connected && !busy);
+            btnConnect.setEnabled(!connected && !busy);
+            btnKillKeyring.setEnabled(!busy);
+            btnStartKeyring.setEnabled(!busy);
+            btnDebugRefresh.setEnabled(!busy);
+            btnCancel.setEnabled(busy);
+            rbDefault.setEnabled(!connected && !busy);
+            rbTest.setEnabled(!connected && !busy);
+            boolean customEditable = !connected && !busy && rbTest.isSelected();
             tfCollectionLabel.setEnabled(customEditable);
             tfCollectionId.setEnabled(customEditable);
             pfCollectionPassword.setEnabled(customEditable);
         }
 
+        private Worker.Listener workerListener() {
+            return new Worker.Listener() {
+                @Override
+                public void started(String what) {
+                    lblStatus.setText(what + "... (a dialog of the provider may wait for you)");
+                    updateControls();
+                }
+
+                @Override
+                public void failed(String what, Throwable failure) {
+                    if (failure instanceof CancellationException) log("%s: cancelled.", what);
+                    else log("%s FAILED: %s", what.toUpperCase(Locale.ROOT), exceptionDetail(failure));
+                }
+
+                @Override
+                public void idle() {
+                    lblStatus.setText(READY);
+                    updateControls();
+                }
+            };
+        }
+
         // ── Connect / Disconnect ──────────────────────────────────────
 
         private void doConnect() {
-            try {
-                // 1. Connect to D-Bus
-                Optional<SystemInterface> maybeSystem = de.swiesend.secretservice.functional.System.connect();
-                if (maybeSystem.isEmpty()) {
-                    log("ERROR: Could not connect to D-Bus.");
+            Callable<Optional<KeyringClient.Opened>> connect;
+            if (rbDefault.isSelected()) {
+                connect = client::connectToDefault;
+            } else {
+                String id = tfCollectionId.getText().trim();
+                String label = tfCollectionLabel.getText().trim();
+                if (id.isEmpty() && label.isEmpty()) {
+                    log("ERROR: Collection ID or Label must not be empty.");
                     return;
                 }
-                system = maybeSystem.get();
-                log("D-Bus connection established.");
-                registerSignalLoggers();
-
-                // 2. Create service (checks availability)
-                Optional<ServiceInterface> maybeService = SecretService.create(Optional.of(system));
-                if (maybeService.isEmpty()) {
-                    log("ERROR: Secret service not available.");
-                    system.disconnect();
-                    system = null;
-                    return;
-                }
-                service = maybeService.get();
-                log("Secret service created. Gnome Keyring: %s", service.isGnomeKeyringAvailable());
-
-                // 3. Open encrypted session
-                Optional<SessionInterface> maybeSession = service.openSession();
-                if (maybeSession.isEmpty()) {
-                    log("ERROR: Could not open session.");
-                    closeServiceQuietly();
-                    return;
-                }
-                session = maybeSession.get();
-                log("Session opened: %s", session.getId());
-
-                // 4. Open collection
-                Optional<CollectionInterface> maybeColl;
-                if (rbDefault.isSelected()) {
-                    maybeColl = session.defaultCollection();
+                if (!id.isEmpty()) {
+                    connect = () -> client.connectById(id);
                 } else {
-                    String id    = tfCollectionId.getText().trim();
-                    String label = tfCollectionLabel.getText().trim();
-                    if (id.isEmpty() && label.isEmpty()) {
-                        log("ERROR: Collection ID or Label must not be empty.");
-                        closeServiceQuietly();
-                        return;
-                    }
-                    if (!id.isEmpty()) {
-                        // Open existing collection by D-Bus id (e.g. KeePassXC or gnome-keyring)
-                        log("Opening collection by id: %s", id);
-                        maybeColl = session.collectionById(id);
-                    } else {
-                        // Create / open by label + password (gnome-keyring)
-                        log("Opening collection by label: %s", label);
-                        char[] pw = pfCollectionPassword.getPassword();
-                        maybeColl = session.collection(label, Optional.of(new String(pw)));
-                        Arrays.fill(pw, '\0');
-                    }
+                    char[] password = pfCollectionPassword.getPassword();
+                    connect = () -> {
+                        try {
+                            return client.connectByLabel(label, CharBuffer.wrap(password));
+                        } finally {
+                            Arrays.fill(password, '\0');
+                        }
+                    };
                 }
-                if (maybeColl.isEmpty()) {
-                    log("ERROR: Could not open collection.");
-                    closeServiceQuietly();
-                    return;
-                }
-                collection = maybeColl.get();
-                String collName = collection.getLabel().orElse("?");
-                String collId   = collection.getId().orElse("?");
-                log("Connected to collection label=\"%s\" id=\"%s\".", collName, collId);
-                // Reflect resolved label and id back into the fields
-                SwingUtilities.invokeLater(() -> {
-                    if (!collName.equals("?")) tfCollectionLabel.setText(collName);
-                    if (!collId.equals("?"))   tfCollectionId.setText(collId);
-                });
-
-                boolean locked = collection.isLocked();
-                if (!locked) wasUnlockedOnce = true;
-                log("Locked: %s", locked);
-                setItemControlsEnabled(true);
-                updateConnectionIcon(true);
-                updateDbusStatus();
-                autoSync();
-            } catch (Exception ex) {
-                log("CONNECT FAILED: %s", exceptionDetail(ex));
-                closeServiceQuietly();
             }
+            worker.run("Connect", connect, opened -> {
+                if (opened.isPresent()) {
+                    connected = true;
+                    String label = opened.get().label();
+                    String id = opened.get().id();
+                    collectionName = rbDefault.isSelected() ? "Default"
+                            : label.equals(id) ? label : label + " [" + id + "]";
+                    if (!label.equals("?")) tfCollectionLabel.setText(label);
+                    if (!id.equals("?")) tfCollectionId.setText(id);
+                    updateConnectionIcon(true);
+                    updateControls();
+                }
+                refreshState();
+            });
         }
 
         private void doDisconnect() {
-            disconnectQuietly();
+            worker.run("Disconnect", () -> {
+                client.disconnect();
+                return null;
+            }, ignored -> {
+                disconnected();
+                log("Disconnected.");
+            });
+        }
+
+        /** Shows the window as it is without a collection. */
+        private void disconnected() {
+            connected = false;
+            collectionName = "";
             itemsModel.clear();
             clearDetail();
-            setItemControlsEnabled(false);
             updateConnectionIcon(false);
-            updateDbusStatus();
-            autoSync();
-            log("Disconnected.");
+            updateControls();
+            refreshState();
         }
 
-        private void disconnectQuietly() {
-            unregisterSignalLoggers();
-            closeServiceQuietly();
-        }
-
-        private void closeServiceQuietly() {
-            // Closing the service cascades: sessions → collections → system
-            if (service != null) {
+        /** Gives up a wait for the user, then disconnects on the worker and counts the latch down. */
+        private void closed() {
+            worker.cancel();
+            worker.run("Close", () -> {
                 try {
-                    service.close();
-                } catch (Exception ignored) {
+                    client.disconnect();
+                } finally {
+                    closeLatch.countDown();
                 }
-            }
-            service = null;
-            session = null;
-            collection = null;
-            system = null;
-        }
-
-        // ── Signal logging ──────────────────────────────────────────
-
-        private void registerSignalLoggers() {
-            if (system == null || !system.isConnected()) return;
-            DBusConnection conn = system.getConnection();
-            try {
-                signalRegistrations.add(conn.addSigHandler(CollectionCreated.class,
-                        s -> log("> CollectionCreated(%s)", s.collection)));
-                signalRegistrations.add(conn.addSigHandler(CollectionChanged.class,
-                        s -> log("> CollectionChanged(%s)", s.collection)));
-                signalRegistrations.add(conn.addSigHandler(CollectionDeleted.class,
-                        s -> log("> CollectionDeleted(%s)", s.collection)));
-                signalRegistrations.add(conn.addSigHandler(ItemCreated.class,
-                        s -> log("> ItemCreated(%s) on %s", s.item, s.getPath())));
-                signalRegistrations.add(conn.addSigHandler(ItemChanged.class,
-                        s -> log("> ItemChanged(%s) on %s", s.item, s.getPath())));
-                signalRegistrations.add(conn.addSigHandler(ItemDeleted.class,
-                        s -> log("> ItemDeleted(%s) on %s", s.item, s.getPath())));
-                signalRegistrations.add(conn.addSigHandler(Completed.class,
-                        s -> log("> Prompt.Completed(%s) dismissed=%s", s.getPath(), s.dismissed)));
-                log("Signal loggers registered (7 D-Bus signals).");
-            } catch (Exception e) {
-                log("WARNING: Could not register signal loggers: %s", e.getMessage());
-            }
-        }
-
-        private void unregisterSignalLoggers() {
-            for (AutoCloseable reg : signalRegistrations) {
-                try { reg.close(); } catch (Exception ignored) {}
-            }
-            signalRegistrations.clear();
+                return null;
+            }, ignored -> worker.shutdown());
         }
 
         // ── Item detail (on selection) ─────────────────────────────
@@ -740,63 +704,44 @@ public final class SecretServiceGui {
 
         private void doShowItemDetail() {
             String selected = itemsList.getSelectedValue();
-            if (selected == null || collection == null) {
+            if (selected == null || !connected) {
                 clearDetail();
                 return;
             }
-            doShowItemDetailForPath(selected);
+            worker.run("Read item", () -> client.detail(selected), detail -> {
+                lblDetailPath.setText(detail.path());
+                lblDetailLabel.setText(detail.label());
+                lblDetailSecret.setText("********");  // hidden until Read Secret
+                attributesTableModel.setRowCount(0);
+                detail.attributes().forEach((key, value) -> attributesTableModel.addRow(new Object[]{key, value}));
+            });
         }
 
-        private void doShowItemDetailForPath(String path) {
-            if (path == null || path.isBlank() || collection == null) {
-                clearDetail();
-                return;
+        /** The path of the item that the detail shows, if it shows one. */
+        private Optional<String> detailPath() {
+            String path = lblDetailPath.getText().trim();
+            if (path.isEmpty()) {
+                log("Select an item first.");
+                return Optional.empty();
             }
-            try {
-                String itemLabel = collection.getItemLabel(path).orElse("<unknown>");
-                Optional<Map<String, String>> maybeAttrs = collection.getAttributes(path);
-
-                lblDetailPath.setText(path);
-                lblDetailLabel.setText(itemLabel);
-                lblDetailSecret.setText("********");  // hidden until Read Secret
-
-                attributesTableModel.setRowCount(0);
-                maybeAttrs.ifPresent(attrs ->
-                    attrs.entrySet().stream()
-                            .sorted(Map.Entry.comparingByKey())
-                            .forEach(entry -> attributesTableModel.addRow(
-                                    new Object[]{entry.getKey(), entry.getValue()})));
-                log("Selected item: %s (%s)", itemLabel, path);
-            } catch (Exception ex) {
-                log("DETAIL FAILED: %s", exceptionDetail(ex));
-                clearDetail();
-            }
+            return Optional.of(path);
         }
 
         private void doRevealSecret() {
             if (!requireConnected()) return;
-            String path = lblDetailPath.getText().trim();
-            if (path.isEmpty() || path.equals(" ")) {
-                log("Select an item first.");
-                return;
-            }
-            try {
-                Optional<char[]> maybeSecret = collection.getSecret(path);
-                if (maybeSecret.isPresent()) {
-                    char[] secret = maybeSecret.get();
-                    lblDetailSecret.setText(new String(secret));
-                    Arrays.fill(secret, '\0');
-                    log("Secret revealed for: %s", path);
+            Optional<String> path = detailPath();
+            if (path.isEmpty()) return;
+            worker.run("Read secret", () -> client.readSecret(path.get()), secret -> {
+                if (secret.isPresent()) {
+                    lblDetailSecret.setText(new String(secret.get()));
+                    Arrays.fill(secret.get(), '\0');
                 } else {
                     lblDetailSecret.setText("<empty>");
-                    log("Secret is empty for: %s", path);
                 }
-            } catch (Exception ex) {
-                log("READ SECRET FAILED: %s", exceptionDetail(ex));
-            }
+            });
         }
 
-        // ── CRUD ──────────────────────────────────────────────────────
+        // ── CRUD ──────────────────────────────────────────────────
 
         private void doCreate() {
             if (!requireConnected()) return;
@@ -806,114 +751,75 @@ public final class SecretServiceGui {
                 log("ERROR: Label and secret are required to create an item.");
                 return;
             }
-            try {
-                Map<String, String> attrs = buildAttributes();
-                Optional<String> maybePath = collection.createItem(label, secret,
-                        attrs.isEmpty() ? null : attrs);
-                if (maybePath.isPresent()) {
-                    log("Created item: %s", maybePath.get());
-                    doListItems();
-                    autoSync();
-                } else {
-                    log("ERROR: createItem returned empty.");
-                }
-            } catch (Exception ex) {
-                log("CREATE FAILED: %s", exceptionDetail(ex));
-            }
+            Map<String, String> attributes = buildAttributes();
+            worker.run("Create item", () -> {
+                client.createItem(label, secret, attributes);
+                Worker.checkCancelled();
+                return client.listItems();
+            }, items -> {
+                showItems(items);
+                autoSync();
+            });
         }
-
-
 
         private void doDeleteItem() {
             if (!requireConnected()) return;
-            String selected = lblDetailPath.getText().trim();
-            if (selected.isEmpty() || selected.equals(" ")) {
-                log("Select an item first.");
-                return;
-            }
-            String itemLabel = collection.getItemLabel(selected).orElse("<unknown>");
+            Optional<String> path = detailPath();
+            if (path.isEmpty()) return;
             int confirm = JOptionPane.showConfirmDialog(this,
-                    "Delete item from collection \"" + getCollectionDisplayName() + "\"?\n\n"
-                            + "Label: " + itemLabel + "\n"
-                            + "Path:  " + selected,
+                    "Delete item from collection \"" + collectionName + "\"?\n\n"
+                            + "Label: " + lblDetailLabel.getText() + "\n"
+                            + "Path:  " + path.get(),
                     "Confirm Delete Item", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
-            try {
-                boolean deleted = collection.deleteItem(selected);
-                if (deleted) {
-                    log("Deleted item: %s", selected);
-                } else {
-                    log("WARNING: deleteItem returned false for: %s", selected);
-                }
+            worker.run("Delete item", () -> {
+                client.deleteItem(path.get());
+                Worker.checkCancelled();
+                return client.listItems();
+            }, items -> {
                 clearDetail();
-                doListItems();
+                showItems(items);
                 autoSync();
-            } catch (Exception ex) {
-                log("DELETE ITEM FAILED: %s", exceptionDetail(ex));
-            }
+            });
         }
 
         private void doListItems() {
             if (!requireConnected()) return;
-            try {
-                Optional<List<String>> maybeItems = collection.getItems(Map.of());
-                itemsModel.clear();
-                if (maybeItems.isPresent()) {
-                    List<String> items = maybeItems.get();
-                    for (String item : items) {
-                        itemsModel.addElement(item);
-                    }
-                    log("Listed %d item(s).", items.size());
-                } else {
-                    log("Listed 0 item(s) (empty response).");
-                }
-            } catch (Exception ex) {
-                log("LIST FAILED: %s", exceptionDetail(ex));
-            }
+            worker.run("List items", client::listItems, this::showItems);
+        }
+
+        private void showItems(List<String> items) {
+            itemsModel.clear();
+            items.forEach(itemsModel::addElement);
         }
 
         private void doSearch() {
             if (!requireConnected()) return;
             String query = tfSearch.getText().trim();
-            String mode  = (String) cmbSearchMode.getSelectedItem();
-            try {
-                SearchMode searchMode = switch (mode) {
-                    case "By Attribute Key"   -> SearchMode.BY_ATTRIBUTE_KEY;
-                    case "By Attribute Value" -> SearchMode.BY_ATTRIBUTE_VALUE;
-                    case "By Object ID"       -> SearchMode.BY_OBJECT_ID;
-                    case "By Object Path"     -> SearchMode.BY_OBJECT_PATH;
-                    default                   -> SearchMode.BY_NAME;
-                };
-                List<String> results = collection.search(query, searchMode, (Integer) cmbMaxDistance.getSelectedItem());
-                int total = collection.getItems(Map.of()).map(List::size).orElse(0);
-                itemsModel.clear();
-                results.forEach(itemsModel::addElement);
-                log("Search [%s] \"%s\": %d / %d item(s) matched.", mode, query, results.size(), total);
-            } catch (Exception ex) {
-                log("SEARCH FAILED: %s", exceptionDetail(ex));
-            }
+            String mode = (String) cmbSearchMode.getSelectedItem();
+            SearchMode searchMode = switch (mode) {
+                case "By Attribute Key" -> SearchMode.BY_ATTRIBUTE_KEY;
+                case "By Attribute Value" -> SearchMode.BY_ATTRIBUTE_VALUE;
+                case "By Object ID" -> SearchMode.BY_OBJECT_ID;
+                case "By Object Path" -> SearchMode.BY_OBJECT_PATH;
+                default -> SearchMode.BY_NAME;
+            };
+            int maxDistance = (Integer) cmbMaxDistance.getSelectedItem();
+            worker.run("Search", () -> client.search(query, searchMode, maxDistance), this::showItems);
         }
 
         private void doDeleteCollection() {
             if (!requireConnected()) return;
-            String name = getCollectionDisplayName();
+            String name = collectionName;
             int confirm = JOptionPane.showConfirmDialog(this,
                     "Delete the entire collection \"" + name + "\"?\n\n"
                             + "This cannot be undone!",
                     "Confirm Delete Collection \"" + name + "\"",
                     JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
-            try {
-                boolean deleted = collection.delete();
-                if (deleted) {
-                    log("Collection deleted.");
-                } else {
-                    log("WARNING: collection.delete() returned false.");
-                }
-                doDisconnect();
-            } catch (Exception ex) {
-                log("DELETE COLLECTION FAILED: %s", exceptionDetail(ex));
-            }
+            worker.run("Delete collection", client::deleteCollection, deleted -> {
+                if (deleted) disconnected();
+            });
         }
 
         private void killKeyring() {
@@ -921,14 +827,12 @@ public final class SecretServiceGui {
                     "Kill the gnome-keyring process? This may affect the desktop session.\n\nProceed?",
                     "Kill Keyring", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
-            try {
-                ProcessBuilder pb = new ProcessBuilder("pkill", "-f", "gnome-keyring-daemon");
-                Process p = pb.start();
+            worker.run("Kill keyring", () -> {
+                Process p = new ProcessBuilder("pkill", "-f", "gnome-keyring-daemon").start();
                 int rc = p.waitFor();
                 log("killKeyring(): pkill returned %d", rc);
-            } catch (Exception ex) {
-                log("KILL KEYRING FAILED: %s", exceptionDetail(ex));
-            }
+                return null;
+            }, ignored -> { });
         }
 
         private void startKeyring() {
@@ -936,21 +840,18 @@ public final class SecretServiceGui {
                     "Start the gnome-keyring-daemon for the current user?\n\nProceed?",
                     "Start Keyring", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             if (confirm != JOptionPane.YES_OPTION) return;
-            try {
+            worker.run("Start keyring", () -> {
                 ProcessBuilder pb = new ProcessBuilder("gnome-keyring-daemon", "--start", "--components=secrets,pkcs11,ssh");
                 pb.redirectErrorStream(true);
                 Process p = pb.start();
-                java.io.InputStream is = p.getInputStream();
-                java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\\A");
-                String out = s.hasNext() ? s.next() : "";
+                String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 int rc = p.waitFor();
                 log("startKeyring(): exit=%d output=%s", rc, out.trim());
-            } catch (Exception ex) {
-                log("START KEYRING FAILED: %s", exceptionDetail(ex));
-            }
+                return null;
+            }, ignored -> { });
         }
 
-        // ── Helpers ───────────────────────────────────────────────────
+        // ── Helpers ───────────────────────────────────────────────
 
         private Map<String, String> buildAttributes() {
             String key = tfAttributeKey.getText().trim();
@@ -961,21 +862,8 @@ public final class SecretServiceGui {
             return Map.of();
         }
 
-        private String getCollectionDisplayName() {
-            if (rbDefault.isSelected()) return "Default";
-            if (collection != null) {
-                String lbl = collection.getLabel().orElse(tfCollectionLabel.getText().trim());
-                String id  = collection.getId().orElse(tfCollectionId.getText().trim());
-                return lbl.equals(id) ? lbl : lbl + " [" + id + "]";
-            }
-            String lbl = tfCollectionLabel.getText().trim();
-            String id  = tfCollectionId.getText().trim();
-            if (!lbl.isEmpty() && !id.isEmpty() && !lbl.equals(id)) return lbl + " [" + id + "]";
-            return !id.isEmpty() ? id : lbl;
-        }
-
         private boolean requireConnected() {
-            if (collection == null) {
+            if (!connected) {
                 log("Not connected. Click Connect first.");
                 return false;
             }
@@ -983,8 +871,12 @@ public final class SecretServiceGui {
         }
 
         private void log(String fmt, Object... args) {
-            String ts = LocalTime.now().format(TIME_FMT);
-            String msg = String.format("[%s] %s%n", ts, String.format(fmt, args));
+            log(String.format(fmt, args));
+        }
+
+        /** Appends the line to the log, from any thread. */
+        private void log(String line) {
+            String msg = "[" + LocalTime.now().format(TIME_FMT) + "] " + line + System.lineSeparator();
             SwingUtilities.invokeLater(() -> {
                 logArea.append(msg);
                 logArea.setCaretPosition(logArea.getDocument().getLength());
@@ -1016,33 +908,6 @@ public final class SecretServiceGui {
             lblConnectionStatus.setToolTipText(connected ? "Connected" : "Disconnected");
         }
 
-        private void updateDbusStatus() {
-            boolean connected = system != null && system.isConnected();
-            if (connected) {
-                setStatusLabel(lblDbusConnected, true);
-                if (service != null) {
-                    setStatusLabel(lblDbusAvailable, true);
-                    String provider = detectProvider();
-                    lblProvider.setText(provider);
-                    lblProvider.setForeground(new Color(0x4CAF50));
-                } else {
-                    resetStatusLabel(lblDbusAvailable);
-                    resetStatusLabel(lblProvider);
-                }
-            } else {
-                resetStatusLabel(lblDbusConnected);
-                resetStatusLabel(lblDbusAvailable);
-                resetStatusLabel(lblProvider);
-            }
-        }
-
-        /** Delegate to {@link ProviderDetector} via the functional API. */
-        private String detectProvider() {
-            if (service != null) return service.getProvider();
-            if (system != null && system.isConnected()) return ProviderDetector.detect(system.getConnection());
-            return "N/A";
-        }
-
         private static void resetStatusLabel(JLabel label) {
             label.setText("—");
             label.setForeground(Color.GRAY);
@@ -1053,102 +918,47 @@ public final class SecretServiceGui {
             label.setForeground(value ? new Color(0x4CAF50) : new Color(0xF44336));
         }
 
-        // ── Auto-sync helper ─────────────────────────────────────────
+        // ── State refresh ─────────────────────────────────────────
 
         private void autoSync() {
             if (cbAutoSync.isSelected()) {
-                refreshDebugState();
+                refreshState();
             }
         }
 
-        // ── Debug state refresh ────────────────────────────────────
-
-        private void refreshDebugState() {
-            refreshSystemState();
-            refreshServiceState();
-            refreshSessionState();
-            refreshCollectionState();
+        /** Asks the library's objects for their state on the worker, and shows it. */
+        private void refreshState() {
+            worker.run("Refresh state", client::state, this::showState);
         }
 
-        private void refreshSystemState() {
-            debugSystemModel.setRowCount(0);
-            debugSystemModel.addRow(new Object[]{"SystemInterface", system != null ? system.getClass().getSimpleName() : "null (not connected)"});
-            debugSystemModel.addRow(new Object[]{"isConnected()", system != null ? str(system.isConnected()) : "N/A"});
-            if (system != null) {
-                DBusConnection conn = system.getConnection();
-                debugSystemModel.addRow(new Object[]{"DBusConnection", conn != null ? conn.getClass().getSimpleName() : "null"});
-                debugSystemModel.addRow(new Object[]{"DBusConnection.isConnected()", conn != null ? str(conn.isConnected()) : "N/A"});
-                debugSystemModel.addRow(new Object[]{"DBusConnection.busAddress", conn != null ? safe(() -> conn.getAddress().toString()) : "N/A"});
+        private void showState(KeyringClient.State state) {
+            if (state.busConnected()) {
+                setStatusLabel(lblDbusConnected, true);
+                if (state.serviceAvailable()) {
+                    setStatusLabel(lblDbusAvailable, true);
+                    lblProvider.setText(state.provider());
+                    lblProvider.setForeground(new Color(0x4CAF50));
+                } else {
+                    resetStatusLabel(lblDbusAvailable);
+                    resetStatusLabel(lblProvider);
+                }
+            } else {
+                resetStatusLabel(lblDbusConnected);
+                resetStatusLabel(lblDbusAvailable);
+                resetStatusLabel(lblProvider);
             }
+            showRows(debugSystemModel, state.system());
+            showRows(debugServiceModel, state.service());
+            showRows(debugSessionModel, state.session());
+            showRows(debugCollectionModel, state.collection());
         }
 
-        private void refreshServiceState() {
-            debugServiceModel.setRowCount(0);
-            if (service == null) {
-                debugServiceModel.addRow(new Object[]{"ServiceInterface", "null (not connected)"});
-                return;
-            }
-            debugServiceModel.addRow(new Object[]{"ServiceInterface", service.getClass().getSimpleName()});
-            debugServiceModel.addRow(new Object[]{"isGnomeKeyringAvailable()", str(service.isGnomeKeyringAvailable())});
-            debugServiceModel.addRow(new Object[]{"getTimeout()", formatDuration(service.getTimeout())});
-            debugServiceModel.addRow(new Object[]{"getSessions().size()", str(service.getSessions().size())});
-            debugServiceModel.addRow(new Object[]{"getService()", service.getService() != null ? service.getService().getObjectPath() : "null"});
+        private static void showRows(DefaultTableModel model, List<KeyringClient.Row> rows) {
+            model.setRowCount(0);
+            rows.forEach(row -> model.addRow(new Object[]{row.property(), row.value()}));
         }
 
-        private void refreshSessionState() {
-            debugSessionModel.setRowCount(0);
-            if (session == null) {
-                debugSessionModel.addRow(new Object[]{"SessionInterface", "null (not connected)"});
-                return;
-            }
-            debugSessionModel.addRow(new Object[]{"SessionInterface", session.getClass().getSimpleName()});
-            debugSessionModel.addRow(new Object[]{"getId()", str(session.getId())});
-            debugSessionModel.addRow(new Object[]{"getSession().getObjectPath()",
-                    session.getSession() != null ? session.getSession().getObjectPath() : "null"});
-            debugSessionModel.addRow(new Object[]{"getEncryptedSession()",
-                    session.getEncryptedSession() != null ? "present" : "null"});
-            debugSessionModel.addRow(new Object[]{"getCollections().size()",
-                    safe(() -> str(session.getCollections().size()))});
-        }
-
-        private void refreshCollectionState() {
-            debugCollectionModel.setRowCount(0);
-            if (collection == null) {
-                debugCollectionModel.addRow(new Object[]{"CollectionInterface", "null (not connected)"});
-                return;
-            }
-            debugCollectionModel.addRow(new Object[]{"CollectionInterface", collection.getClass().getSimpleName()});
-            debugCollectionModel.addRow(new Object[]{"getLabel()", collection.getLabel().orElse("<empty>")});
-            debugCollectionModel.addRow(new Object[]{"getId()", collection.getId().orElse("<empty>")});
-            boolean locked = collection.isLocked();
-            if (!locked) wasUnlockedOnce = true;
-            debugCollectionModel.addRow(new Object[]{"isLocked()", str(locked)});
-            debugCollectionModel.addRow(new Object[]{"wasUnlockedOnce", str(wasUnlockedOnce)});
-        }
-
-        // ── Formatting helpers ─────────────────────────────────────────
-
-        private static String str(Object value) {
-            return String.valueOf(value);
-        }
-
-        private static String formatDuration(Duration d) {
-            if (d == null) return "null";
-            return d.getSeconds() + "s (" + d.toMillis() + "ms)";
-        }
-
-        @FunctionalInterface
-        private interface SafeSupplier<T> { T get() throws Exception; }
-
-        private static <T> String safe(SafeSupplier<T> supplier) {
-            try {
-                return str(supplier.get());
-            } catch (Exception e) {
-                return "<error: " + e.getClass().getSimpleName() + ">";
-            }
-        }
-
-        private static String exceptionDetail(Exception ex) {
+        private static String exceptionDetail(Throwable ex) {
             StringWriter sw = new StringWriter();
             ex.printStackTrace(new PrintWriter(sw));
             // Return first 3 lines for brevity
