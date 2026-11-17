@@ -193,6 +193,35 @@ final class Gui {
         }
     }
 
+    /** The message of the option pane in the dialog with that title, once the dialog shows. */
+    static String dialogMessage(String title) {
+        await("a dialog titled \"" + title + "\"", () -> dialog(title) != null);
+        return onEventThread(() -> {
+            javax.swing.JOptionPane pane = search(dialog(title), javax.swing.JOptionPane.class);
+            return pane == null ? "" : String.valueOf(pane.getMessage());
+        });
+    }
+
+    private static JDialog dialog(String title) {
+        for (Window window : Window.getWindows()) {
+            if (window instanceof JDialog candidate && candidate.isShowing() && title.equals(candidate.getTitle())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static <T extends Component> T search(Component component, Class<T> type) {
+        if (type.isInstance(component)) return type.cast(component);
+        if (component instanceof Container container) {
+            for (Component child : container.getComponents()) {
+                T found = search(child, type);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     /** Answers the dialog with that title by clicking its button with that text. */
     static void answer(String title, String buttonText) {
         AtomicReference<JDialog> dialog = new AtomicReference<>();
