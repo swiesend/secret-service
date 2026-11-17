@@ -24,7 +24,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
+import java.util.stream.Collectors;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -91,6 +93,8 @@ public final class SecretServiceGui {
         /** The title of the dialog that asks for the acknowledgement before a default collection opens. */
         static final String DEFAULT_RISK_TITLE = "Open the default collection";
         static final String KILL_TITLE = "Kill Keyring";
+        /** How long the window waits after a signal of the provider, which come in bursts. */
+        private static final int REFRESH_DELAY_MILLIS = 300;
         static final String START_TITLE = "Start Keyring";
         /** How long the window keeps a secret that it has read. */
         private static final int SECRET_SHOWN_MILLIS = 60_000;
@@ -121,8 +125,16 @@ public final class SecretServiceGui {
         private final JTextField tfAttributeValue = new JTextField(10);
 
         // Items list
-        private final DefaultListModel<String> itemsModel = new DefaultListModel<>();
-        private final JList<String> itemsList = new JList<>(itemsModel);
+        private final DefaultTableModel itemsModel = readOnlyTableModel("Label", "Attributes", "Path");
+        private final JTable itemsTable = new JTable(itemsModel);
+        private List<KeyringClient.ItemRow> itemRows = List.of();
+        /** While the table is rebuilt, its selection changes say nothing about the user's. */
+        private boolean rebuildingItems = false;
+        /** What lists the items that the table shows: all of them, or the last search. */
+        private Callable<List<KeyringClient.ItemRow>> listing;
+        /** Refresh the items and the collections a moment after the provider signals a change. */
+        private final Timer refreshItems = new Timer(REFRESH_DELAY_MILLIS, e -> doRefreshItems());
+        private final Timer refreshCollections = new Timer(REFRESH_DELAY_MILLIS, e -> doRefreshCollections());
 
         // Search bar (items panel)
         private final JTextField tfSearch = new JTextField(14);
@@ -131,7 +143,8 @@ public final class SecretServiceGui {
         private final JButton btnSearch = new JButton("Search");
 
         // Item detail panel (shown on selection)
-        private final JLabel lblDetailPath = new JLabel(" ");
+        /** Read-only, so that the path can be selected and copied. */
+        private final JTextField tfDetailPath = new JTextField();
         private final JLabel lblDetailLabel = new JLabel(" ");
         private final SecretView secretView = new SecretView();
         private final JToggleButton btnShowSecret = new JToggleButton("Show");
@@ -245,13 +258,13 @@ public final class SecretServiceGui {
             tfAttributeValue.setName("item-attribute-value");
             btnCreate.setName("create-item");
             btnClearCreate.setName("clear-item");
-            itemsList.setName("items");
+            itemsTable.setName("items");
             tfSearch.setName("search");
             cmbSearchMode.setName("search-mode");
             cmbMaxDistance.setName("search-distance");
             btnSearch.setName("search-items");
             btnList.setName("list-items");
-            lblDetailPath.setName("detail-path");
+            tfDetailPath.setName("detail-path");
             lblDetailLabel.setName("detail-label");
             secretView.setName("detail-secret");
             btnShowSecret.setName("show-secret");
@@ -400,8 +413,13 @@ public final class SecretServiceGui {
             north.add(buildSearchBar(), BorderLayout.SOUTH);
             panel.add(north, BorderLayout.NORTH);
 
-            itemsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-            JScrollPane listScroll = new JScrollPane(itemsList);
+            itemsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            itemsTable.setFillsViewportHeight(true);
+            itemsTable.setAutoCreateRowSorter(true);
+            itemsTable.getColumnModel().getColumn(0).setPreferredWidth(140);
+            itemsTable.getColumnModel().getColumn(1).setPreferredWidth(200);
+            itemsTable.getColumnModel().getColumn(2).setPreferredWidth(260);
+            JScrollPane listScroll = new JScrollPane(itemsTable);
             listScroll.setPreferredSize(new Dimension(420, 150));
             listScroll.setMinimumSize(new Dimension(200, 80));
 
@@ -443,7 +461,10 @@ public final class SecretServiceGui {
         private JPanel buildDetailPanel() {
             JPanel panel = new JPanel(new GridBagLayout());
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
-            addRow(panel, 0, "Path:", lblDetailPath);
+            tfDetailPath.setEditable(false);
+            tfDetailPath.setBorder(BorderFactory.createEmptyBorder());
+            tfDetailPath.setOpaque(false);
+            addRow(panel, 0, "Path:", tfDetailPath);
             addRow(panel, 1, "Label:", lblDetailLabel);
             addRow(panel, 2, "Secret:", secretView);
 
@@ -608,9 +629,16 @@ public final class SecretServiceGui {
                 libraryLog.setThreshold(threshold);
                 log("The library's log shows from %s.", threshold);
             });
-            itemsList.addListSelectionListener(e -> {
-                if (!e.getValueIsAdjusting()) doShowItemDetail();
+            itemsTable.getSelectionModel().addListSelectionListener(e -> {
+                if (!e.getValueIsAdjusting() && !rebuildingItems) doShowItemDetail();
             });
+            refreshItems.setRepeats(false);
+            refreshCollections.setRepeats(false);
+            client.onChanges(() -> SwingUtilities.invokeLater(() -> {
+                if (collectionOpen) refreshItems.restart();
+            }), () -> SwingUtilities.invokeLater(() -> {
+                if (connected) refreshCollections.restart();
+            }));
             btnDebugRefresh.addActionListener(e -> refreshState());
         }
 
@@ -639,7 +667,7 @@ public final class SecretServiceGui {
             cmbMaxDistance.setEnabled(items);
             // The library refuses to delete a default collection, and so does the window.
             btnDeleteCollection.setEnabled(items && !defaultOpen);
-            itemsList.setEnabled(items);
+            itemsTable.setEnabled(items);
             btnDisconnect.setEnabled(connected && !busy);
             btnConnect.setEnabled(!connected && !busy);
             // Only gnome-keyring's daemon, which the window can find; started only where none serves.
@@ -704,13 +732,23 @@ public final class SecretServiceGui {
             worker.run("List collections", client::listCollections, this::showCollections);
         }
 
+        /** Shows the collections, and keeps the selected one selected where it is among them. */
         private void showCollections(List<KeyringClient.CollectionEntry> entries) {
+            int selectedRow = collectionsTable.getSelectedRow();
+            String selected = selectedRow < 0 ? null
+                    : collectionEntries.get(collectionsTable.convertRowIndexToModel(selectedRow)).path();
             collectionEntries = List.copyOf(entries);
             collectionsModel.setRowCount(0);
             for (KeyringClient.CollectionEntry entry : entries) {
                 String name = entry.label().equals(entry.id()) ? entry.label() : entry.label() + " [" + entry.id() + "]";
                 collectionsModel.addRow(new Object[]{entry.isDefault() ? name + " (default)" : name,
                         entry.locked().map(locked -> locked ? "yes" : "no").orElse("?")});
+            }
+            for (int i = 0; selected != null && i < entries.size(); i++) {
+                if (entries.get(i).path().equals(selected)) {
+                    int view = collectionsTable.convertRowIndexToView(i);
+                    collectionsTable.setRowSelectionInterval(view, view);
+                }
             }
             updateControls();
         }
@@ -821,11 +859,11 @@ public final class SecretServiceGui {
             defaultOpen = opened.isDefault();
             collectionName = opened.label().equals(opened.id()) ? opened.label() : opened.label() + " [" + opened.id() + "]";
             lblOpenCollection.setText("Open: " + collectionName + (opened.isDefault() ? " (default)" : ""));
-            itemsModel.clear();
+            showItems(List.of());
             clearDetail();
             updateControls();
-            // Listing a locked collection unlocks it, through the provider's dialog: List All does.
-            if (!opened.locked()) doListItems();
+            // Listing needs no unlock: the window lists a locked collection by its items' properties.
+            doListItems();
             autoSync();
         }
 
@@ -842,16 +880,20 @@ public final class SecretServiceGui {
         /** Shows the window as it is without a collection. */
         private void collectionClosed() {
             collectionOpen = false;
+            listing = null;
             defaultOpen = false;
             collectionName = "";
             lblOpenCollection.setText("No collection is open.");
-            itemsModel.clear();
+            showItems(List.of());
             clearDetail();
             updateControls();
         }
 
         /** Shows the window as it is without a connection. */
         private void disconnected() {
+            // A refresh that a signal of the closed connection asked for has nothing to refresh.
+            refreshItems.stop();
+            refreshCollections.stop();
             connected = false;
             gnomeKeyring = false;
             collectionClosed();
@@ -877,7 +919,7 @@ public final class SecretServiceGui {
         // ── Item detail (on selection) ─────────────────────────────
 
         private void clearDetail() {
-            lblDetailPath.setText(" ");
+            tfDetailPath.setText("");
             lblDetailLabel.setText(" ");
             forgetTheSecret();
             attributesTableModel.setRowCount(0);
@@ -891,24 +933,31 @@ public final class SecretServiceGui {
             updateControls();
         }
 
+        /** Shows the selected row: the table has read its label and attributes already. */
         private void doShowItemDetail() {
-            String selected = itemsList.getSelectedValue();
-            if (selected == null || !collectionOpen) {
+            Optional<KeyringClient.ItemRow> selected = selectedRow();
+            if (selected.isEmpty() || !collectionOpen) {
                 clearDetail();
                 return;
             }
-            worker.run("Read item", () -> client.detail(selected), detail -> {
-                lblDetailPath.setText(detail.path());
-                lblDetailLabel.setText(detail.label());
-                forgetTheSecret(); // the secret of another item
-                attributesTableModel.setRowCount(0);
-                detail.attributes().forEach((key, value) -> attributesTableModel.addRow(new Object[]{key, value}));
-            });
+            KeyringClient.ItemRow row = selected.get();
+            if (!row.path().equals(tfDetailPath.getText())) forgetTheSecret(); // the secret of another item
+            tfDetailPath.setText(row.path());
+            tfDetailPath.setCaretPosition(0);
+            lblDetailLabel.setText(row.label());
+            attributesTableModel.setRowCount(0);
+            row.attributes().forEach((key, value) -> attributesTableModel.addRow(new Object[]{key, value}));
+        }
+
+        private Optional<KeyringClient.ItemRow> selectedRow() {
+            int row = itemsTable.getSelectedRow();
+            if (row < 0) return Optional.empty();
+            return Optional.of(itemRows.get(itemsTable.convertRowIndexToModel(row)));
         }
 
         /** The path of the item that the detail shows, if it shows one. */
         private Optional<String> detailPath() {
-            String path = lblDetailPath.getText().trim();
+            String path = tfDetailPath.getText().trim();
             if (path.isEmpty()) {
                 log("Select an item first.");
                 return Optional.empty();
@@ -923,7 +972,7 @@ public final class SecretServiceGui {
             worker.run("Read secret", () -> client.readSecret(path.get()), secret -> {
                 forgetTheSecret();
                 if (secret.isEmpty()) return;
-                if (!path.get().equals(lblDetailPath.getText().trim())) {
+                if (!path.get().equals(tfDetailPath.getText().trim())) {
                     Arrays.fill(secret.get(), '\0'); // another item is selected meanwhile
                     return;
                 }
@@ -982,6 +1031,7 @@ public final class SecretServiceGui {
                 Worker.checkCancelled();
                 return client.listItems();
             }, items -> {
+                listing = client::listItems; // the table shows every item again
                 showItems(items);
                 autoSync();
             });
@@ -1002,6 +1052,7 @@ public final class SecretServiceGui {
                 Worker.checkCancelled();
                 return client.listItems();
             }, items -> {
+                listing = client::listItems;
                 clearDetail();
                 showItems(items);
                 autoSync();
@@ -1010,12 +1061,42 @@ public final class SecretServiceGui {
 
         private void doListItems() {
             if (!requireCollection()) return;
-            worker.run("List items", client::listItems, this::showItems);
+            listing = client::listItems;
+            worker.run("List items", listing, this::showItems);
         }
 
-        private void showItems(List<String> items) {
-            itemsModel.clear();
-            items.forEach(itemsModel::addElement);
+        /** Lists the items again, as the table lists them, after the provider signalled a change. */
+        private void doRefreshItems() {
+            if (!collectionOpen || listing == null) return;
+            worker.run("Refresh items", listing, this::showItems);
+        }
+
+        /**
+         * Shows the rows, and keeps the selected item selected where it is among them: the detail,
+         * and a secret that it has read, stay.
+         */
+        private void showItems(List<KeyringClient.ItemRow> rows) {
+            String selected = selectedRow().map(KeyringClient.ItemRow::path).orElse(null);
+            rebuildingItems = true;
+            try {
+                itemRows = List.copyOf(rows);
+                itemsModel.setRowCount(0);
+                for (KeyringClient.ItemRow row : rows) {
+                    String attributes = row.attributes().entrySet().stream()
+                            .map(entry -> entry.getKey() + "=" + entry.getValue())
+                            .collect(Collectors.joining(", "));
+                    itemsModel.addRow(new Object[]{row.label(), attributes, row.path()});
+                }
+                for (int i = 0; selected != null && i < rows.size(); i++) {
+                    if (rows.get(i).path().equals(selected)) {
+                        int view = itemsTable.convertRowIndexToView(i);
+                        itemsTable.setRowSelectionInterval(view, view);
+                    }
+                }
+            } finally {
+                rebuildingItems = false;
+            }
+            doShowItemDetail();
         }
 
         private void doSearch() {
@@ -1030,7 +1111,8 @@ public final class SecretServiceGui {
                 default -> SearchMode.BY_NAME;
             };
             int maxDistance = (Integer) cmbMaxDistance.getSelectedItem();
-            worker.run("Search", () -> client.search(query, searchMode, maxDistance), this::showItems);
+            listing = () -> client.search(query, searchMode, maxDistance);
+            worker.run("Search", listing, this::showItems);
         }
 
         private void doDeleteCollection() {

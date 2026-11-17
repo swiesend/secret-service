@@ -74,8 +74,12 @@ final class KeyringClient {
     record Daemon(long pid, String command) {
     }
 
-    /** What the window shows of the selected item. */
-    record ItemDetail(String path, String label, Map<String, String> attributes) {
+    /**
+     * An item of the open collection, as its properties tell it.
+     *
+     * @param locked empty where the provider does not say
+     */
+    record ItemRow(String path, String label, Map<String, String> attributes, Optional<Boolean> locked) {
     }
 
     /** One line of a state table. */
@@ -97,6 +101,10 @@ final class KeyringClient {
     private ServiceInterface service;
     private SessionInterface session;
     private CollectionInterface collection;
+    /** The object path of the open collection, which its items' signals name. */
+    private String collectionPath;
+    private volatile Runnable itemsChanged = () -> { };
+    private volatile Runnable collectionsChanged = () -> { };
     private boolean wasUnlockedOnce = false;
 
     /**
@@ -104,6 +112,15 @@ final class KeyringClient {
      */
     KeyringClient(Consumer<String> log) {
         this.log = log;
+    }
+
+    /**
+     * Takes what to run when the provider signals that an item of the open collection, or a
+     * collection, was created, changed or deleted. They run on the bus's thread.
+     */
+    void onChanges(Runnable items, Runnable collections) {
+        this.itemsChanged = items;
+        this.collectionsChanged = collections;
     }
 
     private void log(String format, Object... args) {
@@ -164,7 +181,7 @@ final class KeyringClient {
         for (DBusPath path : lowLevel.getCollections().orElse(List.of())) {
             // Without signals: the entry only reads two properties.
             de.swiesend.secretservice.Collection collection =
-                    new de.swiesend.secretservice.Collection(path, system.getConnection(), List.of());
+                    new de.swiesend.secretservice.Collection(path, system.getConnection(), null);
             String id = collection.getId();
             boolean isDefault = DEFAULT_IDS.contains(id) || alias.map(path.getPath()::equals).orElse(false);
             String label = collection.getLabel().filter(name -> !name.isBlank()).orElse(id);
@@ -184,7 +201,7 @@ final class KeyringClient {
         // The one that the alias names opens through the alias, as an application opens it.
         boolean aliasTarget = defaultAlias().map(entry.path()::equals).orElse(false);
         return opened(aliasTarget ? connectedSession().defaultCollection()
-                : connectedSession().collectionById(entry.id()), defaultAcknowledged);
+                : connectedSession().collectionById(entry.id()), entry.path(), defaultAcknowledged);
     }
 
     /** The path of the collection that the {@code default} alias names, if it names one. */
@@ -202,10 +219,12 @@ final class KeyringClient {
     OpenOutcome create(String label, CharSequence password, boolean defaultAcknowledged) {
         log("Opening collection by label: %s", label);
         Optional<CharSequence> maybePassword = password.length() == 0 ? Optional.empty() : Optional.of(password);
-        return opened(connectedSession().collection(label, maybePassword), defaultAcknowledged);
+        Optional<CollectionInterface> created = connectedSession().collection(label, maybePassword);
+        String path = created.flatMap(CollectionInterface::getId).map(Static.ObjectPaths::collection).orElse(null);
+        return opened(created, path, defaultAcknowledged);
     }
 
-    private OpenOutcome opened(Optional<CollectionInterface> maybeCollection, boolean defaultAcknowledged) {
+    private OpenOutcome opened(Optional<CollectionInterface> maybeCollection, String path, boolean defaultAcknowledged) {
         if (maybeCollection.isEmpty()) {
             log("ERROR: Could not open collection.");
             return OpenOutcome.failed();
@@ -219,6 +238,7 @@ final class KeyringClient {
         }
         closeCollection();
         collection = opened;
+        collectionPath = path;
         String label = collection.getLabel().orElse("?");
         String id = collection.getId().orElse("?");
         log("Connected to collection label=\"%s\" id=\"%s\"%s.", label, id, isDefault ? " (default)" : "");
@@ -232,6 +252,7 @@ final class KeyringClient {
     void closeCollection() {
         if (collection != null) closeQuietly(collection);
         collection = null;
+        collectionPath = null;
         wasUnlockedOnce = false;
     }
 
@@ -265,6 +286,7 @@ final class KeyringClient {
         service = null;
         session = null;
         collection = null;
+        collectionPath = null;
         system = null;
         wasUnlockedOnce = false;
     }
@@ -272,18 +294,30 @@ final class KeyringClient {
     private void registerSignalLoggers() {
         DBusConnection connection = system.getConnection();
         try {
-            signals.add(connection.addSigHandler(CollectionCreated.class,
-                    s -> log("> CollectionCreated(%s)", s.collection)));
-            signals.add(connection.addSigHandler(CollectionChanged.class,
-                    s -> log("> CollectionChanged(%s)", s.collection)));
-            signals.add(connection.addSigHandler(CollectionDeleted.class,
-                    s -> log("> CollectionDeleted(%s)", s.collection)));
-            signals.add(connection.addSigHandler(ItemCreated.class,
-                    s -> log("> ItemCreated(%s) on %s", s.item, s.getPath())));
-            signals.add(connection.addSigHandler(ItemChanged.class,
-                    s -> log("> ItemChanged(%s) on %s", s.item, s.getPath())));
-            signals.add(connection.addSigHandler(ItemDeleted.class,
-                    s -> log("> ItemDeleted(%s) on %s", s.item, s.getPath())));
+            signals.add(connection.addSigHandler(CollectionCreated.class, s -> {
+                log("> CollectionCreated(%s)", s.collection);
+                collectionsChanged.run();
+            }));
+            signals.add(connection.addSigHandler(CollectionChanged.class, s -> {
+                log("> CollectionChanged(%s)", s.collection);
+                collectionsChanged.run();
+            }));
+            signals.add(connection.addSigHandler(CollectionDeleted.class, s -> {
+                log("> CollectionDeleted(%s)", s.collection);
+                collectionsChanged.run();
+            }));
+            signals.add(connection.addSigHandler(ItemCreated.class, s -> {
+                log("> ItemCreated(%s) on %s", s.item, s.getPath());
+                itemChanged(s.getPath());
+            }));
+            signals.add(connection.addSigHandler(ItemChanged.class, s -> {
+                log("> ItemChanged(%s) on %s", s.item, s.getPath());
+                itemChanged(s.getPath());
+            }));
+            signals.add(connection.addSigHandler(ItemDeleted.class, s -> {
+                log("> ItemDeleted(%s) on %s", s.item, s.getPath());
+                itemChanged(s.getPath());
+            }));
             signals.add(connection.addSigHandler(Completed.class,
                     s -> log("> Prompt.Completed(%s) dismissed=%s", s.getPath(), s.dismissed)));
             log("Signal loggers registered (7 D-Bus signals).");
@@ -302,6 +336,11 @@ final class KeyringClient {
         return session;
     }
 
+    /** Passes on a signal of an item of the open collection, which names the collection. */
+    private void itemChanged(String collection) {
+        if (collection != null && collection.equals(collectionPath)) itemsChanged.run();
+    }
+
     private CollectionInterface open() {
         if (collection == null) throw new IllegalStateException("No collection is open. Open one first.");
         return collection;
@@ -317,28 +356,48 @@ final class KeyringClient {
         return path;
     }
 
-    /** The paths of the collection's items. */
-    List<String> listItems() {
-        Optional<List<String>> items = open().getItems(Map.of());
-        if (items.isPresent()) log("Listed %d item(s).", items.get().size());
-        else log("Listed 0 item(s) (empty response).");
-        return items.orElse(List.of());
+    /**
+     * The collection's items, without a dialog of the provider: an unlocked collection lists them
+     * through {@code getItems}, a locked one through its {@code Items} property, which needs no
+     * unlock, and each row comes from the item's own properties, which need none either.
+     */
+    List<ItemRow> listItems() {
+        CollectionInterface open = open();
+        boolean locked = open.isLocked();
+        List<String> paths;
+        if (locked) {
+            paths = new de.swiesend.secretservice.Collection(new DBusPath(collectionPath), system.getConnection(), null)
+                    .getItems()
+                    .map(Static.Convert::toStrings)
+                    .orElse(List.of());
+            log("Listed %d item(s) of the locked collection, by their properties.", paths.size());
+        } else {
+            Optional<List<String>> items = open.getItems(Map.of());
+            paths = items.orElse(List.of());
+            if (items.isPresent()) log("Listed %d item(s).", paths.size());
+            else log("Listed 0 item(s) (empty response).");
+        }
+        return rows(paths);
     }
 
-    /** The paths of the items that match. */
-    List<String> search(String query, SearchMode mode, int maxDistance) {
+    /** The items that match, which {@code search} lists after it unlocks the collection. */
+    List<ItemRow> search(String query, SearchMode mode, int maxDistance) {
         List<String> results = open().search(query, mode, maxDistance);
         int total = open().getItems(Map.of()).map(List::size).orElse(0);
         log("Search [%s] \"%s\": %d / %d item(s) matched.", mode, query, results.size(), total);
-        return results;
+        return rows(results);
     }
 
-    /** The label and the attributes of the item. */
-    ItemDetail detail(String path) {
-        String label = open().getItemLabel(path).orElse("<unknown>");
-        Map<String, String> attributes = new TreeMap<>(open().getAttributes(path).orElse(Map.of()));
-        log("Selected item: %s (%s)", label, path);
-        return new ItemDetail(path, label, attributes);
+    private List<ItemRow> rows(List<String> paths) {
+        de.swiesend.secretservice.Service lowLevel = connected().getService();
+        List<ItemRow> rows = new ArrayList<>();
+        for (String path : paths) {
+            Worker.checkCancelled();
+            de.swiesend.secretservice.Item item = new de.swiesend.secretservice.Item(new DBusPath(path), lowLevel);
+            rows.add(new ItemRow(path, item.getLabel().orElse("?"),
+                    new TreeMap<>(item.getAttributes().orElse(Map.of())), item.lockedState()));
+        }
+        return rows;
     }
 
     /**
