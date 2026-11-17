@@ -1,5 +1,7 @@
 package de.swiesend.secretservice.tools.gui;
 
+import de.swiesend.secretservice.functional.Collection;
+import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -16,7 +18,6 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
-import javax.swing.JList;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -33,6 +34,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -119,8 +122,8 @@ class GuiSmokeTest {
     }
 
     private int items() {
-        JList<?> items = Gui.find(JList.class, "items");
-        return Gui.onEventThread(() -> items.getModel().getSize());
+        JTable items = Gui.find(JTable.class, "items");
+        return Gui.onEventThread(items::getRowCount);
     }
 
     private String label(String name) {
@@ -139,9 +142,9 @@ class GuiSmokeTest {
     }
 
     private void selectFirstItem() {
-        JList<?> items = Gui.find(JList.class, "items");
+        JTable items = Gui.find(JTable.class, "items");
         Gui.onEventThread(() -> {
-            items.setSelectedIndex(0);
+            items.setRowSelectionInterval(0, 0);
             return null;
         });
         Gui.selectTab("item-tabs", "Selected item");
@@ -162,7 +165,7 @@ class GuiSmokeTest {
         Rectangle screen = Gui.onEventThread(() -> frame.getGraphicsConfiguration().getBounds());
         Rectangle window = Gui.onEventThread(frame::getBounds);
         assertTrue(screen.contains(window), "the window " + window + " is within the screen " + screen);
-        assertTrue(scrollPaneHeight(Gui.find(JList.class, "items")) >= 80, "the item list shows a few lines");
+        assertTrue(scrollPaneHeight(Gui.find(JTable.class, "items")) >= 80, "the item list shows a few lines");
         assertTrue(scrollPaneHeight(Gui.find(JTextArea.class, "log")) >= 80, "the log shows a few lines");
     }
 
@@ -259,6 +262,10 @@ class GuiSmokeTest {
         Gui.click("read-secret");
         Gui.await("the detail holds the secret", () -> secret.holds("s3cret"));
         assertFalse(Gui.onEventThread(secret::isRevealed), "the secret shows masked");
+        // The items are listed again, as on the provider's signals, and the secret stays.
+        Gui.click("list-items");
+        Gui.await("the list has been listed again", () -> "Ready".equals(label("status")));
+        assertTrue(Gui.onEventThread(() -> secret.holds("s3cret")), "the secret stays after the list is refreshed");
         Gui.click("show-secret");
         Gui.await("the secret shows", secret::isRevealed);
         Gui.screenshot("item-read");
@@ -272,7 +279,7 @@ class GuiSmokeTest {
         });
 
         // Selecting the item again forgets the secret that was read.
-        JList<?> items = Gui.find(JList.class, "items");
+        JTable items = Gui.find(JTable.class, "items");
         Gui.onEventThread(() -> {
             items.clearSelection();
             return null;
@@ -377,6 +384,22 @@ class GuiSmokeTest {
 
     @Test
     @Order(12)
+    @DisplayName("the list shows an item that another client creates, from the provider's signal")
+    void refreshesFromTheSignals() throws Exception {
+        assertEquals(0, items());
+        try (CollectionInterface other = Collection.openById(collection, Optional.empty())
+                .orElseThrow(() -> new AssertionError("another client opens the collection"))) {
+            assertTrue(other.createItem("outside item", "0utside", Map.of("purpose", "outside")).isPresent());
+        }
+        Gui.await("the list shows the item of the other client", () -> items() == 1);
+        JTable table = Gui.find(JTable.class, "items");
+        assertEquals("outside item", Gui.onEventThread(() -> table.getValueAt(0, 0)));
+        assertTrue(String.valueOf(Gui.onEventThread(() -> table.getValueAt(0, 1))).contains("purpose=outside"));
+        Gui.screenshot("item-from-another-client");
+    }
+
+    @Test
+    @Order(13)
     @DisplayName("the default collection opens only after the acknowledgement of the potential risk of damage")
     void opensTheDefaultAfterTheAcknowledgement() {
         Gui.selectRow("collections", LOGIN);
@@ -407,7 +430,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(13)
+    @Order(14)
     @DisplayName("Delete Collection asks, deletes the collection and closes it")
     void deletesTheCollection() {
         Gui.selectTab("bottom-tabs", "Danger zone");
@@ -421,7 +444,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(14)
+    @Order(15)
     @DisplayName("Kill Keyring stops the daemon that the bus names, after it names it, and Start Keyring starts one")
     void stopsAndStartsTheDaemon() {
         assertTrue(enabled("kill-keyring"), "Kill is enabled for gnome-keyring");
