@@ -13,13 +13,16 @@ import de.swiesend.secretservice.interfaces.Prompt.Completed;
 import de.swiesend.secretservice.interfaces.Service.CollectionChanged;
 import de.swiesend.secretservice.interfaces.Service.CollectionCreated;
 import de.swiesend.secretservice.interfaces.Service.CollectionDeleted;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
@@ -34,8 +37,29 @@ import java.util.function.Consumer;
  */
 final class KeyringClient {
 
-    /** The collection that a connect opened. */
-    record Opened(String label, String id, boolean locked) {
+    /**
+     * A collection of the provider.
+     *
+     * @param isDefault whether it is a default collection by the library's rule: the one that the
+     *                  {@code default} alias names, or gnome-keyring's {@code login} or
+     *                  {@code session} collection
+     * @param locked    empty where the provider does not say
+     */
+    record CollectionEntry(String path, String id, String label, boolean isDefault, Optional<Boolean> locked) {
+    }
+
+    /** The collection that the window opened. */
+    record Opened(String label, String id, boolean isDefault, boolean locked) {
+    }
+
+    /**
+     * What an open came to: the collection, nothing, or a default collection that the user has
+     * not acknowledged the risk for, which the client closed again.
+     */
+    record OpenOutcome(Optional<Opened> opened, boolean needsAcknowledgement) {
+        static OpenOutcome failed() {
+            return new OpenOutcome(Optional.empty(), false);
+        }
     }
 
     /** What the window shows of the selected item. */
@@ -50,6 +74,9 @@ final class KeyringClient {
     record State(boolean busConnected, boolean serviceAvailable, String provider,
                  List<Row> system, List<Row> service, List<Row> session, List<Row> collection) {
     }
+
+    /** The ids of gnome-keyring's default collections, which the library treats as default by their id. */
+    private static final Set<String> DEFAULT_IDS = Set.of("login", "session", "default");
 
     private final Consumer<String> log;
     private final List<AutoCloseable> signals = new ArrayList<>();
@@ -73,33 +100,12 @@ final class KeyringClient {
 
     // -- Connect / disconnect --
 
-    /** Connects to the bus and opens the default collection. */
-    Optional<Opened> connectToDefault() {
-        return connect(() -> session.defaultCollection());
-    }
-
-    /** Connects to the bus and opens the collection with that id, the last element of its path. */
-    Optional<Opened> connectById(String id) {
-        return connect(() -> {
-            log("Opening collection by id: %s", id);
-            return session.collectionById(id);
-        });
-    }
-
     /**
-     * Connects to the bus and opens the collection with that label, which the provider creates if
-     * it has none.
+     * Connects to the bus, the provider and a session, without opening a collection.
      *
-     * @param password the password of a collection that gnome-keyring creates
+     * @return the provider's collections, or empty where the connection failed
      */
-    Optional<Opened> connectByLabel(String label, CharSequence password) {
-        return connect(() -> {
-            log("Opening collection by label: %s", label);
-            return session.collection(label, Optional.of(password));
-        });
-    }
-
-    private Optional<Opened> connect(Callable<Optional<CollectionInterface>> open) {
+    Optional<List<CollectionEntry>> connect() {
         disconnect();
         try {
             Optional<SystemInterface> maybeSystem = de.swiesend.secretservice.functional.System.connect();
@@ -114,8 +120,7 @@ final class KeyringClient {
             Optional<ServiceInterface> maybeService = SecretService.create(Optional.of(system));
             if (maybeService.isEmpty()) {
                 log("ERROR: Secret service not available.");
-                system.disconnect();
-                system = null;
+                disconnect();
                 return Optional.empty();
             }
             service = maybeService.get();
@@ -129,24 +134,99 @@ final class KeyringClient {
             }
             session = maybeSession.get();
             log("Session opened: %s", session.getId());
-
-            Optional<CollectionInterface> maybeCollection = open.call();
-            if (maybeCollection.isEmpty()) {
-                log("ERROR: Could not open collection.");
-                disconnect();
-                return Optional.empty();
-            }
-            collection = maybeCollection.get();
-            String label = collection.getLabel().orElse("?");
-            String id = collection.getId().orElse("?");
-            log("Connected to collection label=\"%s\" id=\"%s\".", label, id);
-            boolean locked = collection.isLocked();
-            if (!locked) wasUnlockedOnce = true;
-            log("Locked: %s", locked);
-            return Optional.of(new Opened(label, id, locked));
-        } catch (Exception e) {
+            return Optional.of(listCollections());
+        } catch (RuntimeException e) {
             disconnect();
-            throw e instanceof RuntimeException runtime ? runtime : new IllegalStateException(e);
+            throw e;
+        }
+    }
+
+    /**
+     * The provider's collections, which the functional API does not list: through the
+     * {@code Collections} property of the service, and each collection's own properties.
+     */
+    List<CollectionEntry> listCollections() {
+        de.swiesend.secretservice.Service lowLevel = connected().getService();
+        Optional<String> alias = defaultAlias();
+        List<CollectionEntry> entries = new ArrayList<>();
+        for (DBusPath path : lowLevel.getCollections().orElse(List.of())) {
+            // Without signals: the entry only reads two properties.
+            de.swiesend.secretservice.Collection collection =
+                    new de.swiesend.secretservice.Collection(path, system.getConnection(), List.of());
+            String id = collection.getId();
+            boolean isDefault = DEFAULT_IDS.contains(id) || alias.map(path.getPath()::equals).orElse(false);
+            String label = collection.getLabel().filter(name -> !name.isBlank()).orElse(id);
+            entries.add(new CollectionEntry(path.getPath(), id, label, isDefault, collection.lockedState()));
+        }
+        entries.sort(Comparator.comparing(CollectionEntry::isDefault).reversed()
+                .thenComparing(CollectionEntry::label, String.CASE_INSENSITIVE_ORDER));
+        log("Listed %d collection(s).", entries.size());
+        return entries;
+    }
+
+    /**
+     * Opens a collection of the list, a default one only where the user has acknowledged the risk.
+     */
+    OpenOutcome open(CollectionEntry entry, boolean defaultAcknowledged) {
+        if (entry.isDefault() && !defaultAcknowledged) return new OpenOutcome(Optional.empty(), true);
+        // The one that the alias names opens through the alias, as an application opens it.
+        boolean aliasTarget = defaultAlias().map(entry.path()::equals).orElse(false);
+        return opened(aliasTarget ? connectedSession().defaultCollection()
+                : connectedSession().collectionById(entry.id()), defaultAcknowledged);
+    }
+
+    /** The path of the collection that the {@code default} alias names, if it names one. */
+    private Optional<String> defaultAlias() {
+        return connected().getService().readAlias("default")
+                .map(DBusPath::getPath)
+                .filter(path -> !"/".equals(path));
+    }
+
+    /**
+     * Opens the collection with that label, which the provider creates if it has none: with the
+     * password, or through the provider's dialog where it is empty. A default collection that has
+     * the label opens only where the user has acknowledged the risk.
+     */
+    OpenOutcome create(String label, CharSequence password, boolean defaultAcknowledged) {
+        log("Opening collection by label: %s", label);
+        Optional<CharSequence> maybePassword = password.length() == 0 ? Optional.empty() : Optional.of(password);
+        return opened(connectedSession().collection(label, maybePassword), defaultAcknowledged);
+    }
+
+    private OpenOutcome opened(Optional<CollectionInterface> maybeCollection, boolean defaultAcknowledged) {
+        if (maybeCollection.isEmpty()) {
+            log("ERROR: Could not open collection.");
+            return OpenOutcome.failed();
+        }
+        CollectionInterface opened = maybeCollection.get();
+        boolean isDefault = opened.isDefault();
+        if (isDefault && !defaultAcknowledged) {
+            log("Not opened: the collection is a default collection. Open it from the list.");
+            closeQuietly(opened);
+            return new OpenOutcome(Optional.empty(), true);
+        }
+        closeCollection();
+        collection = opened;
+        String label = collection.getLabel().orElse("?");
+        String id = collection.getId().orElse("?");
+        log("Connected to collection label=\"%s\" id=\"%s\"%s.", label, id, isDefault ? " (default)" : "");
+        boolean locked = collection.isLocked();
+        if (!locked) wasUnlockedOnce = true;
+        log("Locked: %s", locked);
+        return new OpenOutcome(Optional.of(new Opened(label, id, isDefault, locked)), false);
+    }
+
+    /** Closes the open collection, and keeps the session. */
+    void closeCollection() {
+        if (collection != null) closeQuietly(collection);
+        collection = null;
+        wasUnlockedOnce = false;
+    }
+
+    private static void closeQuietly(CollectionInterface collection) {
+        try {
+            collection.close();
+        } catch (Exception ignored) {
         }
     }
 
@@ -200,8 +280,18 @@ final class KeyringClient {
         }
     }
 
+    private ServiceInterface connected() {
+        if (service == null) throw new IllegalStateException("Not connected. Click Connect first.");
+        return service;
+    }
+
+    private SessionInterface connectedSession() {
+        if (session == null) throw new IllegalStateException("Not connected. Click Connect first.");
+        return session;
+    }
+
     private CollectionInterface open() {
-        if (collection == null) throw new IllegalStateException("Not connected. Click Connect first.");
+        if (collection == null) throw new IllegalStateException("No collection is open. Open one first.");
         return collection;
     }
 
@@ -254,12 +344,12 @@ final class KeyringClient {
         return deleted;
     }
 
-    /** Deletes the open collection, and disconnects if the provider did. */
+    /** Deletes the open collection, and closes it if the provider did. */
     boolean deleteCollection() {
         boolean deleted = open().delete();
         if (deleted) {
             log("Collection deleted.");
-            disconnect();
+            closeCollection();
         } else {
             log("WARNING: collection.delete() returned false.");
         }

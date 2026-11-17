@@ -146,6 +146,41 @@ final class Gui {
         });
     }
 
+    /** Shows the tab with that title of the tabbed pane with that name. */
+    static void selectTab(String pane, String title) {
+        javax.swing.JTabbedPane tabs = find(javax.swing.JTabbedPane.class, pane);
+        onEventThread(() -> {
+            int index = tabs.indexOfTab(title);
+            assertTrue(index >= 0, "the tabs \"" + pane + "\" have a tab \"" + title + "\"");
+            tabs.setSelectedIndex(index);
+            return null;
+        });
+    }
+
+    /** Selects the first row of the table whose first column is that text, and fails if none is. */
+    static void selectRow(String table, String firstColumn) {
+        javax.swing.JTable found = find(javax.swing.JTable.class, table);
+        onEventThread(() -> {
+            for (int row = 0; row < found.getRowCount(); row++) {
+                if (firstColumn.equals(String.valueOf(found.getValueAt(row, 0)))) {
+                    found.setRowSelectionInterval(row, row);
+                    return null;
+                }
+            }
+            throw new AssertionError("the table \"" + table + "\" has no row \"" + firstColumn + "\"");
+        });
+    }
+
+    /** The texts of the first column of the table. */
+    static java.util.List<String> firstColumn(String table) {
+        javax.swing.JTable found = find(javax.swing.JTable.class, table);
+        return onEventThread(() -> {
+            java.util.List<String> values = new java.util.ArrayList<>();
+            for (int row = 0; row < found.getRowCount(); row++) values.add(String.valueOf(found.getValueAt(row, 0)));
+            return values;
+        });
+    }
+
     /** Waits until the condition holds on the event thread, and fails the test after {@link #PATIENCE}. */
     static void await(String what, BooleanSupplier condition) {
         long deadline = System.nanoTime() + PATIENCE.toNanos();
