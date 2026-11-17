@@ -96,13 +96,45 @@ final class Gui {
     }
 
     /**
-     * Clicks the button, which has to be enabled. It does not wait for what the click starts: a
-     * click may open a dialog, which the event thread shows until it is answered.
+     * Clicks the button once it is enabled: the window disables its buttons while a call to the
+     * keyring runs. It does not wait for what the click starts: a click may open a dialog, which
+     * the event thread shows until it is answered.
      */
     static void click(String name) {
         AbstractButton button = find(AbstractButton.class, name);
-        assertTrue(onEventThread(button::isEnabled), "the button \"" + name + "\" is enabled");
+        await("the button \"" + name + "\" is enabled", button::isEnabled);
         SwingUtilities.invokeLater(() -> button.doClick(0));
+    }
+
+    /**
+     * How long the event thread takes to run an empty task, at most, over that time: the window
+     * does not answer the user for that long.
+     */
+    static Duration longestPause(Duration over) {
+        long longest = 0;
+        long end = System.nanoTime() + over.toNanos();
+        while (System.nanoTime() < end) {
+            long start = System.nanoTime();
+            onEventThread(() -> null);
+            longest = Math.max(longest, System.nanoTime() - start);
+            pause(50);
+        }
+        return Duration.ofNanos(longest);
+    }
+
+    /** Whether a dialog of the provider shows on the display, which gcr-prompter shows for gnome-keyring. */
+    static boolean providerDialogShows() {
+        try {
+            Process search = new ProcessBuilder("xdotool", "search", "--onlyvisible", "--class", "gcr-prompter")
+                    .redirectErrorStream(true).start();
+            String windows = new String(search.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            return search.waitFor() == 0 && !windows.isBlank();
+        } catch (IOException e) {
+            throw new AssertionError("xdotool did not run", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted", e);
+        }
     }
 
     /** Replaces the text of the field. */
