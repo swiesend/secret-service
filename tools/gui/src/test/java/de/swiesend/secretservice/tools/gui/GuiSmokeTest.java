@@ -205,12 +205,29 @@ class GuiSmokeTest {
         assertTrue(scrollPaneHeight(Gui.find(JTextArea.class, "log")) >= 80, "the log shows a few lines");
     }
 
+    @Test
+    @Order(2)
+    @DisplayName("the window takes the desktop's look, GTK's on Linux, not Swing's own")
+    void looksLikeTheDesktop() {
+        Assumptions.assumeTrue(System.getProperty("swing.defaultlaf") == null, "-Dswing.defaultlaf chooses the look");
+        String look = Gui.onEventThread(() -> UIManager.getLookAndFeel().getClass().getName());
+        if (System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("linux")) {
+            // The container has GTK, which gnome-keyring's dialogs need.
+            assertEquals(SecretServiceGui.GTK, look);
+        } else {
+            assertEquals(UIManager.getSystemLookAndFeelClassName(), look);
+        }
+        // GTK's look has no signs for the dialogs; the GUI draws them.
+        assertTrue(Gui.onEventThread(() -> UIManager.getIcon("OptionPane.warningIcon") != null), "a warning has its sign");
+        assertTrue(Gui.onEventThread(() -> UIManager.getIcon("OptionPane.questionIcon") != null), "a question has its sign");
+    }
+
     private static int scrollPaneHeight(JComponent view) {
         return Gui.onEventThread(() -> SwingUtilities.getAncestorOfClass(JScrollPane.class, view).getHeight());
     }
 
     @Test
-    @Order(2)
+    @Order(3)
     @DisplayName("the window starts disconnected")
     void startsDisconnected() {
         assertTrue(enabled("connect"), "Connect is enabled");
@@ -221,7 +238,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(3)
+    @Order(4)
     @DisplayName("Connect lists the provider's collections and opens none")
     void connects() {
         Gui.click("connect");
@@ -234,7 +251,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(4)
+    @Order(5)
     @DisplayName("the log shows the library's log from the level that is chosen")
     void showsTheLibrarysLog() {
         JComboBox<?> level = Gui.find(JComboBox.class, "log-level");
@@ -251,7 +268,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("Create / open creates the collection with its password and opens it")
     void createsTheCollection() {
         Gui.type("collection-label", collection);
@@ -268,7 +285,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("Create stores an item, and the list shows it")
     void createsAnItem() {
         Gui.selectTab("item-tabs", "New item");
@@ -283,7 +300,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     @DisplayName("selecting the item shows its label and attributes, and Read Secret its secret")
     void readsTheItem() {
         selectFirstItem();
@@ -332,7 +349,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("Search narrows the list, and List All shows every item again")
     void searches() {
         Gui.type("search", "no item has this name");
@@ -351,7 +368,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     @DisplayName("the exact filter lists the items with the attributes, and Read all reads every secret")
     void filtersAndReadsAll() {
         JComboBox<?> mode = Gui.find(JComboBox.class, "search-mode");
@@ -376,7 +393,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(10)
+    @Order(11)
     @DisplayName("the timeout goes to the service")
     void setsTheTimeout() {
         Gui.selectTab("bottom-tabs", "State");
@@ -396,7 +413,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(11)
+    @Order(12)
     @DisplayName("Save changes the item's label, attributes and secret")
     void editsTheItem() {
         selectFirstItem();
@@ -421,7 +438,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(12)
+    @Order(13)
     @DisplayName("Lock locks the collection, which lists its items without a prompt, and Unlock unlocks it")
     void locksAndUnlocksTheCollection() {
         Gui.click("lock-collection");
@@ -446,7 +463,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(13)
+    @Order(14)
     @DisplayName("Open opens the collection from the list, without its password")
     void reopensFromTheList() {
         Gui.click("disconnect");
@@ -463,7 +480,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(14)
+    @Order(15)
     @DisplayName("the window answers while the provider's dialog waits, and Cancel gives up the wait")
     void staysResponsiveWhileTheProviderAsks() throws IOException {
         String control = System.getenv(DIALOG_CONTROL);
@@ -500,7 +517,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(15)
+    @Order(16)
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
         selectFirstItem();
@@ -513,7 +530,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(16)
+    @Order(17)
     @DisplayName("without prompts, Unlock does not ask and leaves the collection locked; with them, it asks")
     void unlocksOnlyWithPrompts() {
         Gui.click("lock-collection");
@@ -540,7 +557,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(17)
+    @Order(18)
     @DisplayName("the list shows an item that another client creates, from the provider's signal")
     void refreshesFromTheSignals() throws Exception {
         assertEquals(0, items());
@@ -554,7 +571,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(18)
+    @Order(19)
     @DisplayName("Delete Item deletes the selected items at once")
     void deletesSeveralItems() {
         Gui.selectTab("item-tabs", "New item");
@@ -577,7 +594,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(19)
+    @Order(20)
     @DisplayName("the default collection opens only after the acknowledgement of the potential risk of damage")
     void opensTheDefaultAfterTheAcknowledgement() {
         Gui.selectRow("collections", LOGIN);
@@ -608,7 +625,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(20)
+    @Order(21)
     @DisplayName("Rename gives the collection a new label")
     void renamesTheCollection() {
         Gui.click("rename-collection");
@@ -639,7 +656,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(21)
+    @Order(22)
     @DisplayName("Delete Collection asks, deletes the collection and closes it")
     void deletesTheCollection() {
         Gui.selectTab("bottom-tabs", "Danger zone");
@@ -653,7 +670,7 @@ class GuiSmokeTest {
     }
 
     @Test
-    @Order(22)
+    @Order(23)
     @DisplayName("Kill Keyring stops the daemon that the bus names, after it names it, and Start Keyring starts one")
     void stopsAndStartsTheDaemon() {
         assertTrue(enabled("kill-keyring"), "Kill is enabled for gnome-keyring");
