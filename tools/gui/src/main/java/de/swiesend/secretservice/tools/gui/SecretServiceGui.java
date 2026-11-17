@@ -7,6 +7,9 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
@@ -87,6 +90,11 @@ public final class SecretServiceGui {
         private static final Color DANGER = new Color(0xC62828);
         /** The title of the dialog that asks for the acknowledgement before a default collection opens. */
         static final String DEFAULT_RISK_TITLE = "Open the default collection";
+        /** How long the window keeps a secret that it has read. */
+        private static final int SECRET_SHOWN_MILLIS = 60_000;
+        /** How long the clipboard keeps a secret that the window copied there. */
+        static final int CLIPBOARD_MILLIS = 30_000;
+        private static final char ECHO_CHAR = new JPasswordField().getEchoChar();
 
         // Collection panel: the provider's collections, and a new one
         private final DefaultTableModel collectionsModel = readOnlyTableModel("Collection", "Locked");
@@ -105,7 +113,8 @@ public final class SecretServiceGui {
 
         // Create-item panel
         private final JTextField tfLabel = new JTextField(20);
-        private final JTextField tfSecret = new JTextField(20);
+        private final JPasswordField pfSecret = new JPasswordField(20);
+        private final JCheckBox cbShowNewSecret = new JCheckBox("Show");
         private final JTextField tfAttributeKey = new JTextField(10);
         private final JTextField tfAttributeValue = new JTextField(10);
 
@@ -122,7 +131,11 @@ public final class SecretServiceGui {
         // Item detail panel (shown on selection)
         private final JLabel lblDetailPath = new JLabel(" ");
         private final JLabel lblDetailLabel = new JLabel(" ");
-        private final JLabel lblDetailSecret = new JLabel("********");
+        private final SecretView secretView = new SecretView();
+        private final JToggleButton btnShowSecret = new JToggleButton("Show");
+        private final JButton btnCopySecret = new JButton("Copy");
+        /** Forgets a secret that the window has read, a minute after it read it. */
+        private final Timer forgetSecret = new Timer(SECRET_SHOWN_MILLIS, e -> forgetTheSecret());
         private final DefaultTableModel attributesTableModel = new DefaultTableModel(new String[]{"Key", "Value"}, 0) {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
@@ -222,7 +235,8 @@ public final class SecretServiceGui {
             lblDefaultBanner.setName("default-banner");
             pfCollectionPassword.setName("collection-password");
             tfLabel.setName("item-label");
-            tfSecret.setName("item-secret");
+            pfSecret.setName("item-secret");
+            cbShowNewSecret.setName("show-new-secret");
             tfAttributeKey.setName("item-attribute-key");
             tfAttributeValue.setName("item-attribute-value");
             btnCreate.setName("create-item");
@@ -235,7 +249,9 @@ public final class SecretServiceGui {
             btnList.setName("list-items");
             lblDetailPath.setName("detail-path");
             lblDetailLabel.setName("detail-label");
-            lblDetailSecret.setName("detail-secret");
+            secretView.setName("detail-secret");
+            btnShowSecret.setName("show-secret");
+            btnCopySecret.setName("copy-secret");
             attributesTable.setName("detail-attributes");
             btnRead.setName("read-secret");
             btnDeleteItem.setName("delete-item");
@@ -425,10 +441,12 @@ public final class SecretServiceGui {
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
             addRow(panel, 0, "Path:", lblDetailPath);
             addRow(panel, 1, "Label:", lblDetailLabel);
-            addRow(panel, 2, "Secret:", lblDetailSecret);
+            addRow(panel, 2, "Secret:", secretView);
 
             JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
             buttons.add(btnRead);
+            buttons.add(btnShowSecret);
+            buttons.add(btnCopySecret);
             buttons.add(btnDeleteItem);
             GridBagConstraints gbc = gbc();
             gbc.gridx = 1; gbc.gridy = 3; gbc.anchor = GridBagConstraints.WEST; gbc.fill = GridBagConstraints.NONE;
@@ -448,7 +466,10 @@ public final class SecretServiceGui {
             JPanel panel = new JPanel(new GridBagLayout());
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
             addRow(panel, 0, "Label:", tfLabel);
-            addRow(panel, 1, "Secret:", tfSecret);
+            JPanel secret = new JPanel(new BorderLayout(4, 0));
+            secret.add(pfSecret, BorderLayout.CENTER);
+            secret.add(cbShowNewSecret, BorderLayout.EAST);
+            addRow(panel, 1, "Secret:", secret);
 
             JPanel attribute = new JPanel(new BorderLayout(4, 0));
             attribute.add(tfAttributeKey, BorderLayout.WEST);
@@ -555,9 +576,14 @@ public final class SecretServiceGui {
                 worker.cancel();
             });
             btnCreate.addActionListener(e -> doCreate());
+            cbShowNewSecret.addItemListener(e ->
+                    pfSecret.setEchoChar(cbShowNewSecret.isSelected() ? (char) 0 : ECHO_CHAR));
+            btnShowSecret.addItemListener(e -> secretView.setRevealed(btnShowSecret.isSelected()));
+            btnCopySecret.addActionListener(e -> doCopySecret());
+            forgetSecret.setRepeats(false);
             btnClearCreate.addActionListener(e -> {
                 tfLabel.setText("");
-                tfSecret.setText("");
+                pfSecret.setText("");
                 tfAttributeKey.setText("");
                 tfAttributeValue.setText("");
             });
@@ -590,7 +616,10 @@ public final class SecretServiceGui {
             boolean busy = worker.isBusy();
             boolean items = collectionOpen && !busy;
             tfLabel.setEnabled(items);
-            tfSecret.setEnabled(items);
+            pfSecret.setEnabled(items);
+            cbShowNewSecret.setEnabled(items);
+            btnShowSecret.setEnabled(items && secretView.isPresent());
+            btnCopySecret.setEnabled(items && secretView.isPresent());
             tfAttributeKey.setEnabled(items);
             tfAttributeValue.setEnabled(items);
             btnCreate.setEnabled(items);
@@ -835,8 +864,16 @@ public final class SecretServiceGui {
         private void clearDetail() {
             lblDetailPath.setText(" ");
             lblDetailLabel.setText(" ");
-            lblDetailSecret.setText("********");
+            forgetTheSecret();
             attributesTableModel.setRowCount(0);
+        }
+
+        /** Erases the secret that the window has read, and masks the view again. */
+        private void forgetTheSecret() {
+            forgetSecret.stop();
+            secretView.forget();
+            btnShowSecret.setSelected(false);
+            updateControls();
         }
 
         private void doShowItemDetail() {
@@ -848,7 +885,7 @@ public final class SecretServiceGui {
             worker.run("Read item", () -> client.detail(selected), detail -> {
                 lblDetailPath.setText(detail.path());
                 lblDetailLabel.setText(detail.label());
-                lblDetailSecret.setText("********");  // hidden until Read Secret
+                forgetTheSecret(); // the secret of another item
                 attributesTableModel.setRowCount(0);
                 detail.attributes().forEach((key, value) -> attributesTableModel.addRow(new Object[]{key, value}));
             });
@@ -869,13 +906,44 @@ public final class SecretServiceGui {
             Optional<String> path = detailPath();
             if (path.isEmpty()) return;
             worker.run("Read secret", () -> client.readSecret(path.get()), secret -> {
-                if (secret.isPresent()) {
-                    lblDetailSecret.setText(new String(secret.get()));
-                    Arrays.fill(secret.get(), '\0');
-                } else {
-                    lblDetailSecret.setText("<empty>");
+                forgetTheSecret();
+                if (secret.isEmpty()) return;
+                if (!path.get().equals(lblDetailPath.getText().trim())) {
+                    Arrays.fill(secret.get(), '\0'); // another item is selected meanwhile
+                    return;
+                }
+                secretView.show(secret.get());
+                forgetSecret.restart();
+                updateControls();
+            });
+        }
+
+        /**
+         * Copies the secret to the clipboard, and clears the clipboard after
+         * {@link #CLIPBOARD_MILLIS} unless another copy has replaced it. The clipboard takes only a
+         * {@code String}.
+         */
+        private void doCopySecret() {
+            if (!secretView.isPresent()) return;
+            char[] copy = secretView.copy();
+            StringSelection selection = new StringSelection(new String(copy));
+            Arrays.fill(copy, '\0');
+            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+            clipboard.setContents(selection, selection);
+            Timer clear = new Timer(CLIPBOARD_MILLIS, e -> {
+                try {
+                    if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)
+                            && selection.getTransferData(DataFlavor.stringFlavor).equals(clipboard.getData(DataFlavor.stringFlavor))) {
+                        clipboard.setContents(new StringSelection(""), null);
+                        log("Cleared the secret from the clipboard.");
+                    }
+                } catch (Exception ex) {
+                    log("Could not clear the clipboard: %s", ex.getClass().getSimpleName());
                 }
             });
+            clear.setRepeats(false);
+            clear.start();
+            log("Copied the secret to the clipboard; it is cleared in %d s.", CLIPBOARD_MILLIS / 1000);
         }
 
         // ── CRUD ──────────────────────────────────────────────────
@@ -883,14 +951,19 @@ public final class SecretServiceGui {
         private void doCreate() {
             if (!requireCollection()) return;
             String label = tfLabel.getText().trim();
-            String secret = tfSecret.getText();
-            if (label.isEmpty() || secret.isEmpty()) {
+            if (label.isEmpty() || pfSecret.getDocument().getLength() == 0) {
                 log("ERROR: Label and secret are required to create an item.");
                 return;
             }
+            char[] secret = pfSecret.getPassword();
+            pfSecret.setText("");
             Map<String, String> attributes = buildAttributes();
             worker.run("Create item", () -> {
-                client.createItem(label, secret, attributes);
+                try {
+                    client.createItem(label, CharBuffer.wrap(secret), attributes);
+                } finally {
+                    Arrays.fill(secret, '\0');
+                }
                 Worker.checkCancelled();
                 return client.listItems();
             }, items -> {

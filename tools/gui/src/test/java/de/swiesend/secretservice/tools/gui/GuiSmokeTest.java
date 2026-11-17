@@ -17,6 +17,7 @@ import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
@@ -24,6 +25,9 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -235,6 +239,8 @@ class GuiSmokeTest {
         Gui.type("item-attribute-value", "smoke");
         Gui.click("create-item");
         Gui.await("the list shows the item", () -> items() == 1);
+        JPasswordField secret = Gui.find(JPasswordField.class, "item-secret");
+        assertEquals(0, (int) Gui.onEventThread(() -> secret.getDocument().getLength()), "the secret field is cleared");
         Gui.screenshot("item-created");
     }
 
@@ -246,11 +252,41 @@ class GuiSmokeTest {
         JTable attributes = Gui.find(JTable.class, "detail-attributes");
         assertEquals("purpose", Gui.onEventThread(() -> attributes.getValueAt(0, 0)));
         assertEquals("smoke", Gui.onEventThread(() -> attributes.getValueAt(0, 1)));
-        assertEquals("********", label("detail-secret"), "the secret is hidden until it is asked for");
+        SecretView secret = Gui.find(SecretView.class, "detail-secret");
+        assertFalse(Gui.onEventThread(secret::isPresent), "the secret is read only when it is asked for");
+        assertFalse(enabled("show-secret"), "Show waits for the secret");
 
         Gui.click("read-secret");
-        Gui.await("the detail shows the secret", () -> "s3cret".equals(label("detail-secret")));
+        Gui.await("the detail holds the secret", () -> secret.holds("s3cret"));
+        assertFalse(Gui.onEventThread(secret::isRevealed), "the secret shows masked");
+        Gui.click("show-secret");
+        Gui.await("the secret shows", secret::isRevealed);
         Gui.screenshot("item-read");
+
+        Gui.click("copy-secret");
+        Gui.await("the clipboard holds the secret", () -> "s3cret".equals(clipboard()));
+        assertTrue(log().contains("Copied the secret to the clipboard"), log());
+        Gui.onEventThread(() -> {
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(""), null);
+            return null;
+        });
+
+        // Selecting the item again forgets the secret that was read.
+        JList<?> items = Gui.find(JList.class, "items");
+        Gui.onEventThread(() -> {
+            items.clearSelection();
+            return null;
+        });
+        selectFirstItem();
+        Gui.await("the secret is forgotten", () -> !secret.isPresent());
+    }
+
+    private static String clipboard() {
+        try {
+            return String.valueOf(Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor));
+        } catch (Exception e) {
+            return "<" + e.getClass().getSimpleName() + ">";
+        }
     }
 
     @Test
