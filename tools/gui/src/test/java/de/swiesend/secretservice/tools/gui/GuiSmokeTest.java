@@ -157,6 +157,17 @@ class GuiSmokeTest {
         });
     }
 
+    /** The value of the property in the table of the library's state. */
+    private static String state(String property) {
+        JTable found = Gui.find(JTable.class, "state");
+        return Gui.onEventThread(() -> {
+            for (int row = 0; row < found.getRowCount(); row++) {
+                if (property.equals(String.valueOf(found.getValueAt(row, 1)))) return String.valueOf(found.getValueAt(row, 2));
+            }
+            return null;
+        });
+    }
+
     /** The value in that column of the row of the table whose first column is that text. */
     private static String cell(String table, String firstColumn, int column) {
         JTable found = Gui.find(JTable.class, table);
@@ -236,8 +247,9 @@ class GuiSmokeTest {
     @Order(3)
     @DisplayName("the window starts disconnected")
     void startsDisconnected() {
-        assertTrue(enabled("connect"), "Connect is enabled");
-        assertFalse(enabled("disconnect"), "Disconnect is disabled");
+        assertTrue(enabled("connect") && showing("connect"), "Connect shows");
+        assertFalse(showing("disconnect"), "Disconnect shows only once connected");
+        assertFalse(showing("cancel"), "Cancel shows only while a call runs");
         assertFalse(enabled("create-collection"), "a collection is created only once connected");
         assertFalse(enabled("create-item"), "Create is disabled");
         Gui.screenshot("start");
@@ -402,19 +414,26 @@ class GuiSmokeTest {
     @Order(11)
     @DisplayName("the timeout goes to the service")
     void setsTheTimeout() {
-        Gui.selectTab("bottom-tabs", "State");
+        Gui.selectTab("bottom-tabs", "Library");
         JSpinner timeout = Gui.find(JSpinner.class, "timeout");
         Gui.onEventThread(() -> {
             timeout.setValue(30);
             return null;
         });
-        Gui.await("the service reports the timeout", () -> String.valueOf(cell("state-service", "getTimeout()", 1)).startsWith("30s"));
-        Gui.screenshot("state");
+        Gui.await("the service reports the timeout", () -> String.valueOf(state("getTimeout()")).startsWith("30s"));
+
+        // The state needs room: Expand gives the tabs the whole window, Restore gives it back.
+        Gui.click("expand-bottom");
+        Gui.await("the items have made room", () -> !showing("items"));
+        assertTrue(scrollPaneHeight(Gui.find(JTable.class, "state")) > 300, "the state shows many rows");
+        Gui.screenshot("library-expanded");
+        Gui.click("expand-bottom");
+        Gui.await("the items show again", () -> showing("items"));
         Gui.onEventThread(() -> {
             timeout.setValue(120);
             return null;
         });
-        Gui.await("the service reports the timeout", () -> String.valueOf(cell("state-service", "getTimeout()", 1)).startsWith("120s"));
+        Gui.await("the service reports the timeout", () -> String.valueOf(state("getTimeout()")).startsWith("120s"));
         Gui.selectTab("bottom-tabs", "Log");
     }
 
@@ -542,7 +561,7 @@ class GuiSmokeTest {
         Gui.click("lock-collection");
         Gui.await("the list shows the collection locked", () -> "yes".equals(cell("collections", collection, 1)));
 
-        Gui.selectTab("bottom-tabs", "State");
+        Gui.selectTab("bottom-tabs", "Library");
         Gui.click("prompts");
         Gui.await("prompts are disabled", () -> log().contains("Prompts are disabled."));
         long prompts = prompts();
@@ -591,6 +610,7 @@ class GuiSmokeTest {
             table.setRowSelectionInterval(0, 1);
             return null;
         });
+        Gui.selectTab("item-tabs", "Selected item");
         Gui.click("delete-item");
         String question = Gui.dialogMessage("Confirm Delete Item");
         assertTrue(question.startsWith("Delete 2 items from collection"), question);
