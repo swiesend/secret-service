@@ -51,6 +51,7 @@ public final class SecretServiceGui {
     }
 
     public static void main(String[] args) throws InterruptedException {
+        Typography.smoothText(); // before AWT starts
         // Gate: a GUI needs a display
         if (GraphicsEnvironment.isHeadless()) {
             System.err.println("Headless environment detected — cannot launch the Secret Service GUI.");
@@ -102,6 +103,7 @@ public final class SecretServiceGui {
             }
         }
         OptionPaneIcons.fillIn();
+        Typography.boldTitles();
     }
 
     // ─── GUI implementation ───────────────────────────────────────────────
@@ -259,6 +261,7 @@ public final class SecretServiceGui {
                 }
             });
             buildUi();
+            Typography.boldTableHeaders(getContentPane());
             nameComponents();
             wireActions();
             fitToScreen();
@@ -393,7 +396,10 @@ public final class SecretServiceGui {
         private JPanel buildCollectionPanel() {
             collectionsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
             collectionsTable.setFillsViewportHeight(true);
-            collectionsTable.getColumnModel().getColumn(1).setMaxWidth(60);
+            // Wide enough for its bold header.
+            int lockedWidth = collectionsTable.getFontMetrics(Typography.titleFont()).stringWidth("Locked") + 16;
+            collectionsTable.getColumnModel().getColumn(1).setPreferredWidth(lockedWidth);
+            collectionsTable.getColumnModel().getColumn(1).setMaxWidth(lockedWidth + 20);
             collectionsTable.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
@@ -634,7 +640,7 @@ public final class SecretServiceGui {
             JPanel panel = new JPanel(new BorderLayout(4, 4));
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
             logArea.setEditable(false);
-            logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+            logArea.setFont(Typography.logFont());
             JScrollPane scroll = new JScrollPane(logArea);
             scroll.setPreferredSize(new Dimension(0, LOG_HEIGHT));
             panel.add(scroll, BorderLayout.CENTER);

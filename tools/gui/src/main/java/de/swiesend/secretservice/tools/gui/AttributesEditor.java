@@ -34,6 +34,7 @@ final class AttributesEditor extends JPanel {
         add.setName(name + "-add");
         remove.setName(name + "-remove");
         table.setFillsViewportHeight(true);
+        table.getTableHeader().setFont(Typography.titleFont());
         table.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
         JScrollPane scroll = new JScrollPane(table);
         scroll.setPreferredSize(new Dimension(240, 60));
