@@ -57,7 +57,7 @@ final class KeyringClient {
     }
 
     /** The collection that the window opened. */
-    record Opened(String label, String id, boolean isDefault, boolean locked) {
+    record Opened(String path, String label, String id, boolean isDefault, boolean locked) {
     }
 
     /**
@@ -72,6 +72,13 @@ final class KeyringClient {
 
     /** The process that serves the Secret Service on the bus. */
     record Daemon(long pid, String command) {
+    }
+
+    /**
+     * The items that a listing found, with the number of the collection's items and, for a search
+     * or a filter, what it looked for.
+     */
+    record ItemListing(List<ItemRow> rows, int total, Optional<String> query) {
     }
 
     /**
@@ -93,6 +100,9 @@ final class KeyringClient {
 
     /** The ids of gnome-keyring's default collections, which the library treats as default by their id. */
     private static final Set<String> DEFAULT_IDS = Set.of("login", "session", "default");
+
+    /** The label of an item whose properties the provider does not give. */
+    static final String NOT_READABLE = "(not readable)";
 
     private final Consumer<String> log;
     private final List<AutoCloseable> signals = new ArrayList<>();
@@ -217,16 +227,22 @@ final class KeyringClient {
     }
 
     /**
-     * Opens the collection with that label, which the provider creates if it has none: with the
-     * password, or through the provider's dialog where it is empty. A default collection that has
-     * the label opens only where the user has acknowledged the risk.
+     * Creates a collection with that label and opens it: with the password, or through the
+     * provider's dialog where it is empty. The library's {@code collection(label, ...)} opens a
+     * collection that has the label instead of creating one; the client refuses a label that a
+     * collection of the provider has, which opens from the list, a default one after the
+     * acknowledgement of its risk.
      */
-    OpenOutcome create(String label, CharSequence password, boolean defaultAcknowledged) {
-        log("Opening collection by label: %s", label);
+    OpenOutcome create(String label, CharSequence password) {
+        if (listCollections().stream().anyMatch(entry -> entry.label().equals(label))) {
+            log("Not created: a collection has the label \"%s\". Open it from the list.", label);
+            return OpenOutcome.failed();
+        }
+        log("Creating collection: %s", label);
         Optional<CharSequence> maybePassword = password.length() == 0 ? Optional.empty() : Optional.of(password);
         Optional<CollectionInterface> created = connectedSession().collection(label, maybePassword);
         String path = created.flatMap(CollectionInterface::getId).map(Static.ObjectPaths::collection).orElse(null);
-        return opened(created, path, defaultAcknowledged);
+        return opened(created, path, false);
     }
 
     private OpenOutcome opened(Optional<CollectionInterface> maybeCollection, String path, boolean defaultAcknowledged) {
@@ -251,7 +267,13 @@ final class KeyringClient {
         boolean locked = collection.isLocked();
         if (!locked) wasUnlockedOnce = true;
         log("Locked: %s", locked);
-        return new OpenOutcome(Optional.of(new Opened(label, id, isDefault, locked)), false);
+        return new OpenOutcome(Optional.of(new Opened(path, label, id, isDefault, locked)), false);
+    }
+
+    /** Closes the open collection, and keeps the session, as the user asked. */
+    void close() {
+        closeCollection();
+        log("Closed the collection.");
     }
 
     /** Closes the open collection, and keeps the session. */
@@ -367,7 +389,7 @@ final class KeyringClient {
      * through {@code getItems}, a locked one through its {@code Items} property, which needs no
      * unlock, and each row comes from the item's own properties, which need none either.
      */
-    List<ItemRow> listItems() {
+    ItemListing listItems() {
         CollectionInterface open = open();
         boolean locked = open.isLocked();
         List<String> paths;
@@ -383,15 +405,15 @@ final class KeyringClient {
             if (items.isPresent()) log("Listed %d item(s).", paths.size());
             else log("Listed 0 item(s) (empty response).");
         }
-        return rows(paths);
+        return new ItemListing(rows(paths), paths.size(), Optional.empty());
     }
 
     /** The items that match, which {@code search} lists after it unlocks the collection. */
-    List<ItemRow> search(String query, SearchMode mode, int maxDistance) {
+    ItemListing search(String query, SearchMode mode, int maxDistance, String what) {
         List<String> results = open().search(query, mode, maxDistance);
         int total = open().getItems(Map.of()).map(List::size).orElse(0);
         log("Search [%s] \"%s\": %d / %d item(s) matched.", mode, query, results.size(), total);
-        return rows(results);
+        return new ItemListing(rows(results), total, Optional.of(what));
     }
 
     private List<ItemRow> rows(List<String> paths) {
@@ -400,7 +422,7 @@ final class KeyringClient {
         for (String path : paths) {
             Worker.checkCancelled();
             de.swiesend.secretservice.Item item = new de.swiesend.secretservice.Item(new DBusPath(path), lowLevel);
-            rows.add(new ItemRow(path, item.getLabel().orElse("?"),
+            rows.add(new ItemRow(path, item.getLabel().orElse(NOT_READABLE),
                     new TreeMap<>(item.getAttributes().orElse(Map.of())), item.lockedState()));
         }
         return rows;
@@ -494,10 +516,11 @@ final class KeyringClient {
     }
 
     /** The items with exactly these attributes, through {@code getItems}, which unlocks first. */
-    List<ItemRow> filter(Map<String, String> attributes) {
+    ItemListing filter(Map<String, String> attributes, String what) {
         List<String> paths = open().getItems(attributes).orElse(List.of());
+        int total = open().getItems(Map.of()).map(List::size).orElse(0);
         log("Filter by %d attribute(s): %d item(s) matched.", attributes.size(), paths.size());
-        return rows(paths);
+        return new ItemListing(rows(paths), total, Optional.of(what));
     }
 
     /**
