@@ -195,7 +195,6 @@ class GuiSmokeTest {
             items.setRowSelectionInterval(0, 0);
             return null;
         });
-        Gui.selectTab("item-tabs", "Selected item");
         Gui.await("the detail shows the item", () -> text("detail-label").startsWith("smoke item"));
     }
 
@@ -203,7 +202,7 @@ class GuiSmokeTest {
     private void openFromTheList(String name) {
         Gui.selectRow("collections", name);
         Gui.click("open-collection");
-        Gui.await("the collection is open", () -> label("open-collection-name").equals("Open: " + name));
+        Gui.await("the collection is open", () -> label("collection-name").equals(name));
     }
 
     @Test
@@ -250,8 +249,9 @@ class GuiSmokeTest {
         assertTrue(enabled("connect") && showing("connect"), "Connect shows");
         assertFalse(showing("disconnect"), "Disconnect shows only once connected");
         assertFalse(showing("cancel"), "Cancel shows only while a call runs");
-        assertFalse(enabled("create-collection"), "a collection is created only once connected");
-        assertFalse(enabled("create-item"), "Create is disabled");
+        assertTrue(showing("collections-disconnected"), "the place of the collections says what to do");
+        assertFalse(showing("new-collection"), "a collection is created only once connected");
+        assertTrue(showing("no-collection"), "the place of the items says what to do");
         Gui.screenshot("start");
     }
 
@@ -263,9 +263,8 @@ class GuiSmokeTest {
         Gui.await("the window is connected", () -> enabled("disconnect"));
         assertEquals("Connected", label("connection-status"));
         assertTrue(Gui.firstColumn("collections").contains(LOGIN), String.valueOf(Gui.firstColumn("collections")));
-        assertEquals("No collection is open.", label("open-collection-name"));
-        assertFalse(enabled("create-item"), "no item is created without a collection");
-        assertFalse(enabled("open-collection"), "Open waits for a selection");
+        assertTrue(showing("no-collection"), "the place of the items says what to do");
+        assertFalse(showing("open-collection"), "Open shows once a collection is selected");
     }
 
     @Test
@@ -287,12 +286,21 @@ class GuiSmokeTest {
 
     @Test
     @Order(6)
-    @DisplayName("Create / open creates the collection with its password and opens it")
+    @DisplayName("New collection refuses a label that a collection has, then creates the collection with its password")
     void createsTheCollection() {
-        Gui.type("collection-label", collection);
-        Gui.type("collection-password", PASSWORD);
-        Gui.click("create-collection");
-        Gui.await("the collection is open", () -> label("open-collection-name").equals("Open: " + collection));
+        Gui.click("new-collection");
+        // A label that the provider has opens from the list, never through New collection.
+        Gui.type("new-collection-label", "Login");
+        Gui.await("the dialog says why", () -> label("new-collection-message").startsWith("A collection has this label"));
+        assertFalse(enabled("new-collection-create"), "Create waits for a new label");
+        Gui.type("new-collection-label", collection);
+        Gui.click("new-collection-set-password");
+        Gui.await("the dialog asks for the password", () -> label("new-collection-message").startsWith("Type the password"));
+        Gui.type("new-collection-password", PASSWORD);
+        Gui.await("Create is enabled", () -> enabled("new-collection-create"));
+        Gui.screenshot("new-collection");
+        Gui.click("new-collection-create");
+        Gui.await("the collection is open", () -> label("collection-name").equals(collection));
 
         assertTrue(log().contains("Connected to collection label=\"" + collection + "\""), log());
         assertFalse(showing("default-banner"), "the banner shows only for a default collection");
@@ -304,16 +312,17 @@ class GuiSmokeTest {
 
     @Test
     @Order(7)
-    @DisplayName("Create stores an item, and the list shows it")
+    @DisplayName("New item creates an item, and the list shows it")
     void createsAnItem() {
-        Gui.selectTab("item-tabs", "New item");
-        Gui.type("item-label", "smoke item");
-        Gui.type("item-secret", "s3cret");
-        attributes("item-attributes", Map.of("purpose", "smoke"));
-        Gui.click("create-item");
+        assertTrue(showing("detail-none"), "the place of the selected item says what to do");
+        Gui.click("new-item");
+        Gui.type("new-item-label", "smoke item");
+        Gui.type("new-item-secret", "s3cret");
+        attributes("new-item-attributes", Map.of("purpose", "smoke"));
+        Gui.screenshot("new-item");
+        Gui.click("new-item-create");
         Gui.await("the list shows the item", () -> items() == 1);
-        JPasswordField secret = Gui.find(JPasswordField.class, "item-secret");
-        assertEquals(0, (int) Gui.onEventThread(() -> secret.getDocument().getLength()), "the secret field is cleared");
+        assertEquals("1 item.", label("items-shown"));
         Gui.screenshot("item-created");
     }
 
@@ -327,17 +336,18 @@ class GuiSmokeTest {
         assertEquals("smoke", Gui.onEventThread(() -> attributes.getValueAt(0, 1)));
         SecretView secret = Gui.find(SecretView.class, "detail-secret");
         assertFalse(Gui.onEventThread(secret::isPresent), "the secret is read only when it is asked for");
-        assertFalse(enabled("show-secret"), "Show waits for the secret");
+        assertFalse(showing("show-secret"), "Show waits for the secret");
 
         Gui.click("read-secret");
         Gui.await("the detail holds the secret", () -> secret.holds("s3cret"));
         assertFalse(Gui.onEventThread(secret::isRevealed), "the secret shows masked");
         // The items are listed again, as on the provider's signals, and the secret stays.
-        Gui.click("list-items");
+        Gui.click("refresh-items");
         Gui.await("the list has been listed again", () -> "Ready".equals(label("status")));
         assertTrue(Gui.onEventThread(() -> secret.holds("s3cret")), "the secret stays after the list is refreshed");
         Gui.click("show-secret");
         Gui.await("the secret shows", secret::isRevealed);
+        assertEquals("Hide", Gui.onEventThread(() -> Gui.find(AbstractButton.class, "show-secret").getText()));
         Gui.screenshot("item-read");
 
         Gui.click("copy-secret");
@@ -368,7 +378,7 @@ class GuiSmokeTest {
 
     @Test
     @Order(9)
-    @DisplayName("Search narrows the list, and List All shows every item again")
+    @DisplayName("Search narrows the list and says so, and Show all items shows every item again")
     void searches() {
         Gui.type("search", "no item has this name");
         Gui.click("search-items");
@@ -377,12 +387,16 @@ class GuiSmokeTest {
         Gui.type("search", "smoke item");
         Gui.click("search-items");
         Gui.await("the list shows the match", () -> items() == 1);
+        assertEquals("1 of 1 item matches \"smoke item\" in their labels (fuzziness 1).", label("items-shown"));
 
         Gui.type("search", "no item has this name");
         Gui.click("search-items");
         Gui.await("the list is empty", () -> items() == 0);
-        Gui.click("list-items");
+        Gui.click("show-all");
         Gui.await("the list shows every item", () -> items() == 1);
+        assertEquals("1 item.", label("items-shown"));
+        assertEquals("", text("search"), "the search that no longer applies is emptied");
+        assertFalse(showing("show-all"), "Show all items shows only while a search narrows the list");
     }
 
     @Test
@@ -391,7 +405,7 @@ class GuiSmokeTest {
     void filtersAndReadsAll() {
         JComboBox<?> mode = Gui.find(JComboBox.class, "search-mode");
         Gui.onEventThread(() -> {
-            mode.setSelectedItem("By Attributes (exact)");
+            mode.setSelectedItem("exact attributes (key=value, ...)");
             return null;
         });
         Gui.type("search", "purpose=none");
@@ -401,8 +415,10 @@ class GuiSmokeTest {
         Gui.click("search-items");
         Gui.await("the item matches", () -> items() == 1);
         assertTrue(log().contains("Filter by 1 attribute(s): 1 item(s) matched."), log());
+        assertFalse(showing("search-distance"), "the exact filter has no fuzziness");
+        Gui.click("show-all");
         Gui.onEventThread(() -> {
-            mode.setSelectedItem("By Name");
+            mode.setSelectedItem("labels");
             return null;
         });
 
@@ -444,6 +460,7 @@ class GuiSmokeTest {
         selectFirstItem();
         Gui.type("detail-label", "smoke item, edited");
         attributes("detail-attributes", Map.of("edited", "yes"));
+        Gui.click("replace-secret");
         Gui.type("detail-new-secret", "n3w s3cret");
         Gui.click("save-item");
         Gui.await("the table shows the new label", () -> "smoke item, edited".equals(cell("items", "smoke item, edited", 0)));
@@ -456,7 +473,7 @@ class GuiSmokeTest {
         Gui.click("read-secret");
         Gui.await("the detail holds the new secret", () -> secret.holds("n3w s3cret"));
         // The items are listed again on the provider's signals, and the secret stays shown.
-        Gui.click("list-items");
+        Gui.click("refresh-items");
         Gui.await("the list has been listed again", () -> "Ready".equals(label("status")));
         assertTrue(Gui.onEventThread(() -> secret.holds("n3w s3cret")), "the secret stays after the list is refreshed");
         Gui.screenshot("item-edited");
@@ -466,11 +483,14 @@ class GuiSmokeTest {
     @Order(13)
     @DisplayName("Lock locks the collection, which lists its items without a prompt, and Unlock unlocks it")
     void locksAndUnlocksTheCollection() {
+        assertFalse(showing("unlock-collection"), "Unlock shows only for a locked collection");
         Gui.click("lock-collection");
         Gui.await("the list shows the collection locked", () -> "yes".equals(cell("collections", collection, 1)));
         Gui.await("the call has ended", () -> "Ready".equals(label("status")));
+        Gui.await("the header says so", () -> "locked".equals(label("collection-state")));
+        assertFalse(showing("lock-collection"), "Lock shows only for an unlocked collection");
         long prompts = prompts();
-        Gui.click("list-items");
+        Gui.click("refresh-items");
         Gui.await("the locked collection lists its item", () -> items() == 1 && "Ready".equals(label("status")));
         assertEquals(prompts, prompts(), "listing the locked collection raised no prompt");
         Gui.screenshot("collection-locked");
@@ -516,13 +536,13 @@ class GuiSmokeTest {
         Files.writeString(hold, "");
         try {
             // Deleting asks for the user's permission through the unlock dialog, which waits.
-            Gui.click("delete-item");
-            Gui.answer("Confirm Delete Item", UIManager.getString("OptionPane.yesButtonText"));
+            Gui.click("delete-selected");
+            Gui.answer(SecretServiceGui.SecretServiceFrame.DELETE_ITEMS_TITLE, UIManager.getString("OptionPane.yesButtonText"));
             Gui.await("the provider's dialog shows", Gui::providerDialogShows);
 
             assertTrue(label("status").startsWith("Delete item"), label("status"));
-            assertTrue(enabled("cancel"), "Cancel is enabled while the call waits");
-            assertFalse(enabled("delete-item"), "the item controls are disabled while the call waits");
+            assertTrue(enabled("cancel") && showing("cancel"), "Cancel shows while the call waits");
+            assertFalse(enabled("new-item"), "the item controls are disabled while the call waits");
             Duration pause = Gui.longestPause(Duration.ofSeconds(2));
             assertTrue(pause.compareTo(RESPONSIVE) < 0, "the event thread answers within " + pause.toMillis() + " ms");
             Gui.screenshot("dialog-waits");
@@ -546,8 +566,8 @@ class GuiSmokeTest {
     @DisplayName("Delete Item asks, then deletes through the provider's unlock dialog")
     void deletesTheItem() {
         selectFirstItem();
-        Gui.click("delete-item");
-        Gui.answer("Confirm Delete Item", UIManager.getString("OptionPane.yesButtonText"));
+        Gui.click("delete-selected");
+        Gui.answer(SecretServiceGui.SecretServiceFrame.DELETE_ITEMS_TITLE, UIManager.getString("OptionPane.yesButtonText"));
         Gui.await("the list is empty", () -> items() == 0);
         assertTrue(log().contains("Deleted item: "), log());
         assertTrue(Gui.answeredDialogs() > 0, "the provider asked through its unlock dialog");
@@ -599,10 +619,10 @@ class GuiSmokeTest {
     @Order(19)
     @DisplayName("Delete Item deletes the selected items at once")
     void deletesSeveralItems() {
-        Gui.selectTab("item-tabs", "New item");
-        Gui.type("item-label", "second item");
-        Gui.type("item-secret", "s3cond");
-        Gui.click("create-item");
+        Gui.click("new-item");
+        Gui.type("new-item-label", "second item");
+        Gui.type("new-item-secret", "s3cond");
+        Gui.click("new-item-create");
         Gui.await("the list shows both items", () -> items() == 2);
 
         JTable table = Gui.find(JTable.class, "items");
@@ -610,11 +630,13 @@ class GuiSmokeTest {
             table.setRowSelectionInterval(0, 1);
             return null;
         });
-        Gui.selectTab("item-tabs", "Selected item");
-        Gui.click("delete-item");
-        String question = Gui.dialogMessage("Confirm Delete Item");
-        assertTrue(question.startsWith("Delete 2 items from collection"), question);
-        Gui.answer("Confirm Delete Item", UIManager.getString("OptionPane.yesButtonText"));
+        Gui.await("the selected item's place says that several are", () -> showing("detail-many"));
+        assertEquals("Delete 2 selected\u2026", Gui.onEventThread(() -> Gui.find(AbstractButton.class, "delete-selected").getText()));
+        Gui.screenshot("two-selected");
+        Gui.click("delete-selected");
+        String question = Gui.dialogMessage(SecretServiceGui.SecretServiceFrame.DELETE_ITEMS_TITLE);
+        assertTrue(question.startsWith("Delete 2 items from the collection"), question);
+        Gui.answer(SecretServiceGui.SecretServiceFrame.DELETE_ITEMS_TITLE, UIManager.getString("OptionPane.yesButtonText"));
         Gui.await("the list is empty", () -> items() == 0);
         assertTrue(log().contains("Deleted 2 item(s)."), log());
     }
@@ -631,7 +653,7 @@ class GuiSmokeTest {
         assertFalse(enabled("open-default"), "Open waits for the acknowledgement");
         Gui.click("cancel-default");
         Gui.await("the dialog has closed", () -> Gui.lookup(AbstractButton.class, "open-default").isEmpty());
-        assertEquals("Open: " + collection, label("open-collection-name"));
+        assertEquals(collection, label("collection-name"));
         assertTrue(log().contains("Not opened: the risk of the default collection was not acknowledged."), log());
 
         Gui.click("open-collection");
@@ -640,14 +662,18 @@ class GuiSmokeTest {
         Gui.await("Open is enabled", () -> enabled("open-default"));
         Gui.screenshot("default-acknowledgement");
         Gui.click("open-default");
-        Gui.await("the default collection is open", () -> label("open-collection-name").equals("Open: Login [login] (default)"));
+        Gui.await("the default collection is open", () -> label("collection-name").equals("Login [login] (default)"));
 
         assertTrue(showing("default-banner"), "the banner shows while the default collection is open");
-        assertFalse(enabled("delete-collection"), "the default collection cannot be deleted");
+        assertFalse(showing("delete-collection"), "a default collection has no Delete");
         Gui.screenshot("default-open");
 
-        openFromTheList(collection);
+        // Close leaves no collection open, and the connection as it is.
+        Gui.click("close-collection");
+        Gui.await("no collection is open", () -> showing("no-collection"));
+        assertTrue(showing("disconnect"), "the window stays connected");
         assertFalse(showing("default-banner"), "the banner goes with the default collection");
+        openFromTheList(collection);
     }
 
     @Test
@@ -663,7 +689,7 @@ class GuiSmokeTest {
         });
         Gui.answer(SecretServiceGui.SecretServiceFrame.RENAME_TITLE, UIManager.getString("OptionPane.okButtonText"));
         Gui.await("the list shows the new label", () -> Gui.firstColumn("collections").contains(renamed()));
-        assertEquals("Open: " + renamed(), label("open-collection-name"));
+        assertEquals(renamed(), label("collection-name"));
     }
 
     private String renamed() {
@@ -683,12 +709,13 @@ class GuiSmokeTest {
 
     @Test
     @Order(22)
-    @DisplayName("Delete Collection asks, deletes the collection and closes it")
+    @DisplayName("Delete collection asks, deletes the collection and closes it")
     void deletesTheCollection() {
-        Gui.selectTab("bottom-tabs", "Danger zone");
         Gui.click("delete-collection");
-        Gui.answer("Confirm Delete Collection \"" + renamed() + "\"", UIManager.getString("OptionPane.yesButtonText"));
-        Gui.await("the collection is closed", () -> "No collection is open.".equals(label("open-collection-name")));
+        String question = Gui.dialogMessage(SecretServiceGui.SecretServiceFrame.DELETE_COLLECTION_TITLE);
+        assertTrue(question.startsWith("Delete the collection \"" + renamed() + "\" and all its items?"), question);
+        Gui.answer(SecretServiceGui.SecretServiceFrame.DELETE_COLLECTION_TITLE, UIManager.getString("OptionPane.yesButtonText"));
+        Gui.await("the collection is closed", () -> showing("no-collection"));
         assertTrue(log().contains("Collection deleted."), log());
         Gui.await("the list has lost the collection", () -> !Gui.firstColumn("collections").contains(renamed()));
         assertTrue(enabled("disconnect"), "the window stays connected");
@@ -697,12 +724,11 @@ class GuiSmokeTest {
 
     @Test
     @Order(23)
-    @DisplayName("Kill Keyring stops the daemon that the bus names, after it names it, and Start Keyring starts one")
+    @DisplayName("Stop stops the daemon that the bus names, after it names it, and Start starts one")
     void stopsAndStartsTheDaemon() {
-        assertTrue(enabled("kill-keyring"), "Kill is enabled for gnome-keyring");
-        assertFalse(enabled("start-keyring"), "Start waits for the window to disconnect");
-
-        Gui.selectTab("bottom-tabs", "Danger zone");
+        Gui.selectTab("bottom-tabs", "Keyring daemon");
+        assertTrue(showing("kill-keyring"), "Stop shows for gnome-keyring");
+        assertFalse(showing("start-keyring"), "Start shows only while the window is disconnected");
         Gui.click("kill-keyring");
         String question = Gui.dialogMessage(SecretServiceGui.SecretServiceFrame.KILL_TITLE);
         assertTrue(question.startsWith("Stop /usr/bin/gnome-keyring-daemon (process "), question);
