@@ -105,6 +105,7 @@ class GuiSmokeTest {
 
     @BeforeAll
     void showTheWindow() {
+        Typography.smoothText(); // as main does, before AWT starts
         assertFalse(GraphicsEnvironment.isHeadless(), "the test needs a display");
         frame = Gui.onEventThread(() -> SecretServiceGui.show(closed));
         Gui.await("the window shows", frame::isShowing);
@@ -217,6 +218,11 @@ class GuiSmokeTest {
         } else {
             assertEquals(UIManager.getSystemLookAndFeelClassName(), look);
         }
+        // Text in subpixel smoothing, titles and table headers in bold.
+        Object hints = Gui.onEventThread(() -> java.awt.Toolkit.getDefaultToolkit().getDesktopProperty("awt.font.desktophints"));
+        assertTrue(String.valueOf(hints).contains("LCD HRGB"), "subpixel smoothing: " + hints);
+        JTable items = Gui.find(JTable.class, "items");
+        assertTrue(Gui.onEventThread(() -> items.getTableHeader().getFont().isBold()), "table headers are bold");
         // GTK's look has no signs for the dialogs; the GUI draws them.
         assertTrue(Gui.onEventThread(() -> UIManager.getIcon("OptionPane.warningIcon") != null), "a warning has its sign");
         assertTrue(Gui.onEventThread(() -> UIManager.getIcon("OptionPane.questionIcon") != null), "a question has its sign");
