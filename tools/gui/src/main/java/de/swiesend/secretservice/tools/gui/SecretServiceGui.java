@@ -120,6 +120,8 @@ public final class SecretServiceGui {
         /** The title of the dialog that asks for the acknowledgement before a default collection opens. */
         static final String DEFAULT_RISK_TITLE = "Open the default collection";
         static final String KILL_TITLE = "Kill Keyring";
+        static final String EXPAND = "Expand";
+        static final String RESTORE = "Restore";
         /** The search mode that lists the items with exactly the attributes "key=value, ...". */
         private static final String BY_ATTRIBUTES = "By Attributes (exact)";
         static final String RENAME_TITLE = "Rename collection";
@@ -170,7 +172,7 @@ public final class SecretServiceGui {
         private final JComboBox<String> cmbSearchMode = new JComboBox<>(new String[]{"By Name", "By Attribute Key", "By Attribute Value", "By Object ID", "By Object Path", BY_ATTRIBUTES});
         private final JButton btnReadAll = new JButton("Read all");
         // Library settings
-        private final JCheckBox cbPrompts = new JCheckBox("Prompts", true);
+        private final JCheckBox cbPrompts = new JCheckBox("Let the library raise the provider's prompts", true);
         private final JSpinner spTimeout = new JSpinner(new SpinnerNumberModel(120, 1, 3600, 5));
         private final JComboBox<Integer> cmbMaxDistance = new JComboBox<>(new Integer[]{0, 1, 2, 3});
         private final JButton btnSearch = new JButton("Search");
@@ -214,13 +216,18 @@ public final class SecretServiceGui {
         private final JButton btnStartKeyring = new JButton("Start Keyring");
         private final JButton btnClearLog = new JButton("Clear Log");
 
-        // Debug tab — state tables
-        private final DefaultTableModel debugSystemModel = readOnlyTableModel("Property", "Value");
-        private final DefaultTableModel debugServiceModel = readOnlyTableModel("Property", "Value");
-        private final DefaultTableModel debugSessionModel = readOnlyTableModel("Property", "Value");
-        private final DefaultTableModel debugCollectionModel = readOnlyTableModel("Property", "Value");
-        private final JButton btnDebugRefresh = new JButton("Refresh State");
-        private final JCheckBox cbAutoSync = new JCheckBox("Auto-sync", true);
+        // Library tab: the library's settings and the state of its objects, in one table
+        private final DefaultTableModel stateModel = readOnlyTableModel("Object", "Property", "Value");
+        private final JTable stateTable = new JTable(stateModel);
+        private final JButton btnDebugRefresh = new JButton("Refresh now");
+        private final JCheckBox cbAutoSync = new JCheckBox("Refresh after each call", true);
+
+        // The bottom panel, and its switch that gives it the whole window
+        private final JTabbedPane bottomTabs = new JTabbedPane();
+        private final JToggleButton btnExpand = new JToggleButton(EXPAND);
+        private JSplitPane workSplit;
+        private JComponent workArea;
+        private int restoreDivider = -1;
 
         // Connection status icon
         private final JLabel lblConnectionStatus = new JLabel();
@@ -233,7 +240,7 @@ public final class SecretServiceGui {
         // Busy state: what the worker does, and Cancel, which gives up a wait for the provider
         private static final String READY = "Ready";
         private final JLabel lblStatus = new JLabel(READY);
-        private final JButton btnCancel = new JButton("Cancel");
+        private final JButton btnCancel = new JButton("Cancel the call");
 
         /** The keyring calls, which run on {@link #worker}, never on the event thread. */
         private final KeyringClient client = new KeyringClient(this::log);
@@ -327,6 +334,9 @@ public final class SecretServiceGui {
             cmbLogLevel.setName("log-level");
             btnClearLog.setName("clear-log");
             btnDebugRefresh.setName("refresh-state");
+            stateTable.setName("state");
+            bottomTabs.setName("bottom-tabs");
+            btnExpand.setName("expand-bottom");
             cbAutoSync.setName("auto-sync");
         }
 
@@ -345,17 +355,40 @@ public final class SecretServiceGui {
             work.add(buildCollectionPanel(), BorderLayout.WEST);
             work.add(buildItemsPanel(), BorderLayout.CENTER);
 
-            JTabbedPane bottom = new JTabbedPane();
-            bottom.setName("bottom-tabs");
-            bottom.addTab("Log", buildLogPanel());
-            bottom.addTab("State", buildStateTab());
-            bottom.addTab("Danger zone", buildDangerZone());
+            bottomTabs.addTab("Log", buildLogPanel());
+            bottomTabs.addTab("Library", buildStateTab());
+            bottomTabs.addTab("Danger zone", buildDangerZone());
+            btnExpand.setToolTipText("Give the whole window to these tabs, as the library's state needs room");
+            btnExpand.setFocusable(false);
 
-            JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, work, bottom);
-            split.setResizeWeight(1.0); // a taller window gives its height to the items
-            split.setBorder(null);
-            content.add(split, BorderLayout.CENTER);
+            workArea = work;
+            workSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, work, new CornerPanel(bottomTabs, btnExpand));
+            workSplit.setResizeWeight(1.0); // a taller window gives its height to the items
+            workSplit.setBorder(null);
+            content.add(workSplit, BorderLayout.CENTER);
             setContentPane(content);
+        }
+
+        /**
+         * Gives the bottom tabs the whole window, below the toolbar, or gives the collections and
+         * items their place back.
+         */
+        private void setBottomExpanded(boolean expanded) {
+            if (expanded) {
+                restoreDivider = workSplit.getDividerLocation();
+                workArea.setVisible(false);
+                workSplit.setDividerLocation(0);
+                btnExpand.setText(RESTORE);
+                btnExpand.setToolTipText("Show the collections and items again");
+            } else {
+                workArea.setVisible(true);
+                if (restoreDivider > 0) workSplit.setDividerLocation(restoreDivider);
+                else workSplit.resetToPreferredSizes();
+                btnExpand.setText(EXPAND);
+                btnExpand.setToolTipText("Give the whole window to these tabs, as the library's state needs room");
+            }
+            workSplit.revalidate();
+            workSplit.repaint();
         }
 
         /** Fits the window to the screen it opens on, at least {@link #MINIMUM_SIZE}. */
@@ -385,6 +418,7 @@ public final class SecretServiceGui {
             bar.add(new JSeparator(SwingConstants.VERTICAL));
             bar.add(lblStatus);
             bar.add(btnCancel);
+            btnCancel.setCursor(Cursor.getDefaultCursor()); // not the window's wait cursor
             updateConnectionIcon(false);
 
             JPanel panel = new JPanel(new BorderLayout());
@@ -576,42 +610,37 @@ public final class SecretServiceGui {
             return panel;
         }
 
+        /** The library's settings, and the state of its objects in one table that scrolls. */
         private JPanel buildStateTab() {
-            JPanel tables = new JPanel(new GridLayout(2, 2, 6, 6));
-            tables.add(buildStateSection("System", debugSystemModel));
-            tables.add(buildStateSection("Service", debugServiceModel));
-            tables.add(buildStateSection("Session", debugSessionModel));
-            tables.add(buildStateSection("Collection", debugCollectionModel));
-
-            JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-            cbPrompts.setToolTipText("<html>Whether the library may raise the provider's prompts (enablePrompt, disablePrompt).<br>"
-                    + "Without them, the provider alone decides what a call may do.</html>");
+            cbPrompts.setToolTipText("<html>enablePrompt / disablePrompt on the open collection and each that opens.<br>"
+                    + "Without prompts, the provider alone decides what a call may do.</html>");
             spTimeout.setToolTipText("How long the library waits for a prompt (ServiceInterface.setTimeout)");
-            controls.add(new JLabel("Library:"));
-            controls.add(cbPrompts);
-            controls.add(new JLabel("Timeout (s):"));
-            controls.add(spTimeout);
-            controls.add(new JSeparator(SwingConstants.VERTICAL));
-            controls.add(cbAutoSync);
-            controls.add(btnDebugRefresh);
+            JPanel settings = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            settings.setBorder(new TitledBorder("Settings"));
+            settings.add(cbPrompts);
+            settings.add(new JLabel("Prompt timeout:"));
+            settings.add(spTimeout);
+            settings.add(new JLabel("s"));
+
+            stateTable.setFillsViewportHeight(true);
+            stateTable.getColumnModel().getColumn(0).setPreferredWidth(110);
+            stateTable.getColumnModel().getColumn(0).setMaxWidth(160);
+            stateTable.getColumnModel().getColumn(1).setPreferredWidth(240);
+            stateTable.getColumnModel().getColumn(2).setPreferredWidth(420);
+            JScrollPane scroll = new JScrollPane(stateTable);
+            scroll.setPreferredSize(new Dimension(0, LOG_HEIGHT));
+            JPanel stateControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            stateControls.add(cbAutoSync);
+            stateControls.add(btnDebugRefresh);
+            JPanel state = new JPanel(new BorderLayout(4, 4));
+            state.setBorder(new TitledBorder("State of the library's objects"));
+            state.add(scroll, BorderLayout.CENTER);
+            state.add(stateControls, BorderLayout.SOUTH);
 
             JPanel panel = new JPanel(new BorderLayout(4, 4));
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
-            panel.add(tables, BorderLayout.CENTER);
-            panel.add(controls, BorderLayout.SOUTH);
-            return panel;
-        }
-
-        private static JPanel buildStateSection(String title, DefaultTableModel model) {
-            JPanel panel = new JPanel(new BorderLayout());
-            panel.setBorder(new TitledBorder(title));
-            JTable table = new JTable(model);
-            table.setName("state-" + title.toLowerCase(Locale.ROOT));
-            table.setFillsViewportHeight(true);
-            JScrollPane scroll = new JScrollPane(table);
-            // Each table scrolls within its share: the tab keeps the height of the log.
-            scroll.setPreferredSize(new Dimension(200, 40));
-            panel.add(scroll, BorderLayout.CENTER);
+            panel.add(settings, BorderLayout.NORTH);
+            panel.add(state, BorderLayout.CENTER);
             return panel;
         }
 
@@ -640,8 +669,12 @@ public final class SecretServiceGui {
             JPanel panel = new JPanel(new BorderLayout(4, 4));
             panel.setBorder(new EmptyBorder(4, 4, 4, 4));
             logArea.setEditable(false);
+            // Long lines wrap, as a path or a library message does not fit the width.
+            logArea.setLineWrap(true);
+            logArea.setWrapStyleWord(true);
             logArea.setFont(Typography.logFont());
-            JScrollPane scroll = new JScrollPane(logArea);
+            JScrollPane scroll = new JScrollPane(logArea, ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
+                    ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
             scroll.setPreferredSize(new Dimension(0, LOG_HEIGHT));
             panel.add(scroll, BorderLayout.CENTER);
             cmbLogLevel.setSelectedItem(LibraryLog.Threshold.INFO);
@@ -665,6 +698,7 @@ public final class SecretServiceGui {
 
         private void wireActions() {
             btnConnect.addActionListener(e -> doConnect());
+            btnExpand.addItemListener(e -> setBottomExpanded(btnExpand.isSelected()));
             btnDisconnect.addActionListener(e -> doDisconnect());
             btnOpenCollection.addActionListener(e -> doOpenCollection());
             btnRefreshCollections.addActionListener(e -> doRefreshCollections());
@@ -771,13 +805,19 @@ public final class SecretServiceGui {
             // The library refuses to delete a default collection, and so does the window.
             btnDeleteCollection.setEnabled(items && !defaultOpen);
             itemsTable.setEnabled(items);
+            // Only the one that applies shows: Connect or Disconnect.
+            btnDisconnect.setVisible(connected);
+            btnConnect.setVisible(!connected);
             btnDisconnect.setEnabled(connected && !busy);
             btnConnect.setEnabled(!connected && !busy);
             // Only gnome-keyring's daemon, which the window can find; started only where none serves.
             btnKillKeyring.setEnabled(connected && gnomeKeyring && !busy);
             btnStartKeyring.setEnabled(!connected && !busy);
             btnDebugRefresh.setEnabled(!busy);
+            // Cancel shows only while a call runs, and the window shows that it waits.
+            btnCancel.setVisible(busy);
             btnCancel.setEnabled(busy);
+            setCursor(Cursor.getPredefinedCursor(busy ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));
             boolean session = connected && !busy;
             collectionsTable.setEnabled(session);
             btnOpenCollection.setEnabled(session && collectionsTable.getSelectedRow() >= 0);
@@ -1470,15 +1510,15 @@ public final class SecretServiceGui {
                 resetStatusLabel(lblDbusAvailable);
                 resetStatusLabel(lblProvider);
             }
-            showRows(debugSystemModel, state.system());
-            showRows(debugServiceModel, state.service());
-            showRows(debugSessionModel, state.session());
-            showRows(debugCollectionModel, state.collection());
+            stateModel.setRowCount(0);
+            addRows("System", state.system());
+            addRows("Service", state.service());
+            addRows("Session", state.session());
+            addRows("Collection", state.collection());
         }
 
-        private static void showRows(DefaultTableModel model, List<KeyringClient.Row> rows) {
-            model.setRowCount(0);
-            rows.forEach(row -> model.addRow(new Object[]{row.property(), row.value()}));
+        private void addRows(String object, List<KeyringClient.Row> rows) {
+            rows.forEach(row -> stateModel.addRow(new Object[]{object, row.property(), row.value()}));
         }
 
         private static String exceptionDetail(Throwable ex) {

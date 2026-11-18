@@ -102,7 +102,7 @@ final class Gui {
      */
     static void click(String name) {
         AbstractButton button = find(AbstractButton.class, name);
-        await("the button \"" + name + "\" is enabled", button::isEnabled);
+        await("the button \"" + name + "\" shows and is enabled", () -> button.isShowing() && button.isEnabled());
         SwingUtilities.invokeLater(() -> button.doClick(0));
     }
 
