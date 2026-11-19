@@ -6,9 +6,11 @@
 
     <!--
         Build aggregator only. Running Maven in this directory builds the modules listed below.
-        Nothing inherits from this file, and it is never published: the library's published POM is
-        core/pom.xml (de.swiesend:secret-service), which is self-contained, so a consumer resolves
-        no parent POM.
+        It is never published: the library's published POM is core/pom.xml
+        (de.swiesend:secret-service), which is self-contained, so a consumer resolves no parent
+        POM. Only the developer GUI in tools/gui inherits from it, by relative path and outside the
+        modules below, for its version and its maven.deploy.skip; keep the version equal to
+        core/pom.xml's.
     -->
     <groupId>de.swiesend</groupId>
     <artifactId>secret-service-reactor</artifactId>

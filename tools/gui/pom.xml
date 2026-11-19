@@ -10,16 +10,25 @@
 
       This is an INDEPENDENT project, intentionally NOT wired into the root reactor:
       the library build never references this tool, and the core jar stays free of
-      java.desktop. It depends on the published/installed core artifact.
+      java.desktop. It depends on the installed core artifact of the same version.
+
+      It takes its version from the root POM, its parent by relative path, and asks for
+      the library of that version: a release sets the version in core/pom.xml and the
+      root POM, and the GUI follows. The parent is not published, and neither is the GUI.
 
       Build the core first, then launch:
         mvn -q -DskipTests -Dgpg.skip=true install   # from repository root; skip the release signing
         mvn -f tools/gui/pom.xml exec:java           # launch the GUI
     -->
 
-    <groupId>de.swiesend</groupId>
+    <parent>
+        <groupId>de.swiesend</groupId>
+        <artifactId>secret-service-reactor</artifactId>
+        <version>3.0.0-alpha</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
     <artifactId>secret-service-gui</artifactId>
-    <version>3.0.0-alpha</version>
     <packaging>jar</packaging>
 
     <name>secret-service-gui</name>
@@ -29,23 +38,38 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>17</maven.compiler.release>
         <java.version>17</java.version>
-        <secret-service.version>3.0.0-alpha</secret-service.version>
+
         <slf4j.version>2.0.17</slf4j.version>
         <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
+        <junit-jupiter.version>5.10.5</junit-jupiter.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>de.swiesend</groupId>
             <artifactId>secret-service</artifactId>
-            <version>${secret-service.version}</version>
+            <version>${project.version}</version>
         </dependency>
 
-        <!-- Console logging when launched standalone -->
+        <!-- The library logs through SLF4J; java.util.logging takes its log, and the window shows it -->
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
+            <artifactId>slf4j-jdk14</artifactId>
             <version>${slf4j.version}</version>
+        </dependency>
+
+        <!-- The smoke test: see GuiSmokeTest for where it runs -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit-jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit-jupiter.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -58,6 +82,11 @@
                 <configuration>
                     <release>17</release>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
             </plugin>
             <!-- Launch with: mvn -f tools/gui/pom.xml exec:java -->
             <plugin>

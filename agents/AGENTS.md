@@ -165,7 +165,14 @@ docker run --rm -v "$(pwd)":/workspace secret-service-test
   leg is required.
 - The standalone developer GUI lives in the separate `tools/gui` project (not in the test suite or
   the core jar). Launch it with `mvn -DskipTests -Dgpg.skip=true install` then
-  `mvn -f tools/gui/pom.xml exec:java`.
+  `mvn -f tools/gui/pom.xml exec:java`. `KeyringClient` makes its calls to the keyring, without
+  Swing, on the `Worker`'s thread, never on the event thread; the window opens a default collection
+  only after the user acknowledges the potential risk of damage. Its smoke test, `GuiSmokeTest`, drives the window against
+  a real provider and saves screenshots to `tools/gui/target/gui-screenshots`; it skips itself
+  unless `-Dsecret-service.system-test.dialogs-answered=true` and
+  `-Dsecret-service.system-test.default-collection=throwaway` say that the keyring is the run's
+  own, as in the `gnome-keyring-dialogs` container, where the `gui-tests.yml` workflow runs it.
+  Never run it, or the GUI, against a developer's own keyring unasked.
 - `DBusConnection.isConnected()` was **unreliable after `close()`** in dbus-java 4.x, and `System.connect()`'s shared connection stays open while another holder has a share — do not assert on post-close connection state.
 - Use `Thread.sleep()` (not `Thread.currentThread().sleep()`) for D-Bus signal waits.
 - A test that needs a user to answer a dialog runs only with `-Dsecret-service.system-test.dialogs-answered=true`, and one that also locks or writes into the default collection only with `-Dsecret-service.system-test.default-collection=throwaway` as well: `@EnabledIfSystemProperty` on the flags of `integration.test.Dialogs`, with its reason as `disabledReason`. The `gnome-keyring-dialogs` CI leg sets both; never set the second where the default collection is a user's. Its container also exports `SECRET_SERVICE_DIALOG_CONTROL`, through which a test holds the dialog answerer back, as a user who is away (`Dialogs.hold()`, `release()`), and has it cancel the dialog on the screen (`Dialogs.cancelTheDialog()`); such a test runs only there (`@EnabledIfEnvironmentVariable`).
